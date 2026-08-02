@@ -1,0 +1,31 @@
+marco_pwm_bridge:
+  ros__parameters:
+    # --- Donanim baglantisi ---
+    serial_port: /dev/marco_stm32
+    baudrate: 115200
+    use_fake_hardware: false
+
+    # --- PWM araligi ---
+    # lane_tracking/controller.py bugun 0..150 uretir. Bu sinirlar oradaki
+    # kirpmanin tekrari degil, bagimsiz dogrulamasidir: kontrolcu kazanci
+    # degistiginde tasan degerler motora ulasmaz.
+    pwm_min: 0.0
+    pwm_max: 150.0
+
+    # --- Zamanlama ---
+    command_rate: 50.0
+    read_rate: 200.0
+    # Kamera goruntusu kesilirse arac durur. STM32 watchdog'u (200 ms) son
+    # savunma hatti; bu deger normal isleyisteki ilk hat.
+    pwm_timeout: 0.5
+
+    # --- Sahte donanim ---
+    # Yalnizca use_fake_hardware: true iken kurulur. Kinematik degerler
+    # base_driver.yaml / properties.xacro ile ayni olmali.
+    wheel_radius: 0.100
+    wheel_separation: 0.460
+    ticks_per_revolution: 1440
+    max_wheel_speed: 0.838
+    # Tam gaza karsilik gelen PWM (firmware timer ARR). Taklit bu olcekle
+    # PWM'i hiza cevirir; gercek donanimda kullanilmaz.
+    pwm_full_scale: 255.0

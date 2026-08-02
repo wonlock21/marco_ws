@@ -1,0 +1,6 @@
+Invoking command in '/home/orangepi/marco_ws/build/marco_navigation': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/orangepi/marco_ws/src/marco_navigation -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/orangepi/marco_ws/install/marco_navigation
+Invoked command in '/home/orangepi/marco_ws/build/marco_navigation' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/orangepi/marco_ws/src/marco_navigation -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/orangepi/marco_ws/install/marco_navigation
+Invoking command in '/home/orangepi/marco_ws/build/marco_navigation': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_navigation -- -j8 -l8
+Invoked command in '/home/orangepi/marco_ws/build/marco_navigation' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_navigation -- -j8 -l8
+Invoking command in '/home/orangepi/marco_ws/build/marco_navigation': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_navigation
+Invoked command in '/home/orangepi/marco_ws/build/marco_navigation' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_navigation

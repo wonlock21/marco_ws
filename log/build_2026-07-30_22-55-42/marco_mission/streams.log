@@ -1,0 +1,21 @@
+[3.195s] Invoking command in '/home/orangepi/marco_ws/src/marco_mission': PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_mission build --build-base /home/orangepi/marco_ws/build/marco_mission/build install --record /home/orangepi/marco_ws/build/marco_mission/install.log --install-scripts $base/lib/marco_mission --single-version-externally-managed install_data
+[3.534s] running egg_info
+[3.536s] writing ../../build/marco_mission/marco_mission.egg-info/PKG-INFO
+[3.537s] writing dependency_links to ../../build/marco_mission/marco_mission.egg-info/dependency_links.txt
+[3.540s] writing entry points to ../../build/marco_mission/marco_mission.egg-info/entry_points.txt
+[3.540s] writing requirements to ../../build/marco_mission/marco_mission.egg-info/requires.txt
+[3.541s] writing top-level names to ../../build/marco_mission/marco_mission.egg-info/top_level.txt
+[3.545s] reading manifest file '../../build/marco_mission/marco_mission.egg-info/SOURCES.txt'
+[3.548s] adding license file 'LICENSE'
+[3.551s] writing manifest file '../../build/marco_mission/marco_mission.egg-info/SOURCES.txt'
+[3.551s] running build
+[3.552s] running build_py
+[3.552s] running install
+[3.553s] running install_lib
+[3.554s] running install_data
+[3.554s] running install_egg_info
+[3.557s] removing '/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages/marco_mission-0.0.0-py3.10.egg-info' (and everything under it)
+[3.558s] Copying ../../build/marco_mission/marco_mission.egg-info to /home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages/marco_mission-0.0.0-py3.10.egg-info
+[3.561s] running install_scripts
+[3.600s] writing list of installed files to '/home/orangepi/marco_ws/build/marco_mission/install.log'
+[3.735s] Invoked command in '/home/orangepi/marco_ws/src/marco_mission' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_mission build --build-base /home/orangepi/marco_ws/build/marco_mission/build install --record /home/orangepi/marco_ws/build/marco_mission/install.log --install-scripts $base/lib/marco_mission --single-version-externally-managed install_data

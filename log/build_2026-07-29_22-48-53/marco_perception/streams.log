@@ -1,0 +1,21 @@
+[2.408s] Invoking command in '/home/orangepi/marco_ws/src/marco_perception': PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_perception build --build-base /home/orangepi/marco_ws/build/marco_perception/build install --record /home/orangepi/marco_ws/build/marco_perception/install.log --install-scripts $base/lib/marco_perception --single-version-externally-managed install_data
+[2.795s] running egg_info
+[2.797s] writing ../../build/marco_perception/marco_perception.egg-info/PKG-INFO
+[2.797s] writing dependency_links to ../../build/marco_perception/marco_perception.egg-info/dependency_links.txt
+[2.798s] writing entry points to ../../build/marco_perception/marco_perception.egg-info/entry_points.txt
+[2.799s] writing requirements to ../../build/marco_perception/marco_perception.egg-info/requires.txt
+[2.799s] writing top-level names to ../../build/marco_perception/marco_perception.egg-info/top_level.txt
+[2.805s] reading manifest file '../../build/marco_perception/marco_perception.egg-info/SOURCES.txt'
+[2.805s] adding license file 'LICENSE'
+[2.806s] writing manifest file '../../build/marco_perception/marco_perception.egg-info/SOURCES.txt'
+[2.807s] running build
+[2.807s] running build_py
+[2.808s] running install
+[2.808s] running install_lib
+[2.809s] running install_data
+[2.809s] running install_egg_info
+[2.813s] removing '/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages/marco_perception-0.0.0-py3.10.egg-info' (and everything under it)
+[2.814s] Copying ../../build/marco_perception/marco_perception.egg-info to /home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages/marco_perception-0.0.0-py3.10.egg-info
+[2.814s] running install_scripts
+[2.859s] writing list of installed files to '/home/orangepi/marco_ws/build/marco_perception/install.log'
+[3.004s] Invoked command in '/home/orangepi/marco_ws/src/marco_perception' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_perception build --build-base /home/orangepi/marco_ws/build/marco_perception/build install --record /home/orangepi/marco_ws/build/marco_perception/install.log --install-scripts $base/lib/marco_perception --single-version-externally-managed install_data

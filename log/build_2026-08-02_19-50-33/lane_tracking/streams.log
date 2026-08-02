@@ -1,0 +1,22 @@
+[2.213s] Invoking command in '/home/orangepi/marco_ws/src/lane_tracking': PYTHONPATH=/home/orangepi/marco_ws/build/lane_tracking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/lane_tracking/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/lane_tracking build --build-base /home/orangepi/marco_ws/build/lane_tracking/build install --record /home/orangepi/marco_ws/build/lane_tracking/install.log --install-scripts $base/lib/lane_tracking --single-version-externally-managed install_data
+[2.586s] running egg_info
+[2.587s] writing ../../build/lane_tracking/lane_tracking.egg-info/PKG-INFO
+[2.589s] writing dependency_links to ../../build/lane_tracking/lane_tracking.egg-info/dependency_links.txt
+[2.590s] writing entry points to ../../build/lane_tracking/lane_tracking.egg-info/entry_points.txt
+[2.591s] writing requirements to ../../build/lane_tracking/lane_tracking.egg-info/requires.txt
+[2.595s] writing top-level names to ../../build/lane_tracking/lane_tracking.egg-info/top_level.txt
+[2.600s] reading manifest file '../../build/lane_tracking/lane_tracking.egg-info/SOURCES.txt'
+[2.602s] writing manifest file '../../build/lane_tracking/lane_tracking.egg-info/SOURCES.txt'
+[2.603s] running build
+[2.603s] running build_py
+[2.605s] running install
+[2.605s] running install_lib
+[2.607s] running install_data
+[2.607s] running install_egg_info
+[2.611s] removing '/home/orangepi/marco_ws/install/lane_tracking/lib/python3.10/site-packages/lane_tracking-0.0.0-py3.10.egg-info' (and everything under it)
+[2.612s] Copying ../../build/lane_tracking/lane_tracking.egg-info to /home/orangepi/marco_ws/install/lane_tracking/lib/python3.10/site-packages/lane_tracking-0.0.0-py3.10.egg-info
+[2.613s] running install_scripts
+[2.659s] Installing controller script to /home/orangepi/marco_ws/install/lane_tracking/lib/lane_tracking
+[2.660s] Installing trackerfinal script to /home/orangepi/marco_ws/install/lane_tracking/lib/lane_tracking
+[2.662s] writing list of installed files to '/home/orangepi/marco_ws/build/lane_tracking/install.log'
+[2.743s] Invoked command in '/home/orangepi/marco_ws/src/lane_tracking' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/lane_tracking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/lane_tracking/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/lane_tracking build --build-base /home/orangepi/marco_ws/build/lane_tracking/build install --record /home/orangepi/marco_ws/build/lane_tracking/install.log --install-scripts $base/lib/lane_tracking --single-version-externally-managed install_data

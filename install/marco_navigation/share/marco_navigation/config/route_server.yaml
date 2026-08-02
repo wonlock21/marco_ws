@@ -1,0 +1,55 @@
+### nav2_route Route Server — MarCO Faz 7 ###
+#
+# Serbest NavFn yerine tanimli GeoJSON rota aginda en kisa/en hizli yol.
+# CostmapScorer YOK: engelden kacinmak icin rota degistirme (sartname).
+# TimeScorer + DistanceScorer = rota optimizasyonu (madde 5).
+
+route_server:
+  ros__parameters:
+    use_sim_time: false
+    base_frame: "base_footprint"
+    route_frame: "map"
+    path_density: 0.05
+    max_iterations: 0
+    max_planning_time: 2.0
+    smooth_corners: true
+    smoothing_radius: 0.40
+    costmap_topic: "global_costmap/costmap_raw"
+    tracker_update_rate: 20.0
+    aggregate_blocked_ids: false
+    boundary_radius_to_achieve_node: 0.50
+    radius_to_achieve_node: 0.40
+    max_prune_dist_from_edge: 2.0
+    min_prune_dist_from_goal: 0.15
+    min_prune_dist_from_start: 0.30
+    prune_goal: true
+    enable_nn_search: true
+    max_nn_search_iterations: 10000
+    num_nearest_nodes: 5
+
+    # Launch dosyasi graph_filepath'i mutlak yolla yazar.
+    graph_filepath: ""
+    graph_file_loader: "GeoJsonGraphFileLoader"
+    GeoJsonGraphFileLoader:
+      plugin: "nav2_route::GeoJsonGraphFileLoader"
+
+    # Engelden otomatik kacinma YOK — CostmapScorer ekleme.
+    edge_cost_functions: ["DistanceScorer", "TimeScorer", "DynamicEdgesScorer"]
+    DistanceScorer:
+      plugin: "nav2_route::DistanceScorer"
+      weight: 1.0
+    TimeScorer:
+      plugin: "nav2_route::TimeScorer"
+      weight: 1.0
+      speed_tag: "abs_speed_limit"
+      max_vel: 0.50
+    DynamicEdgesScorer:
+      plugin: "nav2_route::DynamicEdgesScorer"
+
+    # AdjustSpeedLimit: kenar metadata abs_speed_limit / speed_limit uygular.
+    # ReroutingService yok: engelde yeniden rota YOK (Wait BT ile uyumlu).
+    operations: ["AdjustSpeedLimit"]
+    AdjustSpeedLimit:
+      plugin: "nav2_route::AdjustSpeedLimit"
+      speed_limit_topic: "speed_limit"
+      speed_tag: "abs_speed_limit"

@@ -1,0 +1,47 @@
+<!--
+  MarCO Faz 7 — nav2_route ile tanimli rota aginda gezin.
+
+  Serbest GridBased (NavFn) YOK. ComputeRoute GeoJSON graf uzerinden
+  en iyi yolu bulur; FollowPath takip eder.
+
+  Sartname: engelden kacinma YOK → recovery yalnizca Wait.
+  First/last mile freespace YOK → arac yalnizca tanimli kenarlarda.
+
+  AdjustSpeedLimit icin ComputeAndTrackRoute gerekir; bu agac simdilik
+  ComputeRoute + FollowPath (hiz limiti kenar metadata'sinda; takip
+  sirasinda uygula = sonraki iyileştirme / ComputeAndTrackRoute).
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="1000" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <Fallback>
+            <ReactiveSequence>
+              <Inverter>
+                <GlobalUpdatedGoal/>
+              </Inverter>
+              <IsPathValid path="{path}"/>
+            </ReactiveSequence>
+            <ComputeRoute goal="{goal}" path="{path}" route="{route}" use_poses="true"/>
+          </Fallback>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <Sequence name="ClearAndWait">
+            <ClearEntireCostmap name="ClearLocal" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <Wait wait_duration="2"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <Sequence name="WaitForClearance">
+          <ClearEntireCostmap name="ClearLocal-Recovery" service_name="local_costmap/clear_entirely_local_costmap"/>
+          <ClearEntireCostmap name="ClearGlobal-Recovery" service_name="global_costmap/clear_entirely_global_costmap"/>
+          <Wait wait_duration="5"/>
+        </Sequence>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

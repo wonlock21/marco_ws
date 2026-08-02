@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Renkler -->
+  <material name="marco_steel">  <color rgba="0.62 0.64 0.66 1.0"/></material>
+  <material name="marco_yellow"> <color rgba="0.95 0.72 0.10 1.0"/></material>
+  <material name="marco_dark">   <color rgba="0.18 0.19 0.21 1.0"/></material>
+  <material name="marco_rubber"> <color rgba="0.10 0.10 0.12 1.0"/></material>
+  <material name="marco_sensor"> <color rgba="0.10 0.45 0.75 1.0"/></material>
+
+  <!-- Atalet makrolari. Homojen yogunluk varsayimi; gercek degerler
+       CAD'den alinana kadar sim dinamikleri icin yeterli yaklasimdir. -->
+
+  <xacro:macro name="box_inertia" params="m x y z">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia
+        ixx="${m*(y*y + z*z)/12.0}" ixy="0.0" ixz="0.0"
+        iyy="${m*(x*x + z*z)/12.0}" iyz="0.0"
+        izz="${m*(x*x + y*y)/12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- Ekseni y boyunca uzanan silindir (tekerlekler icin) -->
+  <xacro:macro name="wheel_inertia" params="m r w">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia
+        ixx="${m*(3.0*r*r + w*w)/12.0}" ixy="0.0" ixz="0.0"
+        iyy="${m*r*r/2.0}"              iyz="0.0"
+        izz="${m*(3.0*r*r + w*w)/12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="sphere_inertia" params="m r">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia
+        ixx="${2.0*m*r*r/5.0}" ixy="0.0" ixz="0.0"
+        iyy="${2.0*m*r*r/5.0}" iyz="0.0"
+        izz="${2.0*m*r*r/5.0}"/>
+    </inertial>
+  </xacro:macro>
+
+</robot>

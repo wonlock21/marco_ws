@@ -1,0 +1,45 @@
+# Istasyona hassas yanasma.
+# nav2_route, QR dugumunde (istasyona ~1.5 m kala) TriggerEvent ile bu action'i cagirir.
+# Nav2 tek basina sartnamedeki toleransi tutturamaz; kontrol burada devralinir.
+
+# --- Hedef ---
+# Yanasilacak istasyonun kimligi. QR icerigiyle dogrulanir.
+string station_id
+
+# Sartname madde 8 varsayilanlari: +/- 7.5 cm konum, +/- 5 derece yon.
+float32 position_tolerance    # [m]
+float32 yaw_tolerance         # [rad]
+
+# Yuk alma mi birakma mi. Catalin hangi tarafta kalacagini ve hangi kameranin
+# kullanilacagini belirler.
+uint8 APPROACH_PICKUP=0
+uint8 APPROACH_DROPOFF=1
+uint8 approach_type
+
+# Zaman asimi [s]. Asilirsa action iptal edilir ve gorev yonetimine hata bildirilir.
+float32 timeout
+---
+# --- Sonuc ---
+bool success
+
+# Duruldugu andaki olculen hata. Kalibrasyon ve saha analizi icin kaydedilir.
+float32 final_position_error  # [m]
+float32 final_yaw_error       # [rad]
+
+uint8 RESULT_OK=0
+uint8 RESULT_QR_MISMATCH=1        # okunan QR hedefle uyusmadi
+uint8 RESULT_LANE_LOST=2          # serit kaybedildi
+uint8 RESULT_TIMEOUT=3
+uint8 RESULT_OBSTACLE=4
+uint8 RESULT_ABORTED=5
+uint8 result_code
+
+string message
+---
+# --- Geri bildirim ---
+# Docking fazi: "qr_verify", "lane_align", "final_approach", "settling".
+string phase
+
+float32 position_error        # [m]
+float32 yaw_error             # [rad]
+float32 distance_remaining    # [m]

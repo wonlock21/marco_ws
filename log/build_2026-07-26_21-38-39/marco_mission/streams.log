@@ -1,0 +1,23 @@
+[2.623s] Invoking command in '/home/orangepi/marco_ws/build/marco_mission': PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_mission/build --no-deps symlink_data
+[2.989s] running develop
+[3.161s] running egg_info
+[3.161s] creating marco_mission.egg-info
+[3.162s] writing marco_mission.egg-info/PKG-INFO
+[3.162s] writing dependency_links to marco_mission.egg-info/dependency_links.txt
+[3.163s] writing entry points to marco_mission.egg-info/entry_points.txt
+[3.163s] writing requirements to marco_mission.egg-info/requires.txt
+[3.163s] writing top-level names to marco_mission.egg-info/top_level.txt
+[3.164s] writing manifest file 'marco_mission.egg-info/SOURCES.txt'
+[3.167s] reading manifest file 'marco_mission.egg-info/SOURCES.txt'
+[3.169s] writing manifest file 'marco_mission.egg-info/SOURCES.txt'
+[3.176s] running build_ext
+[3.177s] Creating /home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages/marco-mission.egg-link (link to .)
+[3.181s] 
+[3.182s] Installed /home/orangepi/marco_ws/build/marco_mission
+[3.182s] running symlink_data
+[3.184s] creating /home/orangepi/marco_ws/install/marco_mission/share/ament_index
+[3.184s] creating /home/orangepi/marco_ws/install/marco_mission/share/ament_index/resource_index
+[3.185s] creating /home/orangepi/marco_ws/install/marco_mission/share/ament_index/resource_index/packages
+[3.185s] symbolically linking /home/orangepi/marco_ws/build/marco_mission/resource/marco_mission -> /home/orangepi/marco_ws/install/marco_mission/share/ament_index/resource_index/packages
+[3.186s] symbolically linking /home/orangepi/marco_ws/build/marco_mission/package.xml -> /home/orangepi/marco_ws/install/marco_mission/share/marco_mission
+[3.324s] Invoked command in '/home/orangepi/marco_ws/build/marco_mission' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_mission/build --no-deps symlink_data

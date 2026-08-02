@@ -1,0 +1,8 @@
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:msg/LaneOffset.idl
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:msg/QrDetection.idl
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:msg/RobotStatus.idl
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:action/DockToStation.idl
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:srv/AssignTask.idl
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:srv/GatePermission.idl
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:srv/TaskComplete.idl
+/home/orangepi/marco_ws/build/marco_msgs/rosidl_adapter/marco_msgs:srv/StartMission.idl

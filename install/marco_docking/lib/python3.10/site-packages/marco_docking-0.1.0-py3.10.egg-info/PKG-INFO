@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: marco-docking
+Version: 0.1.0
+Summary: Hassas yanasma action server (/dock_to_station → /cmd_vel_dock)
+Home-page: UNKNOWN
+Maintainer: MarCO Yazilim Ekibi
+Maintainer-email: marco@marmara.edu.tr
+License: Apache-2.0
+Platform: UNKNOWN
+Provides-Extra: test
+License-File: LICENSE
+
+UNKNOWN
+

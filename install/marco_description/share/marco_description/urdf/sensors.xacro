@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Sensor cerceveleri. Buradaki konumlar TAHMINIDIR (properties.xacro).
+
+    laser_link ozellikle kritiktir: SLAM haritasi ve AMCL lokalizasyonu
+    dogrudan bu donusum uzerinden hesaplanir. base_link'e gore birkac
+    santimetrelik bir hata bile haritada tutarsizliga ve sartnamedeki
+    +/-7.5 cm istasyon toleransinin kaybina yol acar.
+  -->
+
+  <!--
+    YDLidar Tmini Pro. Surucu yapilandirmasi frame_id'yi "laser_link"
+    olarak yayinlar (marco_localization/config/lidar_tmini_pro.yaml),
+    bu link ile birebir eslesir; ek static TF gerekmez.
+    Olculen tarama: 360 derece, 430 nokta, 0.03-12 m, 10 Hz.
+    Govde olculeri yaklasiktir, gorsel amacli.
+  -->
+  <joint name="base_link_to_laser" type="fixed">
+    <parent link="base_link"/>
+    <child  link="laser_link"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${lidar_z}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="laser_link">
+    <visual>
+      <geometry><cylinder radius="0.019" length="0.033"/></geometry>
+      <material name="marco_sensor"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.019" length="0.033"/></geometry>
+    </collision>
+    <xacro:box_inertia m="0.05" x="0.038" y="0.038" z="0.033"/>
+  </link>
+
+  <!--
+    IMX219 kameralar. pitch pozitif deger asagi bakis demektir; her ikisi de
+    zemindeki renkli seridi gorecek sekilde egimlidir.
+    Arka kamera zorunludur: yuk alindiktan sonra catal arkada kaldigi icin
+    (sartname madde 6, "yuk hareket yonunun tersinde") serit takibi arka
+    kameradan yapilir.
+  -->
+  <xacro:macro name="floor_camera" params="name x z yaw">
+    <joint name="base_link_to_${name}" type="fixed">
+      <parent link="base_link"/>
+      <child  link="${name}_link"/>
+      <origin xyz="${x} 0 ${z}" rpy="0 ${camera_pitch} ${yaw}"/>
+    </joint>
+
+    <link name="${name}_link">
+      <visual>
+        <geometry><box size="0.025 0.025 0.025"/></geometry>
+        <material name="marco_dark"/>
+      </visual>
+      <xacro:box_inertia m="0.03" x="0.025" y="0.025" z="0.025"/>
+    </link>
+
+    <!-- Goruntu isleme ekibinin bekledigi optik cerceve: z ileri, x saga, y asagi -->
+    <joint name="${name}_to_optical" type="fixed">
+      <parent link="${name}_link"/>
+      <child  link="${name}_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${-pi/2.0} 0 ${-pi/2.0}"/>
+    </joint>
+    <link name="${name}_optical_frame"/>
+  </xacro:macro>
+
+  <xacro:floor_camera name="camera_front" x="${camera_front_x}" z="${camera_front_z}" yaw="0"/>
+  <xacro:floor_camera name="camera_rear"  x="${camera_rear_x}"  z="${camera_rear_z}"  yaw="${pi}"/>
+
+  <!--
+    IMU cercevesi. Donanimda HENUZ YOK; cerceve simdiden tanimlanmistir ki
+    IMU eklendiginde EKF konfigurasyonu disinda hicbir sey degismesin.
+  -->
+  <joint name="base_link_to_imu" type="fixed">
+    <parent link="base_link"/>
+    <child  link="imu_link"/>
+    <origin xyz="${imu_x} ${imu_y} ${imu_z}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="imu_link"/>
+
+</robot>

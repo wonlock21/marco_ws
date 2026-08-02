@@ -1,0 +1,99 @@
+### nav2_amcl — MarCO harita uzerinde lokalizasyon ###
+#
+# TF: map -> odom  (AMCL yayinlar)
+#     odom -> base_footprint  (EKF; localization.launch.py)
+#
+# slam_toolbox mapping ile AYNI ANDA CALISTIRILMAZ — ikisi de map->odom
+# yayinlar, TF agaci savrulur.
+#
+# Baslangic pozu:
+#   - RViz "2D Pose Estimate"  veya
+#   - ros2 run marco_localization baslangic_poz.sh x y yaw_derece
+#   - ya da launch: baslangic:=true x:=... y:=... yaw:=...
+#
+# Tmini Pro menzili 12 m; laser_max_range buna gore.
+
+amcl:
+  ros__parameters:
+    use_sim_time: false
+
+    global_frame_id: map
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+    scan_topic: scan
+
+    # Diferansiyel surus. alpha'lar odometri gurultusu:
+    # IMU yok, yayli tahrik + sarhos teker → encoder yaw'i kaygan.
+    # Biraz yuksek alpha AMCL'in lazeri daha cok dinlemesini saglar.
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    alpha1: 0.3
+    alpha2: 0.3
+    alpha3: 0.35
+    alpha4: 0.35
+    alpha5: 0.2
+
+    tf_broadcast: true
+    transform_tolerance: 0.5
+    save_pose_rate: 0.5
+
+    # Parcacik sayisi: Orange Pi icin 2000 ust sinir yeterli;
+    # kucuk depo haritasinda 500-1500 arasi iyi calisir.
+    min_particles: 500
+    max_particles: 2000
+    pf_err: 0.05
+    pf_z: 0.99
+    resample_interval: 1
+
+    # Hareket esikleri: forklift yavas; daha sik guncelle.
+    update_min_d: 0.15
+    update_min_a: 0.15
+
+    # Lazer modeli — Tmini Pro
+    laser_model_type: "likelihood_field"
+    laser_max_range: 12.0
+    laser_min_range: 0.05
+    laser_likelihood_max_dist: 2.0
+    max_beams: 60
+    sigma_hit: 0.2
+    z_hit: 0.5
+    z_short: 0.05
+    z_max: 0.05
+    z_rand: 0.5
+    lambda_short: 0.1
+
+    do_beamskip: false
+    beam_skip_distance: 0.5
+    beam_skip_threshold: 0.3
+    beam_skip_error_threshold: 0.9
+
+    # Global recovery kapali: yanlis baslangic pozunda "her yeri ara"
+    # yarismada tehlikeli. Dogru baslangic pozu vermek zorunlu.
+    recovery_alpha_fast: 0.0
+    recovery_alpha_slow: 0.0
+
+    # Launch dosyasi baslangic:=true ise bunlari ezer.
+    set_initial_pose: false
+    always_reset_initial_pose: false
+    first_map_only: false
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+
+map_server:
+  ros__parameters:
+    use_sim_time: false
+    # Asil yol amcl.launch.py tarafindan parametre olarak verilir.
+    yaml_filename: ""
+    topic_name: map
+    frame_id: map
+
+lifecycle_manager_localization:
+  ros__parameters:
+    use_sim_time: false
+    autostart: true
+    node_names: ["map_server", "amcl"]
+    bond_timeout: 4.0
+    attempt_respawn_reconnection: true
+    bond_respawn_max_duration: 10.0

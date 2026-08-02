@@ -1,0 +1,9 @@
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/uninstall.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/marco_safety_uninstall.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/test.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/edit_cache.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/rebuild_cache.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/list_install_components.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/install.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/install/local.dir
+/home/orangepi/marco_ws/build/marco_safety/CMakeFiles/install/strip.dir

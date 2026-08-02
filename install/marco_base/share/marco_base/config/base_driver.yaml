@@ -1,0 +1,68 @@
+marco_base_driver:
+  ros__parameters:
+    # --- Donanim baglantisi ---
+    serial_port: /dev/marco_stm32
+    baudrate: 115200
+    use_fake_hardware: false
+
+    # --- Kinematik ---
+    # DIKKAT: bu degerler marco_description/urdf/properties.xacro ile ayni
+    # olmak zorunda. Ayrisirlarsa odometrinin hesapladigi hareket ile TF
+    # agacinin gosterdigi robot celisir; hata Nav2 seviyesinde tuhaf
+    # davranis olarak ortaya cikar ve kaynagi zor bulunur.
+    #
+    # Ikisi de SolidWorks montajindan OLCULDU (28.07), tahmin degil:
+    #   wheel_radius     tahrik tekeri kusursuz silindir, yaricap 100.00 mm
+    #                    (dis kabuk sacilimi 0.000 mm)
+    #   wheel_separation teker merkezleri x=135.40 ve x=595.40 -> 460.00 mm
+    # Onceki tahmin 0.520 idi; %13 hataliydi. O deger odometrinin her donusu
+    # %11.5 eksik saymasina yol aciyordu (gercek 101.7 derecelik donus 90
+    # derece olarak raporlanir) ve sartnamenin +/-5 derece toleransini tek
+    # donuste asiyordu.
+    #
+    # NOT: tahrik uniteleri yayli (4 adet 3 mm telli, 75 mm serbest boy
+    # helezon yay). CAD'de teker zeminden 11.5 mm yukarida cizilmis; arac
+    # agirligi altinda yaylar sikisip teker basiyor. Etkin yaricap yuk
+    # altinda lastik ezilmesi kadar azalabilir, odometry_check.py ile
+    # dogrulanmali.
+    wheel_radius: 0.100
+    wheel_separation: 0.460
+    ticks_per_revolution: 1440
+    max_wheel_speed: 0.838
+    # Encoder sayaci 0..65535 (2^16) sarar. Iki okuma arasi |Δtick| bundan
+    # buyukse cerceve atilir (UART copu / tek-kare bozulma). 3 ardısık redde
+    # referans yeniden alinir (STM32 reset).
+    max_tick_delta: 2000
+    max_consecutive_tick_rejects: 3
+
+    # --- Zamanlama ---
+    command_rate: 50.0
+    read_rate: 200.0
+    # /cmd_vel susarsa arac durur. STM32 watchdog'u (200 ms) son savunma
+    # hatti; bu deger normal isleyisteki ilk hat.
+    cmd_vel_timeout: 0.5
+
+    # --- Cerceveler ---
+    odom_frame: odom
+    base_frame: base_footprint
+    # KAPALI KALMALI. odom -> base_footprint donusumunu robot_localization
+    # EKF'i yayinlar. Ikisi birlikte yayinlarsa TF agacinda cakisma olur.
+    # Yalnizca EKF olmadan cikplak odometri denenirken true yapilir.
+    publish_tf: false
+
+    # --- Odometri gurultu modeli ---
+    # Kovaryans anlik hiza gore olceklenir. EKF bu odometriyi
+    # odom0_differential: true ile tuketecek; onemli olan ardisik iki poz
+    # arasindaki farkin belirsizligi.
+    linear_noise_ratio: 0.02
+    angular_noise_ratio: 0.05
+    min_noise: 0.001
+
+    # --- Sahte donanim hata enjeksiyonu ---
+    # Yalnizca use_fake_hardware: true iken etkili. Sifir birakildiginda
+    # taklit kusursuz davranir. Kalibrasyon araci gelistirilirken bilinen
+    # hata uretmek icin kullanilir.
+    fake_slip_factor: 0.0
+    fake_wheel_scale_error_left: 0.0
+    fake_wheel_scale_error_right: 0.0
+    fake_wheel_separation_actual: 0.0

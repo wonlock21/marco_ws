@@ -1,0 +1,3 @@
+
+bool granted
+string message

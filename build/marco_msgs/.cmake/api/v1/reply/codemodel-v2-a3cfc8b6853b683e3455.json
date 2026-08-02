@@ -1,0 +1,258 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-3f0e7ed97991925227f7.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						17,
+						18
+					]
+				},
+				{
+					"build" : "marco_msgs__py",
+					"jsonFile" : "directory-marco_msgs__py-2ad0cbe1e6b0ca515bc8.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "/home/orangepi/marco_ws/build/marco_msgs/marco_msgs__py",
+					"targetIndexes" : 
+					[
+						4
+					]
+				},
+				{
+					"build" : "marco_msgs__rs",
+					"jsonFile" : "directory-marco_msgs__rs-1cd41bc7397ee54d4ef9.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "/home/orangepi/marco_ws/build/marco_msgs/marco_msgs__rs",
+					"targetIndexes" : 
+					[
+						16
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0,
+						1,
+						2
+					],
+					"name" : "marco_msgs",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_build_marco_msgs_egg::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_build_marco_msgs_egg-4b5d6bcff6fd9923ef93.json",
+					"name" : "ament_cmake_python_build_marco_msgs_egg",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_symlink_marco_msgs::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_symlink_marco_msgs-de9987821edde27e6912.json",
+					"name" : "ament_cmake_python_symlink_marco_msgs",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs-630c9b6856a28352148b.json",
+					"name" : "marco_msgs",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__cpp-051169d5261fae1bc1a2.json",
+					"name" : "marco_msgs__cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "marco_msgs__py::@b77712fe50c18bd52151",
+					"jsonFile" : "target-marco_msgs__py-fd39786393e5cf5ca82c.json",
+					"name" : "marco_msgs__py",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_generator_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_generator_c-d49453f1d3b2ce21689f.json",
+					"name" : "marco_msgs__rosidl_generator_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_generator_py::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_generator_py-a04302ac6ca5dcde9773.json",
+					"name" : "marco_msgs__rosidl_generator_py",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_c-406badda76ec78ec84ad.json",
+					"name" : "marco_msgs__rosidl_typesupport_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_c__pyext::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_c__pyext-bfe69833c0ccdd744e43.json",
+					"name" : "marco_msgs__rosidl_typesupport_c__pyext",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_cpp-d5ecd76718a6b3d0116d.json",
+					"name" : "marco_msgs__rosidl_typesupport_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_fastrtps_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_fastrtps_c-aecd0620565144c8999c.json",
+					"name" : "marco_msgs__rosidl_typesupport_fastrtps_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_fastrtps_c__pyext::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_fastrtps_c__pyext-6246bb385c45391e8b12.json",
+					"name" : "marco_msgs__rosidl_typesupport_fastrtps_c__pyext",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_fastrtps_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_fastrtps_cpp-a351f9177899e2545656.json",
+					"name" : "marco_msgs__rosidl_typesupport_fastrtps_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_introspection_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_introspection_c-9fd12de193b7088aef49.json",
+					"name" : "marco_msgs__rosidl_typesupport_introspection_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_introspection_c__pyext::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_introspection_c__pyext-4bfecbe554de23ff4cab.json",
+					"name" : "marco_msgs__rosidl_typesupport_introspection_c__pyext",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs__rosidl_typesupport_introspection_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs__rosidl_typesupport_introspection_cpp-c405a4660fd57af4c479.json",
+					"name" : "marco_msgs__rosidl_typesupport_introspection_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "marco_msgs__rs::@625ea761ced93e212e3b",
+					"jsonFile" : "target-marco_msgs__rs-83638de44c88919aa11d.json",
+					"name" : "marco_msgs__rs",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "marco_msgs_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-marco_msgs_uninstall-2674de6b76e2f1a01136.json",
+					"name" : "marco_msgs_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-d1b6cef23a41b2886bfd.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/orangepi/marco_ws/build/marco_msgs",
+		"source" : "/home/orangepi/marco_ws/src/marco_msgs"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

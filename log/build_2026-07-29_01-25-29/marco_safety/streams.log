@@ -1,0 +1,23 @@
+[1.921s] Invoking command in '/home/orangepi/marco_ws/build/marco_safety': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_safety -- -j8 -l8
+[2.139s] Invoked command in '/home/orangepi/marco_ws/build/marco_safety' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_safety -- -j8 -l8
+[2.143s] Invoking command in '/home/orangepi/marco_ws/build/marco_safety': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_safety
+[2.302s] -- Install configuration: ""
+[2.303s] -- Execute custom install script
+[2.304s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/config/.gitkeep
+[2.304s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/launch/.gitkeep
+[2.305s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/ament_index/resource_index/package_run_dependencies/marco_safety
+[2.305s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/ament_index/resource_index/parent_prefix_path/marco_safety
+[2.306s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/ament_prefix_path.sh
+[2.306s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/ament_prefix_path.dsv
+[2.307s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/path.sh
+[2.307s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/path.dsv
+[2.308s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.bash
+[2.308s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.sh
+[2.309s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.zsh
+[2.310s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.dsv
+[2.321s] -- Symlinking: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.dsv
+[2.326s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/ament_index/resource_index/packages/marco_safety
+[2.327s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/cmake/marco_safetyConfig.cmake
+[2.327s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/cmake/marco_safetyConfig-version.cmake
+[2.327s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.xml
+[2.363s] Invoked command in '/home/orangepi/marco_ws/build/marco_safety' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_safety

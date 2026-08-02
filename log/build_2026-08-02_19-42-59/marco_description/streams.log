@@ -1,0 +1,35 @@
+[0.466s] Invoking command in '/home/orangepi/marco_ws/build/marco_description': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_description -- -j8 -l8
+[0.962s] Invoked command in '/home/orangepi/marco_ws/build/marco_description' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_description -- -j8 -l8
+[1.000s] Invoking command in '/home/orangepi/marco_ws/build/marco_description': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_description
+[1.030s] -- Install configuration: ""
+[1.033s] -- Execute custom install script
+[1.039s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/.gitkeep
+[1.039s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/base.xacro
+[1.039s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/common.xacro
+[1.039s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/fork.xacro
+[1.039s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/marco.urdf.xacro
+[1.039s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/properties.xacro
+[1.039s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/sensors.xacro
+[1.040s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/urdf/wheels.xacro
+[1.040s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/meshes/.gitkeep
+[1.040s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/launch/.gitkeep
+[1.040s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/launch/display.launch.py
+[1.050s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/rviz/.gitkeep
+[1.053s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/rviz/model.rviz
+[1.055s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/config/.gitkeep
+[1.058s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/ament_index/resource_index/package_run_dependencies/marco_description
+[1.060s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/ament_index/resource_index/parent_prefix_path/marco_description
+[1.062s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/environment/ament_prefix_path.sh
+[1.071s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/environment/ament_prefix_path.dsv
+[1.071s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/environment/path.sh
+[1.071s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/environment/path.dsv
+[1.071s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/local_setup.bash
+[1.072s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/local_setup.sh
+[1.072s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/local_setup.zsh
+[1.072s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/local_setup.dsv
+[1.072s] -- Symlinking: /home/orangepi/marco_ws/install/marco_description/share/marco_description/package.dsv
+[1.204s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/ament_index/resource_index/packages/marco_description
+[1.206s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/cmake/marco_descriptionConfig.cmake
+[1.207s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/cmake/marco_descriptionConfig-version.cmake
+[1.207s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_description/share/marco_description/package.xml
+[1.255s] Invoked command in '/home/orangepi/marco_ws/build/marco_description' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_description

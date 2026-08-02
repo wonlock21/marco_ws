@@ -1,0 +1,28 @@
+[1.457s] Invoking command in '/home/orangepi/marco_ws/build/marco_docking': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver PYTHONPATH=/home/orangepi/marco_ws/build/marco_docking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_docking/build --no-deps symlink_data
+[1.801s] running develop
+[1.976s] running egg_info
+[1.976s] creating marco_docking.egg-info
+[1.977s] writing marco_docking.egg-info/PKG-INFO
+[1.977s] writing dependency_links to marco_docking.egg-info/dependency_links.txt
+[1.977s] writing entry points to marco_docking.egg-info/entry_points.txt
+[1.978s] writing requirements to marco_docking.egg-info/requires.txt
+[1.978s] writing top-level names to marco_docking.egg-info/top_level.txt
+[1.978s] writing manifest file 'marco_docking.egg-info/SOURCES.txt'
+[1.980s] reading manifest file 'marco_docking.egg-info/SOURCES.txt'
+[1.981s] writing manifest file 'marco_docking.egg-info/SOURCES.txt'
+[1.984s] running build_ext
+[1.984s] Creating /home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages/marco-docking.egg-link (link to .)
+[1.985s] Installing dock_server script to /home/orangepi/marco_ws/install/marco_docking/lib/marco_docking
+[1.985s] 
+[1.985s] Installed /home/orangepi/marco_ws/build/marco_docking
+[1.985s] running symlink_data
+[1.986s] creating /home/orangepi/marco_ws/install/marco_docking/share/ament_index
+[1.986s] creating /home/orangepi/marco_ws/install/marco_docking/share/ament_index/resource_index
+[1.986s] creating /home/orangepi/marco_ws/install/marco_docking/share/ament_index/resource_index/packages
+[1.986s] symbolically linking /home/orangepi/marco_ws/build/marco_docking/resource/marco_docking -> /home/orangepi/marco_ws/install/marco_docking/share/ament_index/resource_index/packages
+[1.986s] symbolically linking /home/orangepi/marco_ws/build/marco_docking/package.xml -> /home/orangepi/marco_ws/install/marco_docking/share/marco_docking
+[1.986s] creating /home/orangepi/marco_ws/install/marco_docking/share/marco_docking/launch
+[1.986s] symbolically linking /home/orangepi/marco_ws/build/marco_docking/launch/docking.launch.py -> /home/orangepi/marco_ws/install/marco_docking/share/marco_docking/launch
+[1.986s] creating /home/orangepi/marco_ws/install/marco_docking/share/marco_docking/config
+[1.986s] symbolically linking /home/orangepi/marco_ws/build/marco_docking/config/docking.yaml -> /home/orangepi/marco_ws/install/marco_docking/share/marco_docking/config
+[2.097s] Invoked command in '/home/orangepi/marco_ws/build/marco_docking' returned '0': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver PYTHONPATH=/home/orangepi/marco_ws/build/marco_docking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_docking/build --no-deps symlink_data

@@ -1,0 +1,28 @@
+[1.548s] Invoking command in '/home/orangepi/marco_ws/build/marco_mission': CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_mission/build --no-deps symlink_data
+[1.890s] running develop
+[2.062s] running egg_info
+[2.062s] creating marco_mission.egg-info
+[2.063s] writing marco_mission.egg-info/PKG-INFO
+[2.063s] writing dependency_links to marco_mission.egg-info/dependency_links.txt
+[2.063s] writing entry points to marco_mission.egg-info/entry_points.txt
+[2.064s] writing requirements to marco_mission.egg-info/requires.txt
+[2.064s] writing top-level names to marco_mission.egg-info/top_level.txt
+[2.064s] writing manifest file 'marco_mission.egg-info/SOURCES.txt'
+[2.065s] reading manifest file 'marco_mission.egg-info/SOURCES.txt'
+[2.066s] writing manifest file 'marco_mission.egg-info/SOURCES.txt'
+[2.069s] running build_ext
+[2.069s] Creating /home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages/marco-mission.egg-link (link to .)
+[2.071s] Installing mission_manager script to /home/orangepi/marco_ws/install/marco_mission/lib/marco_mission
+[2.072s] Installing mock_plc script to /home/orangepi/marco_ws/install/marco_mission/lib/marco_mission
+[2.072s] 
+[2.072s] Installed /home/orangepi/marco_ws/build/marco_mission
+[2.073s] running symlink_data
+[2.073s] creating /home/orangepi/marco_ws/install/marco_mission/share/ament_index
+[2.073s] creating /home/orangepi/marco_ws/install/marco_mission/share/ament_index/resource_index
+[2.074s] creating /home/orangepi/marco_ws/install/marco_mission/share/ament_index/resource_index/packages
+[2.074s] symbolically linking /home/orangepi/marco_ws/build/marco_mission/resource/marco_mission -> /home/orangepi/marco_ws/install/marco_mission/share/ament_index/resource_index/packages
+[2.074s] symbolically linking /home/orangepi/marco_ws/build/marco_mission/package.xml -> /home/orangepi/marco_ws/install/marco_mission/share/marco_mission
+[2.075s] creating /home/orangepi/marco_ws/install/marco_mission/share/marco_mission/launch
+[2.075s] symbolically linking /home/orangepi/marco_ws/build/marco_mission/launch/mission.launch.py -> /home/orangepi/marco_ws/install/marco_mission/share/marco_mission/launch
+[2.075s] creating /home/orangepi/marco_ws/install/marco_mission/share/marco_mission/config
+[2.185s] Invoked command in '/home/orangepi/marco_ws/build/marco_mission' returned '0': CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_mission/build --no-deps symlink_data

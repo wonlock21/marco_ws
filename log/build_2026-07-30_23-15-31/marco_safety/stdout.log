@@ -1,0 +1,27 @@
+-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Override CMake install command with custom implementation using symlinks instead of copying resources
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/orangepi/marco_ws/build/marco_safety
+-- Install configuration: ""
+-- Execute custom install script
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/config/.gitkeep
+-- Symlinking: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/config/collision_monitor.yaml
+-- Symlinking: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/config/twist_mux.yaml
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/launch/.gitkeep
+-- Symlinking: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/launch/safety.launch.py
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/ament_index/resource_index/package_run_dependencies/marco_safety
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/ament_index/resource_index/parent_prefix_path/marco_safety
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/ament_prefix_path.sh
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/ament_prefix_path.dsv
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/path.sh
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/environment/path.dsv
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.bash
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.sh
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.zsh
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/local_setup.dsv
+-- Symlinking: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.dsv
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/ament_index/resource_index/packages/marco_safety
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/cmake/marco_safetyConfig.cmake
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/cmake/marco_safetyConfig-version.cmake
+-- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.xml

@@ -1,0 +1,4 @@
+[console_scripts]
+mission_manager = marco_mission.mission_manager:main
+mock_plc = marco_mission.mock_plc:main
+

@@ -1,0 +1,26 @@
+[1.285s] Invoking command in '/home/orangepi/marco_ws/build/marco_navigation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_navigation -- -j8 -l8
+[1.900s] Invoked command in '/home/orangepi/marco_ws/build/marco_navigation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_navigation -- -j8 -l8
+[1.903s] Invoking command in '/home/orangepi/marco_ws/build/marco_navigation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_navigation
+[2.080s] -- Install configuration: ""
+[2.082s] -- Execute custom install script
+[2.083s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/config/.gitkeep
+[2.087s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/launch/.gitkeep
+[2.089s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/behavior_trees/.gitkeep
+[2.090s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/maps/.gitkeep
+[2.091s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/graphs/.gitkeep
+[2.092s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/ament_index/resource_index/package_run_dependencies/marco_navigation
+[2.092s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/ament_index/resource_index/parent_prefix_path/marco_navigation
+[2.093s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/environment/ament_prefix_path.sh
+[2.094s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/environment/ament_prefix_path.dsv
+[2.094s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/environment/path.sh
+[2.095s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/environment/path.dsv
+[2.095s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/local_setup.bash
+[2.095s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/local_setup.sh
+[2.096s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/local_setup.zsh
+[2.096s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/local_setup.dsv
+[2.097s] -- Symlinking: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.dsv
+[2.097s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/ament_index/resource_index/packages/marco_navigation
+[2.097s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/cmake/marco_navigationConfig.cmake
+[2.098s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/cmake/marco_navigationConfig-version.cmake
+[2.098s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.xml
+[2.099s] Invoked command in '/home/orangepi/marco_ws/build/marco_navigation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_navigation

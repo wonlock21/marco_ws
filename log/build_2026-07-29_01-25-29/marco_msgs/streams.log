@@ -1,0 +1,183 @@
+[1.455s] Invoking command in '/home/orangepi/marco_ws/build/marco_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_msgs -- -j8 -l8
+[1.959s] [  1%] Built target marco_msgs__rs
+[1.960s] [ 12%] Built target marco_msgs__rosidl_generator_c
+[1.961s] [ 14%] Built target marco_msgs__cpp
+[1.961s] [ 14%] Built target ament_cmake_python_symlink_marco_msgs
+[1.961s] [ 25%] Built target marco_msgs__rosidl_typesupport_fastrtps_c
+[1.962s] [ 35%] Built target marco_msgs__rosidl_typesupport_introspection_c
+[1.962s] [ 46%] Built target marco_msgs__rosidl_typesupport_c
+[1.962s] [ 57%] Built target marco_msgs__rosidl_typesupport_cpp
+[1.963s] [ 67%] Built target marco_msgs__rosidl_typesupport_introspection_cpp
+[1.963s] [ 78%] Built target marco_msgs__rosidl_typesupport_fastrtps_cpp
+[1.964s] [ 78%] Built target marco_msgs
+[1.964s] [ 80%] Built target marco_msgs__py
+[1.964s] [ 89%] Built target marco_msgs__rosidl_generator_py
+[2.066s] [ 92%] Built target marco_msgs__rosidl_typesupport_fastrtps_c__pyext
+[2.067s] [ 96%] Built target marco_msgs__rosidl_typesupport_c__pyext
+[2.073s] [100%] Built target marco_msgs__rosidl_typesupport_introspection_c__pyext
+[2.075s] running egg_info
+[2.080s] writing marco_msgs.egg-info/PKG-INFO
+[2.081s] writing dependency_links to marco_msgs.egg-info/dependency_links.txt
+[2.082s] writing top-level names to marco_msgs.egg-info/top_level.txt
+[2.082s] reading manifest file 'marco_msgs.egg-info/SOURCES.txt'
+[2.083s] writing manifest file 'marco_msgs.egg-info/SOURCES.txt'
+[2.337s] [100%] Built target ament_cmake_python_build_marco_msgs_egg
+[2.366s] Invoked command in '/home/orangepi/marco_ws/build/marco_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_msgs -- -j8 -l8
+[2.378s] Invoking command in '/home/orangepi/marco_ws/build/marco_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_msgs
+[2.541s] -- Install configuration: ""
+[2.542s] -- Execute custom install script
+[2.542s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/ament_index/resource_index/rosidl_interfaces/marco_msgs
+[2.543s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__functions.h
+[2.544s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__struct.h
+[2.544s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__type_support.h
+[2.545s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/dock_to_station.h
+[2.546s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__functions.h
+[2.548s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__struct.h
+[2.548s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__type_support.h
+[2.549s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__functions.h
+[2.550s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__struct.h
+[2.550s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__type_support.h
+[2.551s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__functions.h
+[2.552s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__struct.h
+[2.553s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__type_support.h
+[2.554s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/lane_offset.h
+[2.555s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/qr_detection.h
+[2.556s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/robot_status.h
+[2.556s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/rosidl_generator_c__visibility_control.h
+[2.557s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/library_path.sh
+[2.558s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/library_path.dsv
+[2.558s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__rosidl_typesupport_fastrtps_c.h
+[2.559s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__rosidl_typesupport_fastrtps_c.h
+[2.559s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__rosidl_typesupport_fastrtps_c.h
+[2.560s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__rosidl_typesupport_fastrtps_c.h
+[2.561s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/rosidl_typesupport_fastrtps_c__visibility_control.h
+[2.561s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__rosidl_typesupport_introspection_c.h
+[2.562s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__rosidl_typesupport_introspection_c.h
+[2.562s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__rosidl_typesupport_introspection_c.h
+[2.563s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__rosidl_typesupport_introspection_c.h
+[2.563s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/rosidl_typesupport_introspection_c__visibility_control.h
+[2.564s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__builder.hpp
+[2.564s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__struct.hpp
+[2.565s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__traits.hpp
+[2.565s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__type_support.hpp
+[2.566s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/dock_to_station.hpp
+[2.567s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__builder.hpp
+[2.569s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__struct.hpp
+[2.571s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__traits.hpp
+[2.572s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__type_support.hpp
+[2.575s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__builder.hpp
+[2.577s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__struct.hpp
+[2.578s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__traits.hpp
+[2.579s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__type_support.hpp
+[2.579s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__builder.hpp
+[2.580s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__struct.hpp
+[2.580s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__traits.hpp
+[2.581s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__type_support.hpp
+[2.582s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/lane_offset.hpp
+[2.583s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/qr_detection.hpp
+[2.583s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/robot_status.hpp
+[2.584s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/rosidl_generator_cpp__visibility_control.hpp
+[2.585s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__rosidl_typesupport_fastrtps_cpp.hpp
+[2.585s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__rosidl_typesupport_fastrtps_cpp.hpp
+[2.593s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__rosidl_typesupport_fastrtps_cpp.hpp
+[2.601s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__rosidl_typesupport_fastrtps_cpp.hpp
+[2.603s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/rosidl_typesupport_fastrtps_cpp__visibility_control.h
+[2.603s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/action/detail/dock_to_station__rosidl_typesupport_introspection_cpp.hpp
+[2.604s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/lane_offset__rosidl_typesupport_introspection_cpp.hpp
+[2.604s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/qr_detection__rosidl_typesupport_introspection_cpp.hpp
+[2.605s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/include/marco_msgs/marco_msgs/msg/detail/robot_status__rosidl_typesupport_introspection_cpp.hpp
+[2.605s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/pythonpath.sh
+[2.605s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/pythonpath.dsv
+[2.606s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs-0.1.0-py3.10.egg-info/PKG-INFO
+[2.606s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs-0.1.0-py3.10.egg-info/SOURCES.txt
+[2.607s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs-0.1.0-py3.10.egg-info/dependency_links.txt
+[2.607s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs-0.1.0-py3.10.egg-info/top_level.txt
+[2.607s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/__init__.py
+[2.608s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/_marco_msgs_s.ep.rosidl_typesupport_c.c
+[2.608s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/_marco_msgs_s.ep.rosidl_typesupport_fastrtps_c.c
+[2.609s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/_marco_msgs_s.ep.rosidl_typesupport_introspection_c.c
+[2.609s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/action/__init__.py
+[2.609s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/action/_dock_to_station.py
+[2.610s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/action/_dock_to_station_s.c
+[2.610s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/libmarco_msgs__rosidl_generator_py.so
+[2.611s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/marco_msgs_s__rosidl_typesupport_c.cpython-310-aarch64-linux-gnu.so
+[2.611s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/marco_msgs_s__rosidl_typesupport_fastrtps_c.cpython-310-aarch64-linux-gnu.so
+[2.611s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/marco_msgs_s__rosidl_typesupport_introspection_c.cpython-310-aarch64-linux-gnu.so
+[2.612s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg/__init__.py
+[2.612s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg/_lane_offset.py
+[2.613s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg/_lane_offset_s.c
+[2.614s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg/_qr_detection.py
+[2.615s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg/_qr_detection_s.c
+[2.615s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg/_robot_status.py
+[2.616s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg/_robot_status_s.c
+[2.616s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/marco_msgs_s__rosidl_typesupport_fastrtps_c.cpython-310-aarch64-linux-gnu.so
+[2.617s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/marco_msgs_s__rosidl_typesupport_introspection_c.cpython-310-aarch64-linux-gnu.so
+[2.618s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/marco_msgs_s__rosidl_typesupport_c.cpython-310-aarch64-linux-gnu.so
+[2.618s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/ament_index/resource_index/rust_packages/marco_msgs
+[2.619s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/rust/Cargo.toml
+[2.621s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/rust/build.rs
+[2.622s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/rust/src/action.rs
+[2.623s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/rust/src/action/rmw.rs
+[2.624s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/rust/src/lib.rs
+[2.625s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/rust/src/msg.rs
+[2.626s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/rust/src/msg/rmw.rs
+[2.627s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/msg/LaneOffset.idl
+[2.628s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/msg/QrDetection.idl
+[2.629s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/msg/RobotStatus.idl
+[2.629s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/action/DockToStation.idl
+[2.630s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/msg/LaneOffset.msg
+[2.631s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/msg/QrDetection.msg
+[2.632s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/msg/RobotStatus.msg
+[2.636s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/action/DockToStation.action
+[2.639s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/ament_index/resource_index/package_run_dependencies/marco_msgs
+[2.639s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/ament_index/resource_index/parent_prefix_path/marco_msgs
+[2.639s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/ament_prefix_path.sh
+[2.639s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/ament_prefix_path.dsv
+[2.639s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/path.sh
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/environment/path.dsv
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/local_setup.bash
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/local_setup.sh
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/local_setup.zsh
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/local_setup.dsv
+[2.640s] -- Symlinking: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.dsv
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/ament_index/resource_index/packages/marco_msgs
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/rosidl_cmake-extras.cmake
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/ament_cmake_export_dependencies-extras.cmake
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/ament_cmake_export_include_directories-extras.cmake
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/ament_cmake_export_libraries-extras.cmake
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/ament_cmake_export_targets-extras.cmake
+[2.640s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/rosidl_cmake_export_typesupport_targets-extras.cmake
+[2.641s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake
+[2.642s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/rosidl_cmake_aggregate_target-extras.cmake
+[2.642s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgsConfig.cmake
+[2.642s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgsConfig-version.cmake
+[2.642s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.xml
+[2.642s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_generator_c.so
+[2.642s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_typesupport_fastrtps_c.so
+[2.642s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_typesupport_introspection_c.so
+[2.642s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_typesupport_c.so
+[2.642s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_typesupport_fastrtps_cpp.so
+[2.642s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_typesupport_introspection_cpp.so
+[2.642s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_typesupport_cpp.so
+[2.676s] Listing '/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs'...
+[2.680s] Listing '/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/action'...
+[2.680s] Listing '/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages/marco_msgs/msg'...
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/lib/libmarco_msgs__rosidl_generator_py.so
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_generator_cExport.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_generator_cExport-noconfig.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_typesupport_fastrtps_cExport.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_typesupport_fastrtps_cExport-noconfig.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_introspection_cExport.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_introspection_cExport-noconfig.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_cExport.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_cExport-noconfig.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_generator_cppExport.cmake
+[2.698s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_typesupport_fastrtps_cppExport.cmake
+[2.699s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_typesupport_fastrtps_cppExport-noconfig.cmake
+[2.699s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_introspection_cppExport.cmake
+[2.699s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_introspection_cppExport-noconfig.cmake
+[2.699s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_cppExport.cmake
+[2.699s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/marco_msgs__rosidl_typesupport_cppExport-noconfig.cmake
+[2.699s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_generator_pyExport.cmake
+[2.699s] -- Up-to-date: /home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/cmake/export_marco_msgs__rosidl_generator_pyExport-noconfig.cmake
+[2.702s] Invoked command in '/home/orangepi/marco_ws/build/marco_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_msgs

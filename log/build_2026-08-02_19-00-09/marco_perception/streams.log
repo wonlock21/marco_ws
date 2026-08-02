@@ -1,0 +1,22 @@
+[1.591s] Invoking command in '/home/orangepi/marco_ws/src/marco_perception': CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_perception build --build-base /home/orangepi/marco_ws/build/marco_perception/build install --record /home/orangepi/marco_ws/build/marco_perception/install.log --install-scripts $base/lib/marco_perception --single-version-externally-managed install_data
+[1.958s] running egg_info
+[1.960s] writing ../../build/marco_perception/marco_perception.egg-info/PKG-INFO
+[1.961s] writing dependency_links to ../../build/marco_perception/marco_perception.egg-info/dependency_links.txt
+[1.962s] writing entry points to ../../build/marco_perception/marco_perception.egg-info/entry_points.txt
+[1.965s] writing requirements to ../../build/marco_perception/marco_perception.egg-info/requires.txt
+[1.965s] writing top-level names to ../../build/marco_perception/marco_perception.egg-info/top_level.txt
+[1.972s] reading manifest file '../../build/marco_perception/marco_perception.egg-info/SOURCES.txt'
+[1.973s] adding license file 'LICENSE'
+[1.973s] writing manifest file '../../build/marco_perception/marco_perception.egg-info/SOURCES.txt'
+[1.974s] running build
+[1.975s] running build_py
+[1.975s] running install
+[1.975s] running install_lib
+[1.977s] running install_data
+[1.977s] running install_egg_info
+[1.982s] removing '/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages/marco_perception-0.1.0-py3.10.egg-info' (and everything under it)
+[1.983s] Copying ../../build/marco_perception/marco_perception.egg-info to /home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages/marco_perception-0.1.0-py3.10.egg-info
+[1.983s] running install_scripts
+[2.027s] Installing mock_lane_qr script to /home/orangepi/marco_ws/install/marco_perception/lib/marco_perception
+[2.027s] writing list of installed files to '/home/orangepi/marco_ws/build/marco_perception/install.log'
+[2.096s] Invoked command in '/home/orangepi/marco_ws/src/marco_perception' returned '0': CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_perception build --build-base /home/orangepi/marco_ws/build/marco_perception/build install --record /home/orangepi/marco_ws/build/marco_perception/install.log --install-scripts $base/lib/marco_perception --single-version-externally-managed install_data

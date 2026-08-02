@@ -1,0 +1,739 @@
+[0.188s] DEBUG:colcon:Command line arguments: ['/usr/bin/colcon', 'build', '--symlink-install']
+[0.188s] DEBUG:colcon:Parsed command line arguments: Namespace(log_base=None, log_level=None, verb_name='build', build_base='build', install_base='install', merge_install=False, symlink_install=True, test_result_base=None, continue_on_error=False, executor='parallel', parallel_workers=8, event_handlers=None, ignore_user_meta=False, metas=['./colcon.meta'], base_paths=['.'], packages_ignore=None, packages_ignore_regex=None, paths=None, packages_up_to=None, packages_up_to_regex=None, packages_above=None, packages_above_and_dependencies=None, packages_above_depth=None, packages_select_by_dep=None, packages_skip_by_dep=None, packages_skip_up_to=None, packages_select_build_failed=False, packages_skip_build_finished=False, packages_select_test_failures=False, packages_skip_test_passed=False, packages_select=None, packages_skip=None, packages_select_regex=None, packages_skip_regex=None, packages_start=None, packages_end=None, cmake_args=None, cmake_target=None, cmake_target_skip_unavailable=False, cmake_clean_cache=False, cmake_clean_first=False, cmake_force_configure=False, ament_cmake_args=None, catkin_cmake_args=None, catkin_skip_building_tests=False, verb_parser=<colcon_defaults.argument_parser.defaults.DefaultArgumentsDecorator object at 0x7f894c8fa0>, verb_extension=<colcon_core.verb.build.BuildVerb object at 0x7f895ea6b0>, main=<bound method BuildVerb.main of <colcon_core.verb.build.BuildVerb object at 0x7f895ea6b0>>)
+[0.419s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) check parameters
+[0.420s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) check parameters
+[0.420s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) check parameters
+[0.420s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) check parameters
+[0.420s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) discover
+[0.420s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) discover
+[0.420s] INFO:colcon.colcon_core.package_discovery:Crawling recursively for packages in '/home/orangepi/marco_ws'
+[0.420s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ignore', 'ignore_ament_install']
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore'
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore_ament_install'
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_pkg']
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_pkg'
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_meta']
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_meta'
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ros']
+[0.421s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ros'
+[0.443s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['cmake', 'python']
+[0.443s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'cmake'
+[0.443s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python'
+[0.443s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['python_setup_py']
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python_setup_py'
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extensions ['ignore', 'ignore_ament_install']
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extension 'ignore'
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(build) ignored
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extensions ['ignore', 'ignore_ament_install']
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extension 'ignore'
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(install) ignored
+[0.444s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extensions ['ignore', 'ignore_ament_install']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extension 'ignore'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(log) ignored
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['ignore', 'ignore_ament_install']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ignore'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ignore_ament_install'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['colcon_pkg']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'colcon_pkg'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['colcon_meta']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'colcon_meta'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['ros']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ros'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['cmake', 'python']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'cmake'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'python'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['python_setup_py']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'python_setup_py'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extensions ['ignore', 'ignore_ament_install']
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extension 'ignore'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extension 'ignore_ament_install'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extensions ['colcon_pkg']
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extension 'colcon_pkg'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extensions ['colcon_meta']
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extension 'colcon_meta'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extensions ['ros']
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_base) by extension 'ros'
+[0.451s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_base' with type 'ros.ament_python' and name 'marco_base'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extensions ['ignore', 'ignore_ament_install']
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extension 'ignore'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extension 'ignore_ament_install'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extensions ['colcon_pkg']
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extension 'colcon_pkg'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extensions ['colcon_meta']
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extension 'colcon_meta'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extensions ['ros']
+[0.452s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_bringup) by extension 'ros'
+[0.452s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_bringup' with type 'ros.ament_cmake' and name 'marco_bringup'
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extensions ['ignore', 'ignore_ament_install']
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extension 'ignore'
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extension 'ignore_ament_install'
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extensions ['colcon_pkg']
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extension 'colcon_pkg'
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extensions ['colcon_meta']
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extension 'colcon_meta'
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extensions ['ros']
+[0.453s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_description) by extension 'ros'
+[0.454s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_description' with type 'ros.ament_cmake' and name 'marco_description'
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extensions ['ignore', 'ignore_ament_install']
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extension 'ignore'
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extension 'ignore_ament_install'
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extensions ['colcon_pkg']
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extension 'colcon_pkg'
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extensions ['colcon_meta']
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extension 'colcon_meta'
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extensions ['ros']
+[0.454s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_docking) by extension 'ros'
+[0.455s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_docking' with type 'ros.ament_python' and name 'marco_docking'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extensions ['ignore', 'ignore_ament_install']
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extension 'ignore'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extension 'ignore_ament_install'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extensions ['colcon_pkg']
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extension 'colcon_pkg'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extensions ['colcon_meta']
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extension 'colcon_meta'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extensions ['ros']
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_localization) by extension 'ros'
+[0.456s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_localization' with type 'ros.ament_cmake' and name 'marco_localization'
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extensions ['ignore', 'ignore_ament_install']
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extension 'ignore'
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extension 'ignore_ament_install'
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extensions ['colcon_pkg']
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extension 'colcon_pkg'
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extensions ['colcon_meta']
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extension 'colcon_meta'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extensions ['ros']
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_mission) by extension 'ros'
+[0.457s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_mission' with type 'ros.ament_python' and name 'marco_mission'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extensions ['ignore', 'ignore_ament_install']
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extension 'ignore'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extension 'ignore_ament_install'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extensions ['colcon_pkg']
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extension 'colcon_pkg'
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extensions ['colcon_meta']
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extension 'colcon_meta'
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extensions ['ros']
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_msgs) by extension 'ros'
+[0.458s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_msgs' with type 'ros.ament_cmake' and name 'marco_msgs'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extensions ['ignore', 'ignore_ament_install']
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extension 'ignore'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extension 'ignore_ament_install'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extensions ['colcon_pkg']
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extension 'colcon_pkg'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extensions ['colcon_meta']
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extension 'colcon_meta'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extensions ['ros']
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_navigation) by extension 'ros'
+[0.460s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_navigation' with type 'ros.ament_cmake' and name 'marco_navigation'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extensions ['ignore', 'ignore_ament_install']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extension 'ignore'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extension 'ignore_ament_install'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extensions ['colcon_pkg']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extension 'colcon_pkg'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extensions ['colcon_meta']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extension 'colcon_meta'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extensions ['ros']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_perception) by extension 'ros'
+[0.461s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_perception' with type 'ros.ament_python' and name 'marco_perception'
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extensions ['ignore', 'ignore_ament_install']
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extension 'ignore'
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extension 'ignore_ament_install'
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extensions ['colcon_pkg']
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extension 'colcon_pkg'
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extensions ['colcon_meta']
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extension 'colcon_meta'
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extensions ['ros']
+[0.462s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_safety) by extension 'ros'
+[0.463s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_safety' with type 'ros.ament_cmake' and name 'marco_safety'
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extensions ['ignore', 'ignore_ament_install']
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extension 'ignore'
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extension 'ignore_ament_install'
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extensions ['colcon_pkg']
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extension 'colcon_pkg'
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extensions ['colcon_meta']
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extension 'colcon_meta'
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extensions ['ros']
+[0.464s] Level 1:colcon.colcon_core.package_identification:_identify(src/marco_simulation) by extension 'ros'
+[0.466s] DEBUG:colcon.colcon_core.package_identification:Package 'src/marco_simulation' with type 'ros.ament_cmake' and name 'marco_simulation'
+[0.466s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) using defaults
+[0.466s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) discover
+[0.466s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) using defaults
+[0.466s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) discover
+[0.466s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) using defaults
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'cmake_args' from command line to 'None'
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'cmake_target' from command line to 'None'
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'cmake_clean_cache' from command line to 'False'
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'cmake_clean_first' from command line to 'False'
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'cmake_force_configure' from command line to 'False'
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'ament_cmake_args' from command line to 'None'
+[0.510s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'catkin_cmake_args' from command line to 'None'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_base' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.511s] DEBUG:colcon.colcon_core.verb:Building package 'marco_base' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_base', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_base', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_base', 'symlink_install': True, 'test_result_base': None}
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'cmake_args' from command line to 'None'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'cmake_target' from command line to 'None'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'cmake_clean_cache' from command line to 'False'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'cmake_clean_first' from command line to 'False'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'cmake_force_configure' from command line to 'False'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'ament_cmake_args' from command line to 'None'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'catkin_cmake_args' from command line to 'None'
+[0.511s] Level 5:colcon.colcon_core.verb:set package 'marco_description' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.511s] DEBUG:colcon.colcon_core.verb:Building package 'marco_description' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_description', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_description', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_description', 'symlink_install': True, 'test_result_base': None}
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'cmake_args' from command line to 'None'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'cmake_target' from command line to 'None'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'cmake_clean_cache' from command line to 'False'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'cmake_clean_first' from command line to 'False'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'cmake_force_configure' from command line to 'False'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'ament_cmake_args' from command line to 'None'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'catkin_cmake_args' from command line to 'None'
+[0.512s] Level 5:colcon.colcon_core.verb:set package 'marco_docking' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.512s] DEBUG:colcon.colcon_core.verb:Building package 'marco_docking' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_docking', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_docking', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_docking', 'symlink_install': True, 'test_result_base': None}
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'cmake_args' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'cmake_target' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'cmake_clean_cache' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'cmake_clean_first' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'cmake_force_configure' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'ament_cmake_args' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'catkin_cmake_args' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_mission' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.513s] DEBUG:colcon.colcon_core.verb:Building package 'marco_mission' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_mission', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_mission', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_mission', 'symlink_install': True, 'test_result_base': None}
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'cmake_args' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'cmake_target' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'cmake_clean_cache' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'cmake_clean_first' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'cmake_force_configure' from command line to 'False'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'ament_cmake_args' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'catkin_cmake_args' from command line to 'None'
+[0.513s] Level 5:colcon.colcon_core.verb:set package 'marco_msgs' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.513s] DEBUG:colcon.colcon_core.verb:Building package 'marco_msgs' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_msgs', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_msgs', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_msgs', 'symlink_install': True, 'test_result_base': None}
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'cmake_args' from command line to 'None'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'cmake_target' from command line to 'None'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'cmake_clean_cache' from command line to 'False'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'cmake_clean_first' from command line to 'False'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'cmake_force_configure' from command line to 'False'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'ament_cmake_args' from command line to 'None'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'catkin_cmake_args' from command line to 'None'
+[0.514s] Level 5:colcon.colcon_core.verb:set package 'marco_navigation' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.514s] DEBUG:colcon.colcon_core.verb:Building package 'marco_navigation' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_navigation', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_navigation', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_navigation', 'symlink_install': True, 'test_result_base': None}
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'cmake_args' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'cmake_target' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'cmake_clean_cache' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'cmake_clean_first' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'cmake_force_configure' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'ament_cmake_args' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'catkin_cmake_args' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_perception' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.515s] DEBUG:colcon.colcon_core.verb:Building package 'marco_perception' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_perception', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_perception', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_perception', 'symlink_install': True, 'test_result_base': None}
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'cmake_args' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'cmake_target' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'cmake_clean_cache' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'cmake_clean_first' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'cmake_force_configure' from command line to 'False'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'ament_cmake_args' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'catkin_cmake_args' from command line to 'None'
+[0.515s] Level 5:colcon.colcon_core.verb:set package 'marco_safety' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.515s] DEBUG:colcon.colcon_core.verb:Building package 'marco_safety' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_safety', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_safety', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_safety', 'symlink_install': True, 'test_result_base': None}
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'cmake_args' from command line to 'None'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'cmake_target' from command line to 'None'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'cmake_clean_cache' from command line to 'False'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'cmake_clean_first' from command line to 'False'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'cmake_force_configure' from command line to 'False'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'ament_cmake_args' from command line to 'None'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'catkin_cmake_args' from command line to 'None'
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_simulation' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.516s] DEBUG:colcon.colcon_core.verb:Building package 'marco_simulation' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_simulation', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_simulation', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_simulation', 'symlink_install': True, 'test_result_base': None}
+[0.516s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'cmake_args' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'cmake_target' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'cmake_clean_cache' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'cmake_clean_first' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'cmake_force_configure' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'ament_cmake_args' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'catkin_cmake_args' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_bringup' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.517s] DEBUG:colcon.colcon_core.verb:Building package 'marco_bringup' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_bringup', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_bringup', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_bringup', 'symlink_install': True, 'test_result_base': None}
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'cmake_args' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'cmake_target' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'cmake_clean_cache' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'cmake_clean_first' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'cmake_force_configure' from command line to 'False'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'ament_cmake_args' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'catkin_cmake_args' from command line to 'None'
+[0.517s] Level 5:colcon.colcon_core.verb:set package 'marco_localization' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.517s] DEBUG:colcon.colcon_core.verb:Building package 'marco_localization' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/orangepi/marco_ws/build/marco_localization', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/orangepi/marco_ws/install/marco_localization', 'merge_install': False, 'path': '/home/orangepi/marco_ws/src/marco_localization', 'symlink_install': True, 'test_result_base': None}
+[0.518s] INFO:colcon.colcon_core.executor:Executing jobs using 'parallel' executor
+[0.574s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete
+[0.575s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_base' with build type 'ament_python'
+[0.576s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_base', 'ament_prefix_path')
+[0.579s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_core.shell.bat': Not used on non-Windows systems
+[0.579s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_base/share/marco_base/hook/ament_prefix_path.ps1'
+[0.581s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_base/share/marco_base/hook/ament_prefix_path.dsv'
+[0.582s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_base/share/marco_base/hook/ament_prefix_path.sh'
+[0.583s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.583s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.595s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_description' with build type 'ament_cmake'
+[0.596s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/orangepi/marco_ws/src/marco_description'
+[0.597s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.598s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.607s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_docking' with build type 'ament_python'
+[0.608s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_docking', 'ament_prefix_path')
+[0.609s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/hook/ament_prefix_path.ps1'
+[0.610s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/hook/ament_prefix_path.dsv'
+[0.611s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/hook/ament_prefix_path.sh'
+[0.612s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.612s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.620s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_mission' with build type 'ament_python'
+[0.620s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_mission', 'ament_prefix_path')
+[0.621s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/hook/ament_prefix_path.ps1'
+[0.622s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/hook/ament_prefix_path.dsv'
+[0.623s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/hook/ament_prefix_path.sh'
+[0.625s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.625s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.635s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_msgs' with build type 'ament_cmake'
+[0.635s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/orangepi/marco_ws/src/marco_msgs'
+[0.636s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.636s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.644s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_navigation' with build type 'ament_cmake'
+[0.644s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/orangepi/marco_ws/src/marco_navigation'
+[0.645s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.645s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.652s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_perception' with build type 'ament_python'
+[0.653s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_perception', 'ament_prefix_path')
+[0.654s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/hook/ament_prefix_path.ps1'
+[0.657s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/hook/ament_prefix_path.dsv'
+[0.662s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/hook/ament_prefix_path.sh'
+[0.664s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.665s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.672s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_safety' with build type 'ament_cmake'
+[0.672s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/orangepi/marco_ws/src/marco_safety'
+[0.673s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.673s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[1.140s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/orangepi/marco_ws/src/marco_base'
+[1.142s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[1.142s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[1.169s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_description': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_description -- -j8 -l8
+[1.609s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/orangepi/marco_ws/src/marco_docking'
+[1.610s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[1.610s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[2.065s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/orangepi/marco_ws/src/marco_mission'
+[2.066s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[2.067s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[2.091s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_msgs -- -j8 -l8
+[2.097s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_navigation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_navigation -- -j8 -l8
+[2.557s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/orangepi/marco_ws/src/marco_perception'
+[2.559s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[2.559s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[2.593s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_safety': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_safety -- -j8 -l8
+[2.601s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_description' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_description -- -j8 -l8
+[2.624s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_description': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_description
+[2.625s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_navigation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_navigation -- -j8 -l8
+[2.628s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_navigation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_navigation
+[2.728s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_description)
+[2.764s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description' for CMake module files
+[2.767s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description' for CMake config files
+[2.769s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_description', 'cmake_prefix_path')
+[2.771s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_description/share/marco_description/hook/cmake_prefix_path.ps1'
+[2.774s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_description/share/marco_description/hook/cmake_prefix_path.dsv'
+[2.777s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_description/share/marco_description/hook/cmake_prefix_path.sh'
+[2.781s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/bin'
+[2.782s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/lib/pkgconfig/marco_description.pc'
+[2.784s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/lib/python3.10/site-packages'
+[2.787s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/bin'
+[2.789s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.ps1'
+[2.800s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.dsv'
+[2.804s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.sh'
+[2.812s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_safety' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_safety -- -j8 -l8
+[2.814s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.bash'
+[2.816s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_safety': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_safety
+[2.824s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_description' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_description
+[2.825s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.zsh'
+[2.829s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_description/share/colcon-core/packages/marco_description)
+[2.831s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_description)
+[2.833s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description' for CMake module files
+[2.835s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description' for CMake config files
+[2.837s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_description', 'cmake_prefix_path')
+[2.839s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_description/share/marco_description/hook/cmake_prefix_path.ps1'
+[2.841s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_description/share/marco_description/hook/cmake_prefix_path.dsv'
+[2.843s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_description/share/marco_description/hook/cmake_prefix_path.sh'
+[2.846s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/bin'
+[2.846s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/lib/pkgconfig/marco_description.pc'
+[2.848s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/lib/python3.10/site-packages'
+[2.850s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_description/bin'
+[2.852s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.ps1'
+[2.856s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.dsv'
+[2.858s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.sh'
+[2.861s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.bash'
+[2.863s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_description/share/marco_description/package.zsh'
+[2.864s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_description/share/colcon-core/packages/marco_description)
+[2.865s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_navigation)
+[2.867s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation' for CMake module files
+[2.871s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_navigation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_navigation
+[2.872s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation' for CMake config files
+[2.874s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_navigation', 'cmake_prefix_path')
+[2.876s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/hook/cmake_prefix_path.ps1'
+[2.878s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/hook/cmake_prefix_path.dsv'
+[2.879s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/hook/cmake_prefix_path.sh'
+[2.881s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/bin'
+[2.882s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/lib/pkgconfig/marco_navigation.pc'
+[2.883s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/lib/python3.10/site-packages'
+[2.885s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/bin'
+[2.886s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.ps1'
+[2.889s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.dsv'
+[2.891s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.sh'
+[2.893s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.bash'
+[2.894s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.zsh'
+[2.896s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_navigation/share/colcon-core/packages/marco_navigation)
+[2.898s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_navigation)
+[2.899s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation' for CMake module files
+[2.901s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation' for CMake config files
+[2.903s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_navigation', 'cmake_prefix_path')
+[2.904s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/hook/cmake_prefix_path.ps1'
+[2.906s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/hook/cmake_prefix_path.dsv'
+[2.907s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/hook/cmake_prefix_path.sh'
+[2.910s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/bin'
+[2.910s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/lib/pkgconfig/marco_navigation.pc'
+[2.911s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/lib/python3.10/site-packages'
+[2.913s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_navigation/bin'
+[2.915s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.ps1'
+[2.919s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.dsv'
+[2.922s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.sh'
+[2.926s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.bash'
+[2.928s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_navigation/share/marco_navigation/package.zsh'
+[2.930s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_navigation/share/colcon-core/packages/marco_navigation)
+[2.935s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_simulation' with build type 'ament_cmake'
+[2.936s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/orangepi/marco_ws/src/marco_simulation'
+[2.938s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[2.943s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[3.002s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_msgs -- -j8 -l8
+[3.015s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_msgs
+[3.033s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_safety)
+[3.036s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_safety' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_safety
+[3.047s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety' for CMake module files
+[3.051s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety' for CMake config files
+[3.052s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_safety', 'cmake_prefix_path')
+[3.054s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/hook/cmake_prefix_path.ps1'
+[3.056s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/hook/cmake_prefix_path.dsv'
+[3.057s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/hook/cmake_prefix_path.sh'
+[3.061s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/bin'
+[3.062s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/lib/pkgconfig/marco_safety.pc'
+[3.064s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/lib/python3.10/site-packages'
+[3.067s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/bin'
+[3.078s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.ps1'
+[3.098s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.dsv'
+[3.116s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.sh'
+[3.119s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.bash'
+[3.121s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.zsh'
+[3.124s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_safety/share/colcon-core/packages/marco_safety)
+[3.126s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_safety)
+[3.128s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety' for CMake module files
+[3.131s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety' for CMake config files
+[3.132s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_safety', 'cmake_prefix_path')
+[3.133s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/hook/cmake_prefix_path.ps1'
+[3.136s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/hook/cmake_prefix_path.dsv'
+[3.138s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/hook/cmake_prefix_path.sh'
+[3.141s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/bin'
+[3.141s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/lib/pkgconfig/marco_safety.pc'
+[3.143s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/lib/python3.10/site-packages'
+[3.145s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_safety/bin'
+[3.147s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.ps1'
+[3.152s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.dsv'
+[3.156s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.sh'
+[3.159s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.bash'
+[3.162s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_safety/share/marco_safety/package.zsh'
+[3.165s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_safety/share/colcon-core/packages/marco_safety)
+[3.210s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools commands: symlink_data, easy_install, sdist, build_clib, register, check, saveopts, test, upload_docs, install_data, bdist, bdist_dumb, bdist_rpm, setopt, install_headers, build_ext, build, install_egg_info, clean, upload, alias, egg_info, install_scripts, install_lib, install, bdist_wheel, dist_info, rotate, bdist_egg, build_scripts, develop, build_py
+[3.271s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools commands: symlink_data, easy_install, sdist, build_clib, register, check, saveopts, test, upload_docs, install_data, bdist, bdist_dumb, bdist_rpm, setopt, install_headers, build_ext, build, install_egg_info, clean, upload, alias, egg_info, install_scripts, install_lib, install, bdist_wheel, dist_info, rotate, bdist_egg, build_scripts, develop, build_py
+[3.276s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_simulation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_simulation -- -j8 -l8
+[3.278s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools commands: symlink_data, easy_install, sdist, build_clib, register, check, saveopts, test, upload_docs, install_data, bdist, bdist_dumb, bdist_rpm, setopt, install_headers, build_ext, build, install_egg_info, clean, upload, alias, egg_info, install_scripts, install_lib, install, bdist_wheel, dist_info, rotate, bdist_egg, build_scripts, develop, build_py
+[3.281s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools commands: symlink_data, easy_install, sdist, build_clib, register, check, saveopts, test, upload_docs, install_data, bdist, bdist_dumb, bdist_rpm, setopt, install_headers, build_ext, build, install_egg_info, clean, upload, alias, egg_info, install_scripts, install_lib, install, bdist_wheel, dist_info, rotate, bdist_egg, build_scripts, develop, build_py
+[3.318s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_simulation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_simulation -- -j8 -l8
+[3.321s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_simulation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_simulation
+[3.326s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_msgs)
+[3.327s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs' for CMake module files
+[3.335s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs' for CMake config files
+[3.338s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_msgs
+[3.339s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_msgs', 'cmake_prefix_path')
+[3.339s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/cmake_prefix_path.ps1'
+[3.340s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/cmake_prefix_path.dsv'
+[3.341s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/cmake_prefix_path.sh'
+[3.342s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/lib'
+[3.342s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_msgs', 'ld_library_path_lib')
+[3.343s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/ld_library_path_lib.ps1'
+[3.343s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/ld_library_path_lib.dsv'
+[3.344s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/ld_library_path_lib.sh'
+[3.345s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/bin'
+[3.345s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/lib/pkgconfig/marco_msgs.pc'
+[3.346s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/lib/python3.10/site-packages'
+[3.346s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/bin'
+[3.347s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.ps1'
+[3.348s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.dsv'
+[3.349s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.sh'
+[3.349s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.bash'
+[3.350s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.zsh'
+[3.351s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_msgs/share/colcon-core/packages/marco_msgs)
+[3.360s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_msgs)
+[3.361s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs' for CMake module files
+[3.366s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs' for CMake config files
+[3.372s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_msgs', 'cmake_prefix_path')
+[3.374s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/cmake_prefix_path.ps1'
+[3.377s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/cmake_prefix_path.dsv'
+[3.379s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/cmake_prefix_path.sh'
+[3.382s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/lib'
+[3.383s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_msgs', 'ld_library_path_lib')
+[3.385s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/ld_library_path_lib.ps1'
+[3.388s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/ld_library_path_lib.dsv'
+[3.391s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/hook/ld_library_path_lib.sh'
+[3.394s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/bin'
+[3.394s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/lib/pkgconfig/marco_msgs.pc'
+[3.396s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/lib/python3.10/site-packages'
+[3.398s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_msgs/bin'
+[3.400s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.ps1'
+[3.404s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.dsv'
+[3.407s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.sh'
+[3.410s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.bash'
+[3.412s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_msgs/share/marco_msgs/package.zsh'
+[3.415s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_msgs/share/colcon-core/packages/marco_msgs)
+[3.425s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_simulation)
+[3.427s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation' for CMake module files
+[3.434s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation' for CMake config files
+[3.438s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_simulation', 'cmake_prefix_path')
+[3.439s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/hook/cmake_prefix_path.ps1'
+[3.443s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/hook/cmake_prefix_path.dsv'
+[3.444s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_simulation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_simulation
+[3.447s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/hook/cmake_prefix_path.sh'
+[3.452s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/bin'
+[3.452s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/lib/pkgconfig/marco_simulation.pc'
+[3.454s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/lib/python3.10/site-packages'
+[3.456s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/bin'
+[3.458s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.ps1'
+[3.462s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.dsv'
+[3.464s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.sh'
+[3.466s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.bash'
+[3.468s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.zsh'
+[3.470s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_simulation/share/colcon-core/packages/marco_simulation)
+[3.472s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_simulation)
+[3.474s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation' for CMake module files
+[3.476s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation' for CMake config files
+[3.477s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_simulation', 'cmake_prefix_path')
+[3.479s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/hook/cmake_prefix_path.ps1'
+[3.481s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/hook/cmake_prefix_path.dsv'
+[3.483s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/hook/cmake_prefix_path.sh'
+[3.486s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/bin'
+[3.486s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/lib/pkgconfig/marco_simulation.pc'
+[3.487s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/lib/python3.10/site-packages'
+[3.489s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_simulation/bin'
+[3.491s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.ps1'
+[3.494s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.dsv'
+[3.496s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.sh'
+[3.499s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.bash'
+[3.502s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.zsh'
+[3.505s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_simulation/share/colcon-core/packages/marco_simulation)
+[3.750s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools 'develop' options: --zip-ok, --version, --record, --upgrade, --prefix, --no-find-links, --always-copy, --find-links, --install-dir, --help, --dry-run, --uninstall, --quiet, --multi-version, --index-url, --no-deps, --install-layout, --editable, --always-unzip, --egg-path, --optimize, --allow-hosts, --build-directory, --no-user-cfg, --verbose, --script-dir, --user, --site-dirs, --exclude-scripts, --local-snapshots-ok, --force-installation-into-system-dir
+[3.754s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_mission': PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_mission/build --no-deps symlink_data
+[3.755s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools 'develop' options: --zip-ok, --version, --record, --upgrade, --prefix, --no-find-links, --always-copy, --find-links, --install-dir, --help, --dry-run, --uninstall, --quiet, --multi-version, --index-url, --no-deps, --install-layout, --editable, --always-unzip, --egg-path, --optimize, --allow-hosts, --build-directory, --no-user-cfg, --verbose, --script-dir, --user, --site-dirs, --exclude-scripts, --local-snapshots-ok, --force-installation-into-system-dir
+[3.759s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_base': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_base/build --no-deps symlink_data
+[3.793s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools 'develop' options: --zip-ok, --version, --record, --upgrade, --prefix, --no-find-links, --always-copy, --find-links, --install-dir, --help, --dry-run, --uninstall, --quiet, --multi-version, --index-url, --no-deps, --install-layout, --editable, --always-unzip, --egg-path, --optimize, --allow-hosts, --build-directory, --no-user-cfg, --verbose, --script-dir, --user, --site-dirs, --exclude-scripts, --local-snapshots-ok, --force-installation-into-system-dir
+[3.801s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_docking': PYTHONPATH=/home/orangepi/marco_ws/build/marco_docking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_docking/build --no-deps symlink_data
+[3.848s] DEBUG:colcon.colcon_core.task.python.build:Available setuptools 'develop' options: --zip-ok, --version, --record, --upgrade, --prefix, --no-find-links, --always-copy, --find-links, --install-dir, --help, --dry-run, --uninstall, --quiet, --multi-version, --index-url, --no-deps, --install-layout, --editable, --always-unzip, --egg-path, --optimize, --allow-hosts, --build-directory, --no-user-cfg, --verbose, --script-dir, --user, --site-dirs, --exclude-scripts, --local-snapshots-ok, --force-installation-into-system-dir
+[3.856s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_perception': PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_perception/build --no-deps symlink_data
+[4.493s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_base', 'pythonpath_develop')
+[4.495s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_base/share/marco_base/hook/pythonpath_develop.ps1'
+[4.497s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_base' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_base/build --no-deps symlink_data
+[4.500s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/build/marco_base/share/marco_base/hook/pythonpath_develop.dsv'
+[4.502s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_base/share/marco_base/hook/pythonpath_develop.sh'
+[4.508s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_base' for CMake module files
+[4.510s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_base' for CMake config files
+[4.511s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_base/lib'
+[4.511s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_base/bin'
+[4.511s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_base/lib/pkgconfig/marco_base.pc'
+[4.512s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages'
+[4.512s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_base', 'pythonpath')
+[4.512s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_base/share/marco_base/hook/pythonpath.ps1'
+[4.513s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_base/share/marco_base/hook/pythonpath.dsv'
+[4.517s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_base/share/marco_base/hook/pythonpath.sh'
+[4.519s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_base/bin'
+[4.519s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_base)
+[4.520s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_base/share/marco_base/package.ps1'
+[4.521s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_base/share/marco_base/package.dsv'
+[4.522s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_base/share/marco_base/package.sh'
+[4.523s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_base/share/marco_base/package.bash'
+[4.523s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_base/share/marco_base/package.zsh'
+[4.524s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_base/share/colcon-core/packages/marco_base)
+[4.526s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_bringup' with build type 'ament_cmake'
+[4.527s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/orangepi/marco_ws/src/marco_bringup'
+[4.527s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[4.527s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[4.534s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_mission', 'pythonpath_develop')
+[4.535s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_mission/share/marco_mission/hook/pythonpath_develop.ps1'
+[4.535s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_mission' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_mission/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_mission/build --no-deps symlink_data
+[4.536s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/build/marco_mission/share/marco_mission/hook/pythonpath_develop.dsv'
+[4.537s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_mission/share/marco_mission/hook/pythonpath_develop.sh'
+[4.539s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_mission' for CMake module files
+[4.539s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_mission' for CMake config files
+[4.540s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_mission/lib'
+[4.540s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_mission/bin'
+[4.540s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_mission/lib/pkgconfig/marco_mission.pc'
+[4.540s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages'
+[4.540s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_mission', 'pythonpath')
+[4.541s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/hook/pythonpath.ps1'
+[4.542s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/hook/pythonpath.dsv'
+[4.542s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/hook/pythonpath.sh'
+[4.544s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_mission/bin'
+[4.544s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_mission)
+[4.544s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/package.ps1'
+[4.545s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/package.dsv'
+[4.546s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/package.sh'
+[4.547s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/package.bash'
+[4.548s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_mission/share/marco_mission/package.zsh'
+[4.549s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_mission/share/colcon-core/packages/marco_mission)
+[4.549s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_docking', 'pythonpath_develop')
+[4.550s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_docking/share/marco_docking/hook/pythonpath_develop.ps1'
+[4.551s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/build/marco_docking/share/marco_docking/hook/pythonpath_develop.dsv'
+[4.551s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_docking' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_docking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_docking/build --no-deps symlink_data
+[4.551s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_docking/share/marco_docking/hook/pythonpath_develop.sh'
+[4.552s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_docking' for CMake module files
+[4.553s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_docking' for CMake config files
+[4.553s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_docking/lib'
+[4.553s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_docking/bin'
+[4.553s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_docking/lib/pkgconfig/marco_docking.pc'
+[4.553s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages'
+[4.554s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_docking', 'pythonpath')
+[4.554s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/hook/pythonpath.ps1'
+[4.554s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/hook/pythonpath.dsv'
+[4.555s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/hook/pythonpath.sh'
+[4.555s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_docking/bin'
+[4.556s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_docking)
+[4.556s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/package.ps1'
+[4.558s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/package.dsv'
+[4.558s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/package.sh'
+[4.559s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/package.bash'
+[4.560s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/package.zsh'
+[4.561s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_docking/share/colcon-core/packages/marco_docking)
+[4.562s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_perception', 'pythonpath_develop')
+[4.563s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_perception/share/marco_perception/hook/pythonpath_develop.ps1'
+[4.563s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_perception' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_perception/build --no-deps symlink_data
+[4.564s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/build/marco_perception/share/marco_perception/hook/pythonpath_develop.dsv'
+[4.564s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/build/marco_perception/share/marco_perception/hook/pythonpath_develop.sh'
+[4.566s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_perception' for CMake module files
+[4.566s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_perception' for CMake config files
+[4.567s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_perception/lib'
+[4.567s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_perception/bin'
+[4.567s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_perception/lib/pkgconfig/marco_perception.pc'
+[4.567s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages'
+[4.568s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_perception', 'pythonpath')
+[4.568s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/hook/pythonpath.ps1'
+[4.569s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/hook/pythonpath.dsv'
+[4.570s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/hook/pythonpath.sh'
+[4.571s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_perception/bin'
+[4.571s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_perception)
+[4.572s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/package.ps1'
+[4.574s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/package.dsv'
+[4.574s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/package.sh'
+[4.575s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/package.bash'
+[4.576s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_perception/share/marco_perception/package.zsh'
+[4.577s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_perception/share/colcon-core/packages/marco_perception)
+[4.585s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_bringup': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_bringup -- -j8 -l8
+[4.698s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_bringup' returned '0': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_bringup -- -j8 -l8
+[4.701s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_bringup': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_bringup
+[4.762s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_bringup)
+[4.766s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup' for CMake module files
+[4.768s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_bringup' returned '0': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_bringup
+[4.770s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup' for CMake config files
+[4.771s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_bringup', 'cmake_prefix_path')
+[4.772s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/hook/cmake_prefix_path.ps1'
+[4.774s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/hook/cmake_prefix_path.dsv'
+[4.775s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/hook/cmake_prefix_path.sh'
+[4.777s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/bin'
+[4.777s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/lib/pkgconfig/marco_bringup.pc'
+[4.778s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/lib/python3.10/site-packages'
+[4.780s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/bin'
+[4.781s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.ps1'
+[4.783s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.dsv'
+[4.785s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.sh'
+[4.786s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.bash'
+[4.787s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.zsh'
+[4.788s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_bringup/share/colcon-core/packages/marco_bringup)
+[4.791s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_bringup)
+[4.792s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup' for CMake module files
+[4.794s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup' for CMake config files
+[4.795s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_bringup', 'cmake_prefix_path')
+[4.797s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/hook/cmake_prefix_path.ps1'
+[4.799s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/hook/cmake_prefix_path.dsv'
+[4.800s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/hook/cmake_prefix_path.sh'
+[4.802s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/bin'
+[4.803s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/lib/pkgconfig/marco_bringup.pc'
+[4.804s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/lib/python3.10/site-packages'
+[4.805s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_bringup/bin'
+[4.807s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.ps1'
+[4.809s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.dsv'
+[4.811s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.sh'
+[4.813s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.bash'
+[4.814s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_bringup/share/marco_bringup/package.zsh'
+[4.816s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_bringup/share/colcon-core/packages/marco_bringup)
+[4.818s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/orangepi/marco_ws/src/marco_localization' with build type 'ament_cmake'
+[4.819s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/orangepi/marco_ws/src/marco_localization'
+[4.820s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[4.821s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[4.854s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_localization': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_localization -- -j8 -l8
+[4.941s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_localization' returned '0': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_localization -- -j8 -l8
+[4.943s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/orangepi/marco_ws/build/marco_localization': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_localization
+[4.998s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_localization)
+[4.999s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization' for CMake module files
+[5.002s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/orangepi/marco_ws/build/marco_localization' returned '0': AMENT_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/opt/ros/humble CMAKE_PREFIX_PATH=/home/orangepi/marco_ws/install/marco_bringup:/home/orangepi/marco_ws/install/marco_description:/home/orangepi/marco_ws/install/marco_simulation:/home/orangepi/marco_ws/install/marco_safety:/home/orangepi/marco_ws/install/marco_navigation:/home/orangepi/marco_ws/install/marco_msgs:/home/orangepi/marco_ws/install/marco_localization:/home/orangepi/ydlidar_ros2_ws/install/ydlidar_ros2_driver:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_base:/opt/ros/humble PYTHONPATH=/home/orangepi/marco_ws/build/marco_base:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_perception:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:/home/orangepi/marco_ws/install/marco_msgs/local/lib/python3.10/dist-packages:/home/orangepi/marco_ws/build/marco_mission:/home/orangepi/marco_ws/install/marco_mission/lib/python3.10/site-packages:/home/orangepi/marco_ws/build/marco_docking:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_localization
+[5.003s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization' for CMake config files
+[5.005s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_localization', 'cmake_prefix_path')
+[5.006s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/hook/cmake_prefix_path.ps1'
+[5.008s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/hook/cmake_prefix_path.dsv'
+[5.009s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/hook/cmake_prefix_path.sh'
+[5.012s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/lib'
+[5.012s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/bin'
+[5.012s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/lib/pkgconfig/marco_localization.pc'
+[5.013s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/lib/python3.10/site-packages'
+[5.015s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/bin'
+[5.017s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.ps1'
+[5.020s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.dsv'
+[5.022s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.sh'
+[5.024s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.bash'
+[5.026s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.zsh'
+[5.027s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_localization/share/colcon-core/packages/marco_localization)
+[5.030s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(marco_localization)
+[5.031s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization' for CMake module files
+[5.034s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization' for CMake config files
+[5.035s] Level 1:colcon.colcon_core.shell:create_environment_hook('marco_localization', 'cmake_prefix_path')
+[5.037s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/hook/cmake_prefix_path.ps1'
+[5.039s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/hook/cmake_prefix_path.dsv'
+[5.040s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/hook/cmake_prefix_path.sh'
+[5.042s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/lib'
+[5.042s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/bin'
+[5.042s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/lib/pkgconfig/marco_localization.pc'
+[5.043s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/lib/python3.10/site-packages'
+[5.045s] Level 1:colcon.colcon_core.environment:checking '/home/orangepi/marco_ws/install/marco_localization/bin'
+[5.047s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.ps1'
+[5.051s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.dsv'
+[5.053s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.sh'
+[5.055s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.bash'
+[5.056s] INFO:colcon.colcon_core.shell:Creating package script '/home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.zsh'
+[5.058s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/orangepi/marco_ws/install/marco_localization/share/colcon-core/packages/marco_localization)
+[5.060s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:closing loop
+[5.062s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:loop closed
+[5.062s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete finished with '0'
+[5.062s] DEBUG:colcon.colcon_core.event_reactor:joining thread
+[5.064s] DEBUG:colcon.colcon_core.event_reactor:joined thread
+[5.065s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/orangepi/marco_ws/install/local_setup.ps1'
+[5.066s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/orangepi/marco_ws/install/_local_setup_util_ps1.py'
+[5.068s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/orangepi/marco_ws/install/setup.ps1'
+[5.071s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/orangepi/marco_ws/install/local_setup.sh'
+[5.073s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/orangepi/marco_ws/install/_local_setup_util_sh.py'
+[5.074s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/orangepi/marco_ws/install/setup.sh'
+[5.077s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/orangepi/marco_ws/install/local_setup.bash'
+[5.078s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/orangepi/marco_ws/install/setup.bash'
+[5.080s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/orangepi/marco_ws/install/local_setup.zsh'
+[5.081s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/orangepi/marco_ws/install/setup.zsh'
