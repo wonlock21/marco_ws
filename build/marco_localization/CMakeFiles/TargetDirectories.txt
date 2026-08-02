@@ -1,9 +1,0 @@
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/uninstall.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/marco_localization_uninstall.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/test.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/edit_cache.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/rebuild_cache.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/list_install_components.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/install.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/install/local.dir
-/home/orangepi/marco_ws/build/marco_localization/CMakeFiles/install/strip.dir

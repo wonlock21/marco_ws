@@ -1,8 +1,0 @@
-[0.122s] DEBUG:colcon:Command line arguments: ['/usr/bin/colcon', 'test-result', '--all', '--verbose']
-[0.122s] DEBUG:colcon:Parsed command line arguments: Namespace(log_base=None, log_level=None, verb_name='test-result', test_result_base='build', all=True, result_files_only=False, verbose=True, delete=False, delete_yes=False, verb_parser=<colcon_defaults.argument_parser.defaults.DefaultArgumentsDecorator object at 0x7fafb11d80>, verb_extension=<colcon_test_result.verb.test_result.TestResultVerb object at 0x7fafcb2500>, main=<bound method TestResultVerb.main of <colcon_test_result.verb.test_result.TestResultVerb object at 0x7fafcb2500>>)
-[0.139s] Level 1:colcon.colcon_test_result.test_result:get_test_results(ctest)
-[0.154s] Level 1:colcon.colcon_test_result.test_result:get_test_results(xunit)
-[0.156s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/marco_base/package.xml': the root tag is neither 'testsuite' nor 'testsuites'
-[0.157s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/marco_docking/package.xml': the root tag is neither 'testsuite' nor 'testsuites'
-[0.158s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/marco_mission/package.xml': the root tag is neither 'testsuite' nor 'testsuites'
-[0.164s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/marco_perception/package.xml': the root tag is neither 'testsuite' nor 'testsuites'

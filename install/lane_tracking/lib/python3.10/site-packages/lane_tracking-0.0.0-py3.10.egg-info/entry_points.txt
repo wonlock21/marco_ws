@@ -1,4 +1,0 @@
-[console_scripts]
-controller = lane_tracking.controller:main
-trackerfinal = lane_tracking.trackerfinal:main
-

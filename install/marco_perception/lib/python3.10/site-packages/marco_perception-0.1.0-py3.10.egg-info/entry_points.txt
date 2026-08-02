@@ -1,3 +1,0 @@
-[console_scripts]
-mock_lane_qr = marco_perception.mock_lane_qr:main
-

@@ -1,4 +1,0 @@
-# Gorev bitince PLC'ye bildir.
-string task_id
-bool success
-string message

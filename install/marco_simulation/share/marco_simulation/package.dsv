@@ -1,8 +1,0 @@
-source;share/marco_simulation/hook/cmake_prefix_path.ps1
-source;share/marco_simulation/hook/cmake_prefix_path.dsv
-source;share/marco_simulation/hook/cmake_prefix_path.sh
-source;share/marco_simulation/local_setup.bash
-source;share/marco_simulation/local_setup.dsv
-source;share/marco_simulation/local_setup.ps1
-source;share/marco_simulation/local_setup.sh
-source;share/marco_simulation/local_setup.zsh
