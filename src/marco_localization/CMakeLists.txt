@@ -10,6 +10,7 @@ install(DIRECTORY config launch
 # Betikler lib/ altina kurulur; ros2 run yalnizca orayi arar.
 install(PROGRAMS
   scripts/odometry_check.py
+  scripts/odometry_paths.py
   scripts/harita_kaydet.sh
   scripts/baslangic_poz.sh
   scripts/amcl_poz_kaydet.py

@@ -1,0 +1,89 @@
+Panels:
+  - Class: rviz_common/Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Description Topic: /robot_description
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+    - Class: rviz_default_plugins/Odometry
+      Name: Ham Odometri (kirmizi)
+      Enabled: true
+      Topic: {Value: /odom}
+      Color: 255; 0; 0
+      Keep: 100
+    - Class: rviz_default_plugins/Odometry
+      Name: EKF Odometri (mavi)
+      Enabled: true
+      Topic: {Value: /odometry/filtered}
+      Color: 0; 80; 255
+      Keep: 100
+    - Class: rviz_default_plugins/Odometry
+      Name: Ground Truth (yesil)
+      Enabled: true
+      Topic: {Value: /base/ground_truth}
+      Color: 0; 255; 0
+      Keep: 100
+    - Class: rviz_default_plugins/Path
+      Name: Ham Path (kirmizi)
+      Enabled: true
+      Topic:
+        Value: /phase3/path/raw
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Color: 255; 0; 0
+      Line Style: Lines
+      Line Width: 0.04
+    - Class: rviz_default_plugins/Path
+      Name: EKF Path (mavi)
+      Enabled: true
+      Topic:
+        Value: /phase3/path/filtered
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Color: 0; 80; 255
+      Line Style: Lines
+      Line Width: 0.04
+    - Class: rviz_default_plugins/Path
+      Name: Ground Truth Path (yesil)
+      Enabled: true
+      Topic:
+        Value: /phase3/path/ground_truth
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Color: 0; 255; 0
+      Line Style: Lines
+      Line Width: 0.04
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: odom
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 18
+      Pitch: 0.75
+      Yaw: 0.75
+Window Geometry:
+  Height: 900
+  Width: 1400

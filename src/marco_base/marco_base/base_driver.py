@@ -180,6 +180,10 @@ class BaseDriver(Node):
     # ------------------------------------------------------------------ komut yolu
 
     def _on_cmd_vel(self, msg: Twist) -> None:
+        if not math.isfinite(msg.linear.x) or not math.isfinite(msg.angular.z):
+            self.get_logger().error("NaN/Inf /cmd_vel reddedildi; guvenli durus uygulanıyor")
+            self._target = (0.0, 0.0)
+            return
         self._target = twist_to_wheel_speeds(
             linear=msg.linear.x,
             angular=msg.angular.z,
@@ -317,6 +321,14 @@ class BaseDriver(Node):
     def _publish_odometry(self, stamp) -> None:
         state = self.odometry.state
 
+        values = (
+            state.x, state.y, state.theta,
+            state.linear_velocity, state.angular_velocity,
+        )
+        if not all(math.isfinite(value) for value in values):
+            self.get_logger().error("NaN/Inf odometri durumu reddedildi")
+            return
+
         msg = Odometry()
         msg.header.stamp = stamp
         msg.header.frame_id = self.odom_frame
@@ -345,10 +357,9 @@ class BaseDriver(Node):
     def _fill_covariance(self, msg: Odometry) -> None:
         """Kovaryansi anlik harekete gore olceklendirir.
 
-        robot_localization bu odometriyi `odom0_differential: true` ile
-        tuketecegi icin onemli olan ardisik iki poz arasindaki farkin
-        belirsizligidir, mutlak pozun degil. Bu yuzden kovaryans kat edilen
-        mesafe ve donulen aciyla buyur; robot durdugunda kuculur.
+        EKF mutlak pose'u degil encoderdan hesaplanan vx/vyaw alanlarini
+        tuketir. Bu yuzden twist kovaryansi anlik hizla olceklenir; robot
+        durdugunda olcum belirsizligi taban degerine iner.
         """
         linear_ratio = self.get_parameter("linear_noise_ratio").value
         angular_ratio = self.get_parameter("angular_noise_ratio").value
@@ -397,7 +408,10 @@ class BaseDriver(Node):
 
     def destroy_node(self) -> bool:
         try:
-            self._transport.write(p.encode_wheel_velocity(0, 0, False))
+            # UART tamponu/tek-kare kaybi ihtimaline karsi kapanista birden
+            # fazla devre-disinda sifir komutu gonderilir.
+            for _ in range(5):
+                self._transport.write(p.encode_wheel_velocity(0, 0, False))
             self._transport.close()
         except OSError:
             pass

@@ -449,7 +449,7 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
 - **Faz 2'nin tamamı**, Faz 2B maddeleri gerçek çalıştırma kanıtıyla doğrulanmadan ✅
   sayılmayacak.
 
-### Faz 3 — Odometri ve EKF 🟡 sahte donanım/boru (26.07)
+### Faz 3 — Odometri ve EKF 🟡 sahte donanım/boru (02.08.2026)
 - ✅ `marco_base`: STM32 UART köprüsü. Sürücü yalnızca soyut bir `Transport` arayüzüne
   bağlı; gerçek seri port ile yazılım taklidi arasındaki geçiş tek parametre
   (`sahte:=true`). Böylece navigasyon geliştirmesi firmware'i beklemiyor.
@@ -464,14 +464,41 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
   hatası enjekte edildiğinde araç düzeltmeyi 0.06 mm yaklaşıklıkla buldu.
 - ✅ `robot_localization` EKF konfigürasyonu, IMU girdisi launch argümanıyla
   anahtarlanabilir (`imu:=true` → `ekf_imu.yaml` + madgwick). Odometri kovaryansı
-  hıza göre ölçekleniyor; EKF `odom0_differential: true` ile tüketiyor.
+  hıza göre ölçekleniyor. Encoder girdisinden yalnız `vx` ve pose `yaw` füze
+  ediliyor; `vyaw` kapalı olduğundan aynı yaw bilgisi pose+twist olarak iki kez
+  sayılmıyor. `odom0_differential: false`.
   Çıktı: `/odometry/filtered` (Nav2 bunu kullanır).
 - **Kabul:** 10 m düz sürüşte konum hatası < %2; 360° dönüş sonrası yaw hatası < 5°
-- **Durum:** sahte donanımda düz 2 m'de odometri↔gerçek farkı 0.2 mm, kare kapanma
-  1.3 mm, `/odom` 100 Hz. Ancak bunlar taklidin kendi tutarlılığını doğrular;
-  **kabul kriteri yalnızca gerçek donanımda anlamlı** (Faz 11).
+- ✅ Sahte STM32 nominal 10 m kabulü (02.08.2026): gerçek **10.0085 m**,
+  ham konum hatası **%0.003**, EKF son konum hatası **0.0073 m**, ham yanal
+  sapma **0.0000 m**. Bu yalnız taklit tutarlılığı kanıtıdır.
+- ✅ Sahte STM32 nominal 360° kabulü (02.08.2026): gerçek **360.584°**,
+  ham yaw hatası **0.041°**, EKF yaw hatası **4.543°**.
+- ✅ RViz yükü performans düzeltmesi (02.08.2026): büyüyen Path mesajı metrik
+  callback'inden çıkarılıp ayrı `odometry_paths.py` process'ine alındı. İzler
+  hareket eşiğiyle en çok 10 Hz örnekleniyor, 500 noktayla sınırlı ve 2 Hz,
+  best-effort/depth 1 yayımlanıyor. Robot durduktan sonra 2 s EKF settle var.
+  Üç headless koşuda EKF birikimli/son yaw hatası **0.028–0.091°**, üç RViz
+  koşusunda **0.045–0.046°**; altı koşunun tamamı PASS. `odom0_queue_size=10`
+  korundu: ölçülen timestamp yaşları milisaniye düzeyinde ve kuyruk taşması
+  kanıtı yok. Bu sonuç encoder yaw'ının EKF'de korunmasıdır; bağımsız sensörle
+  doğruluk iyileşmesi iddiası değildir.
+- ✅ EKF topic/TF/rate kabulü: `/odom` **100.000 Hz**, ground truth
+  **100.014 Hz**, `/odometry/filtered` **50.001 Hz**; `odom → base_footprint`
+  sürücüde kapalı ve EKF tarafından yayınlanıyor. Frame değerleri ve sonluluk
+  kabul aracınca doğrulandı.
+- ✅ Hata enjeksiyonu algılandı: iki tekere `%5` ölçek hatasında 10 m ham hata
+  **%4.997 FAIL**; gerçek wheel separation `0.520 m` iken 360° ham yaw hatası
+  **41.582° FAIL**, önerilen değer **0.51997 m**.
+- 🟡 `fake_imu.py` ile IMU boru/smoke testi: `/imu/data_raw → /imu/data → EKF`
+  50 Hz, `imu_link` ve sonlu/anlamlı kovaryanslar doğrulandı. Sahte IMU bağımsız
+  doğruluk kanıtı değildir; gerçek IMU kabulü yapılmadı.
+- **Genel durum: 🟡.** Sahte donanım kabul aracı ve boru başarılıdır; bu sonuçlar
+  gerçek araç/encoder/zemin kalibrasyonu sonucu gibi yorumlanamaz.
 
 - ⬜ `sahte:=false` ile gerçek seri port ve iki STM32 firmware uyumu kabul edilecek
+- ⬜ Gerçek encoder ile 10 m/360° saha testi ve wheel radius/separation kalibrasyonu
+- ⬜ Gerçek, bağımsız IMU ile füzyon doğruluğu kabulü
 - ⬜ Lift komut action/service'i ve fork/limit/hata geri bildirimi `base_driver`a bağlanacak
 - ⬜ Seri kopma/yeniden bağlanma, topic freshness ve ayrıntılı fault/diagnostic yayını eklenecek
 
