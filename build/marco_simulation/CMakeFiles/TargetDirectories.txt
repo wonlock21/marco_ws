@@ -1,9 +1,0 @@
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/uninstall.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/marco_simulation_uninstall.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/test.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/edit_cache.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/rebuild_cache.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/list_install_components.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/install.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/install/local.dir
-/home/orangepi/marco_ws/build/marco_simulation/CMakeFiles/install/strip.dir

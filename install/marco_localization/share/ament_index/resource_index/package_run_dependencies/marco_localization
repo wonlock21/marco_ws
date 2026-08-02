@@ -1,1 +1,0 @@
-marco_bringup;marco_navigation;robot_localization;imu_filter_madgwick;slam_toolbox;nav2_amcl;nav2_map_server;nav2_lifecycle_manager;rviz2;python3-rclpy;python3-geometry-msgs;python3-nav-msgs

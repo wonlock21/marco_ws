@@ -1,9 +1,0 @@
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/uninstall.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/marco_bringup_uninstall.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/test.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/edit_cache.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/rebuild_cache.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/list_install_components.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/install.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/install/local.dir
-/home/orangepi/marco_ws/build/marco_bringup/CMakeFiles/install/strip.dir
