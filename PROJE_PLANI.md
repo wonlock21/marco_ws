@@ -197,16 +197,17 @@ Raporda URDF, TF veya Gazebo geçmiyor. Bunlar Nav2 ve SLAM'in ön koşulu.
 
 **Karar:** Faz 1 ve 2'de sıfırdan kurulacak.
 
-### 4.10 Simülatör kararı verildi, uygulama henüz yok
+### 4.10 Simülatör kararı ve Faz 2 uygulaması — 02.08.2026
 
 `ros-humble-gazebo-ros-pkgs` aarch64 için paketlenmemiş. Ayrıca bu kartta OpenGL
 `llvmpipe` üzerinden, yani tamamen yazılımsal çalışıyor (panfrost yüklü değil).
 
 **Karar:** Gazebo/`ros_gz` simülasyonu kullanıcının x86 bilgisayarındaki **WSL2 + Ubuntu
 22.04** üzerinde çalıştırılacak; Orange Pi yalnızca gerçek-araç çalışma zamanı ve hafif
-donanım testleri için kullanılacak. Ancak `marco_simulation` şu anda yalnız boş klasörleri
-kuran bir paket iskeleti; dünya, robot eklentileri, sensörler, köprü ve launch dosyası yok.
-Bu nedenle Faz 2 bloke değil, **uygulanmamış** durumdadır.
+donanım testleri için kullanılacak. `marco_simulation`, Gazebo Fortress dünyası,
+diferansiyel sürüş, 2D LiDAR, ön kamera, `ros_gz_bridge`, RViz yapılandırması ve görsel
+otomatik sürüş testiyle uygulandı. WSLg'nin Ogre2/D3D12 `copyTo` hatası nedeniyle Gazebo
+sunucusu ve isteğe bağlı GUI yazılım renderer ile, RViz ise normal OpenGL ile çalıştırılıyor.
 
 ### 4.11 PDR ROS yazılımı eksik analizi — 02.08.2026
 
@@ -236,7 +237,7 @@ arayüz, mock veya masa borusu var · ⬜ = gerçek uygulama/entegrasyon yok.
 | Manuel kontrol ve fiziksel mod kilidi | 🟡 `twist_mux` girişi/kilidi var | GUI joystick ve lift komutları gerçek zincire bağlanmalı; fiziksel anahtarın “manuelde hangi ROS komutları geçer?” semantiği STM32 ile netleştirilip test edilmeli. Otomatik/docking komutları manuel modda ilerlememeli. |
 | Batarya ve otonom şarj | 🟡 `/base/battery` telemetrisi var | Görev yöneticisi batarya eşiğini tüketmeli; görev kabul/bitirme politikası, şarj düğümüne rota, docking, fiziksel temas ve şarj başladı/bitti protokolü uygulanmalı. Yalnız Nav2 BT eklentisinin listede bulunması işlev değildir. |
 | STM32 gerçek entegrasyonu | 🟡 Protokol, seri transport ve sahte STM32 testleri var | Gerçek iki STM32 topolojisi/portları, firmware mesaj uyumu, motor PID, encoder yönü/ölçeği, lift ve tüm hata bayrakları donanımda doğrulanmalı; seri bağlantı kopması/yeniden bağlanma ve topic freshness tanıları eklenmeli. |
-| Gazebo/WSL2 simülasyonu | ⬜ Paket iskeleti boş | Parkur dünyası, diferansiyel sürüş, LiDAR/kamera/encoder, palet/kapı, `ros_gz_bridge`, tek launch ve otomatik senaryo testleri oluşturulmalı. |
+| Gazebo/WSL2 simülasyonu | ✅ Faz 2 çalışır (02.08) | Fortress dünya, diferansiyel sürüş, LiDAR/kamera, `ros_gz_bridge`, tek launch, RViz ve tekrar çalıştırılabilir otomatik sürüş testi doğrulandı. Yarışma parkurunun tam 3+3 istasyon/palet/kapı ayrıntıları sonraki kapsamdır. |
 | Test ve kabul kanıtı | 🟡 İşlevsel otomatik testler ağırlıkla `marco_base` içinde | Mission, docking, safety, route ve entegrasyon için unit/launch testleri eklenmeli. PDR §6.6'daki gerçek araç iddiaları rosbag, tarihli metrik ve saha test sonucu olmadan tamamlandı sayılmamalı. |
 
 **Tamamlandı sayma kuralı:** Bir PDR maddesi ancak (1) gerçek ROS bağlantısı, (2) hata
@@ -337,7 +338,7 @@ Hız komutu `/cmd_vel_dock` üzerinden `twist_mux`'a Nav2'den yüksek öncelikle
 ├── ◆ marco_navigation/    # nav2 parametreleri, davranış ağaçları, rota grafı, haritalar
 ├── ◆ marco_docking/       # hassas yanaşma kontrolcüsü (action server)
 ├── ◆ marco_safety/        # twist_mux, collision monitor, e-stop mantığı
-├── ◆ marco_simulation/    # BOŞ iskelet; dünya/eklenti/launch henüz yok
+├── ◆ marco_simulation/    # Fortress dünya, eklentiler, köprü, RViz ve test launch'ı
 ├── ◇ marco_perception/    # şerit sapması + QR pozu — mock yayıncı bizden, gerçeği onlardan
 └── ◇ marco_mission/       # görev durum makinesi, PLC arayüzü — mock bizden
 ```
@@ -380,7 +381,7 @@ uçtan uca kabul edilmesidir.
 
 | Konu | Kime sorulacak | Neden önemli | Durum (02.08) |
 |---|---|---|---|
-| Simülatör çalışma yeri | Kullanıcı | Faz 2 | ✅ WSL2 + Ubuntu 22.04 kararı verildi; uygulama ⬜ |
+| Simülatör çalışma yeri | Kullanıcı | Faz 2 | ✅ WSL2 + Ubuntu 22.04 üzerinde Fortress/ros_gz uygulandı ve test edildi |
 | Encoder redüktör öncesi mi sonrası mı? | Elektronik ekibi | Odometri katsayısı | ⬜ açık |
 | Gerçek iki STM32'nin görev/port topolojisi | Elektronik ekibi | Sürücü, lift ve hata yönetimi | ⬜ açık |
 | Tekerlek ekseni arası mesafe (wheel separation) | Mekanik ekibi | Açısal odometri | ✅ CAD ≈0.460 m; sahada kalibre edilecek |
@@ -420,11 +421,21 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
 - **Kabul:** RViz2'de model doğru görünüyor, `ros2 run tf2_tools view_frames` ağacı kopuksuz
 - CAD ile `wheel_separation`≈0.460 m ve ayak izi poligonu güncellendi; ileri = gövde (+x)
 
-### Faz 2 — Simülasyon ortamı ⬜ UYGULANMADI
-- Şartnamedeki parkura benzer dünya: koridorlar, 3 alma + 3 bırakma noktası, kapı, palet
-- Diferansiyel sürüş, 2D lidar, kamera eklentileri
-- **Kabul:** `/scan`, `/odom`, `/camera/image_raw` yayınlanıyor; teleop ile araç sürülebiliyor
-- *(WSL2 + Ubuntu 22.04 kararı verildi; `marco_simulation` dünya/eklenti/launch uygulanacak.)*
+### Faz 2 — Simülasyon ortamı ✅ (02.08.2026)
+- ✅ Hafif test dünyası: zemin, dört duvar, LiDAR engelleri ve renkli kamera hedefleri
+- ✅ Gazebo Fortress diferansiyel sürüş, 2D LiDAR ve ön kamera eklentileri
+- ✅ `/clock`, `/cmd_vel`, `/odom`, `/scan`, `/camera/image_raw`,
+  `/camera/camera_info`, `/tf`, `/tf_static` ve `/robot_description` doğrulandı
+- ✅ Teknik test: odom ≈43.7 Hz, LiDAR ≈9.0 Hz (430/430 geçerli ölçüm), kamera
+  ≈13.1 Hz ve 640×480 RGB8/921600 bayt
+- ✅ 5 saniyelik manuel sürüşte odometri yaklaşık (0.000, 0.000) → (1.037, 0.599);
+  otomatik görsel rotada (0.000, 0.000) → (1.413, 0.649), son Twist sıfır
+- ✅ TF zinciri `odom → base_footprint → base_link → laser_link/camera_front_link`;
+  `odom → base_footprint` için tek yayıncı doğrulandı
+- ✅ Gazebo GUI yazılım renderer ile, RViz normal OpenGL 4.2 ile açıldı; RobotModel,
+  TF, LaserScan, Odometry ve kamera display'leri yapılandırmadan yüklendi
+- Not: Bu Faz 2 kabul dünyası hafif sensör/sürüş parkurudur; şartnamedeki tam 3 alma +
+  3 bırakma noktası, kapı ve palet senaryosunun ayrıntılandırılması sonraki iterasyondur.
 
 ### Faz 3 — Odometri ve EKF 🟡 sahte donanım/boru (26.07)
 - ✅ `marco_base`: STM32 UART köprüsü. Sürücü yalnızca soyut bir `Transport` arayüzüne

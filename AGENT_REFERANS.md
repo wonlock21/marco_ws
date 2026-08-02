@@ -35,7 +35,7 @@ Videoda bize düşen tek madde: **haritalama gösterimi**.
 - OrangePi'de `/dev/ttyUSB*`, `/dev/ttyACM*` YOK; lsusb'de LiDAR/seri dönüştürücü YOK
 - `/dev/video*` yalnızca donanım codec (video-dec0/enc0) → kamera yok
 - PDR sonucu: **100 puan**, video aşamasındayız
-- Sim kararı: **WSL2 + Ubuntu 22.04 kullanıcının PC'sinde** (RTX 5070 + Radeon 610M)
+- Sim: **WSL2 + Ubuntu 22.04 kullanıcının PC'sinde**; Fortress/ros_gz Faz 2 testi ✅ 02.08
 
 ## ORTAM
 - OrangePi 5 Plus, RK3588 aarch64, Ubuntu 22.04.5, 8 core, 7.7GB RAM, 48GB boş
@@ -50,7 +50,7 @@ Videoda bize düşen tek madde: **haritalama gösterimi**.
 - ARM64'te YOK: `ros-humble-gazebo-ros-pkgs`, `gazebo11` → Gazebo Classic imkânsız
 - VAR: `ros-humble-ros-gz` 0.244.25 + `ignition-fortress` (Fortress eşi)
 - OpenGL = **llvmpipe** (yazılımsal, panfrost yok) → sim çok yavaş olacak
-- Workspace: `~/marco_ws` — src BOŞ, henüz hiç paket yok
+- Workspace: `~/marco_ws` — 11 paket; `marco_simulation` Fortress ortamı uygulanmış
 
 ## SERT SAYILAR
 | | |
@@ -109,7 +109,7 @@ camera_rear_link, left/right_wheel_link, caster_*_link ×4, fork_link(prizmatik)
 |---|---|---|---|
 | 0 | Paket kurulumu + workspace iskeleti | temiz `colcon build`, 11 paket | ✅ 26.07 |
 | 1 | URDF/xacro + TF | RViz'de model doğru, TF kopuksuz | ✅ 26.07 |
-| 2 | Simülasyon dünyası | /scan /odom /image yayınlanıyor | ⬜ BLOKE |
+| 2 | Simülasyon dünyası | /scan /odom /image yayınlanıyor | ✅ 02.08 |
 | 3 | Odometri + EKF + kalibrasyon | 10m'de <%2, 360°'de yaw <5° | ✅ 26.07 |
 | 4 | slam_toolbox haritalama | harita çıkıyor+kaydediliyor | ✅ 29.07 |
 | 5 | AMCL lokalizasyon | 5dk sürüşte <5cm, <3° | ✅ boru 29.07¹ |
@@ -507,7 +507,7 @@ gerekiyor ve şerit takibi arka kameradan yapılacak.
 ama ayak izi bu çıkıntıyı içermek zorunda.
 
 ## AÇIK SORULAR (cevap gelince buraya yaz)
-- [ ] **Simülatör kararı** → Faz 2 bloke
+- [x] ~~Simülatör kararı~~ → WSL2 Ubuntu 22.04 + Gazebo Fortress/ros_gz; Faz 2 doğrulandı 02.08
 - [ ] Encoder redüktör öncesi mi sonrası mı? → tick katsayısı
 - [x] ~~Wheel separation~~ → **0.460 m**, CAD'den ölçüldü 28.07 (tahmin 0.520 hatalıydı)
 - [x] ~~`base_link` orijini~~ → tahrik aksı ortası, CAD z=1171.95 (şasinin tam ortası)

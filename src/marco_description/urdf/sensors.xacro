@@ -24,13 +24,16 @@
   </joint>
 
   <link name="laser_link">
-    <visual>
-      <geometry><cylinder radius="0.019" length="0.033"/></geometry>
-      <material name="marco_sensor"/>
-    </visual>
-    <collision>
-      <geometry><cylinder radius="0.019" length="0.033"/></geometry>
-    </collision>
+    <!-- GPU lidar would see its own housing at range_min in simulation. -->
+    <xacro:unless value="$(arg use_sim)">
+      <visual>
+        <geometry><cylinder radius="0.019" length="0.033"/></geometry>
+        <material name="marco_sensor"/>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="0.019" length="0.033"/></geometry>
+      </collision>
+    </xacro:unless>
     <xacro:box_inertia m="0.05" x="0.038" y="0.038" z="0.033"/>
   </link>
 
