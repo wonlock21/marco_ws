@@ -4,13 +4,15 @@
 # Kullanim: ros2 launch marco_localization localization.launch.py
 #          (imu:=false varsayilan)
 #
-# NEDEN SADECE TWIST FUZE EDILiYOR (POSE DEGiL)?
-# -----------------------------------------------
+# NEDEN YAW POSE + VX FUZE EDILIYOR?
+# ----------------------------------
 # Odometri /odom topiginde hem mutlak poz (x,y,theta) hem de gövde hizlarini
 # (vx, vyaw) yayinlar. Bu hizlar encoder'dan dogrudan geliyor; poz ise onlarin
-# integrasyonu. Eger EKF mutlak pozu fuze ederse, encoder hatasinin birikmis
-# formuyla da ilgilenmis olur. Bunun yerine hizlari verip integrasyonu EKF'e
-# birakiyoruz: temiz olcum, temiz durum kestirimi.
+# integrasyonu. Duz hareket icin yalniz vx kullanilir. Yaw hizi ise EKF'in
+# baslangic/bitis gecislerinde yumusatildiginda tam donusun alanini 5-7 derece
+# eksik butunledigi ardışık kabul kosularinda olculdu. Bu nedenle yaw icin
+# surucunun tam yay integrasyonuyla urettigi pose yaw kullanilir; vyaw ayni anda
+# fuze edilmez. Boylece ayni encoder bilgisi pose+twist olarak cift sayilmaz.
 # Uzun vadeli konumsal sapma EKF'in degil AMCL'in sorunudur.
 #
 # KOVARYANS UYUMU:
@@ -40,13 +42,12 @@ ekf_filter_node:
     # --- Girdi 0: tekerlek odometrisi ---
     odom0: /odom
     # Durum vektoru siralama: x y z roll pitch yaw vx vy vz vroll vpitch vyaw ax ay az
-    # Fuze edilenler: vx (6) ve vyaw (11).
-    # x,y,yaw mutlak pozu FUZE EDILMIYOR: uzun vadeli drift AMCL duzeltir,
-    # burada EKF'i o birikimli hatayla kirletmeye gerek yok.
+    # Fuze edilenler: yaw (5) ve vx (6). vyaw false: yaw ile ayni encoder
+    # bilgisini ikinci kez ve asiri guvenle fuze etmiyoruz.
     odom0_config: [false, false, false,  # x, y, z
-                   false, false, false,  # roll, pitch, yaw
+                   false, false, true,   # roll, pitch, yaw
                    true,  false, false,  # vx, vy, vz
-                   false, false, true,   # vroll, vpitch, vyaw
+                   false, false, false,  # vroll, vpitch, vyaw
                    false, false, false]  # ax, ay, az
     # differential: false — zaten hiz olcumu, farklilastirmaya gerek yok.
     odom0_differential: false

@@ -197,7 +197,7 @@ Raporda URDF, TF veya Gazebo geçmiyor. Bunlar Nav2 ve SLAM'in ön koşulu.
 
 **Karar:** Faz 1 ve 2'de sıfırdan kurulacak.
 
-### 4.10 Simülatör kararı ve Faz 2 uygulaması — 02.08.2026
+### 4.10 Simülatör kararı ve Faz 2A temel uygulaması — 02.08.2026
 
 `ros-humble-gazebo-ros-pkgs` aarch64 için paketlenmemiş. Ayrıca bu kartta OpenGL
 `llvmpipe` üzerinden, yani tamamen yazılımsal çalışıyor (panfrost yüklü değil).
@@ -237,7 +237,7 @@ arayüz, mock veya masa borusu var · ⬜ = gerçek uygulama/entegrasyon yok.
 | Manuel kontrol ve fiziksel mod kilidi | 🟡 `twist_mux` girişi/kilidi var | GUI joystick ve lift komutları gerçek zincire bağlanmalı; fiziksel anahtarın “manuelde hangi ROS komutları geçer?” semantiği STM32 ile netleştirilip test edilmeli. Otomatik/docking komutları manuel modda ilerlememeli. |
 | Batarya ve otonom şarj | 🟡 `/base/battery` telemetrisi var | Görev yöneticisi batarya eşiğini tüketmeli; görev kabul/bitirme politikası, şarj düğümüne rota, docking, fiziksel temas ve şarj başladı/bitti protokolü uygulanmalı. Yalnız Nav2 BT eklentisinin listede bulunması işlev değildir. |
 | STM32 gerçek entegrasyonu | 🟡 Protokol, seri transport ve sahte STM32 testleri var | Gerçek iki STM32 topolojisi/portları, firmware mesaj uyumu, motor PID, encoder yönü/ölçeği, lift ve tüm hata bayrakları donanımda doğrulanmalı; seri bağlantı kopması/yeniden bağlanma ve topic freshness tanıları eklenmeli. |
-| Gazebo/WSL2 simülasyonu | ✅ Faz 2 çalışır (02.08) | Fortress dünya, diferansiyel sürüş, LiDAR/kamera, `ros_gz_bridge`, tek launch, RViz ve tekrar çalıştırılabilir otomatik sürüş testi doğrulandı. Yarışma parkurunun tam 3+3 istasyon/palet/kapı ayrıntıları sonraki kapsamdır. |
+| Gazebo/WSL2 simülasyonu | 🟡 Faz 2A temel kabul tamam (02.08) | Fortress dünya, diferansiyel sürüş, LiDAR/kamera, `ros_gz_bridge`, tek launch, RViz ve tekrar çalıştırılabilir otomatik sürüş testi doğrulandı. Faz 2B için yarışma parkurunun tam 3 alma + 3 bırakma istasyonu, koridorları, kapısı, paletleri ve görev senaryosu uygulanmalı. |
 | Test ve kabul kanıtı | 🟡 İşlevsel otomatik testler ağırlıkla `marco_base` içinde | Mission, docking, safety, route ve entegrasyon için unit/launch testleri eklenmeli. PDR §6.6'daki gerçek araç iddiaları rosbag, tarihli metrik ve saha test sonucu olmadan tamamlandı sayılmamalı. |
 
 **Tamamlandı sayma kuralı:** Bir PDR maddesi ancak (1) gerçek ROS bağlantısı, (2) hata
@@ -421,7 +421,10 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
 - **Kabul:** RViz2'de model doğru görünüyor, `ros2 run tf2_tools view_frames` ağacı kopuksuz
 - CAD ile `wheel_separation`≈0.460 m ve ayak izi poligonu güncellendi; ileri = gövde (+x)
 
-### Faz 2 — Simülasyon ortamı ✅ (02.08.2026)
+### Faz 2 — Simülasyon ortamı 🟡 TEMEL KABUL TAMAM, TAM PARKUR EKSİK
+
+#### Faz 2A — Temel Gazebo/RViz ve sensör kabulü ✅ (02.08.2026)
+
 - ✅ Hafif test dünyası: zemin, dört duvar, LiDAR engelleri ve renkli kamera hedefleri
 - ✅ Gazebo Fortress diferansiyel sürüş, 2D LiDAR ve ön kamera eklentileri
 - ✅ `/clock`, `/cmd_vel`, `/odom`, `/scan`, `/camera/image_raw`,
@@ -434,10 +437,19 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
   `odom → base_footprint` için tek yayıncı doğrulandı
 - ✅ Gazebo GUI yazılım renderer ile, RViz normal OpenGL 4.2 ile açıldı; RobotModel,
   TF, LaserScan, Odometry ve kamera display'leri yapılandırmadan yüklendi
-- Not: Bu Faz 2 kabul dünyası hafif sensör/sürüş parkurudur; şartnamedeki tam 3 alma +
-  3 bırakma noktası, kapı ve palet senaryosunun ayrıntılandırılması sonraki iterasyondur.
 
-### Faz 3 — Odometri ve EKF 🟡 sahte donanım/boru (26.07)
+#### Faz 2B — Şartnameye uygun yarışma parkuru ve senaryo ⬜
+
+- ⬜ Şartnamedeki koridor geometrisini ve çalışma alanını dünyaya ekle
+- ⬜ Üç alma ve üç bırakma istasyonunu doğru konum/ölçülerle modelle
+- ⬜ Kapı, paletler ve istasyonların LiDAR/kamera tarafından algılanabilir görsellerini
+  ve çarpışma geometrilerini ekle
+- ⬜ Alma → taşıma → bırakma akışını sınayan tekrar çalıştırılabilir görev senaryosu ekle
+- ⬜ Parkurda sensör görünürlüğünü, çarpışmasız sürüşü ve istasyon erişimini kanıtla
+- **Faz 2'nin tamamı**, Faz 2B maddeleri gerçek çalıştırma kanıtıyla doğrulanmadan ✅
+  sayılmayacak.
+
+### Faz 3 — Odometri ve EKF 🟡 sahte donanım/boru (02.08.2026)
 - ✅ `marco_base`: STM32 UART köprüsü. Sürücü yalnızca soyut bir `Transport` arayüzüne
   bağlı; gerçek seri port ile yazılım taklidi arasındaki geçiş tek parametre
   (`sahte:=true`). Böylece navigasyon geliştirmesi firmware'i beklemiyor.
@@ -452,14 +464,41 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
   hatası enjekte edildiğinde araç düzeltmeyi 0.06 mm yaklaşıklıkla buldu.
 - ✅ `robot_localization` EKF konfigürasyonu, IMU girdisi launch argümanıyla
   anahtarlanabilir (`imu:=true` → `ekf_imu.yaml` + madgwick). Odometri kovaryansı
-  hıza göre ölçekleniyor; EKF `odom0_differential: true` ile tüketiyor.
+  hıza göre ölçekleniyor. Encoder girdisinden yalnız `vx` ve pose `yaw` füze
+  ediliyor; `vyaw` kapalı olduğundan aynı yaw bilgisi pose+twist olarak iki kez
+  sayılmıyor. `odom0_differential: false`.
   Çıktı: `/odometry/filtered` (Nav2 bunu kullanır).
 - **Kabul:** 10 m düz sürüşte konum hatası < %2; 360° dönüş sonrası yaw hatası < 5°
-- **Durum:** sahte donanımda düz 2 m'de odometri↔gerçek farkı 0.2 mm, kare kapanma
-  1.3 mm, `/odom` 100 Hz. Ancak bunlar taklidin kendi tutarlılığını doğrular;
-  **kabul kriteri yalnızca gerçek donanımda anlamlı** (Faz 11).
+- ✅ Sahte STM32 nominal 10 m kabulü (02.08.2026): gerçek **10.0085 m**,
+  ham konum hatası **%0.003**, EKF son konum hatası **0.0073 m**, ham yanal
+  sapma **0.0000 m**. Bu yalnız taklit tutarlılığı kanıtıdır.
+- ✅ Sahte STM32 nominal 360° kabulü (02.08.2026): gerçek **360.584°**,
+  ham yaw hatası **0.041°**, EKF yaw hatası **4.543°**.
+- ✅ RViz yükü performans düzeltmesi (02.08.2026): büyüyen Path mesajı metrik
+  callback'inden çıkarılıp ayrı `odometry_paths.py` process'ine alındı. İzler
+  hareket eşiğiyle en çok 10 Hz örnekleniyor, 500 noktayla sınırlı ve 2 Hz,
+  best-effort/depth 1 yayımlanıyor. Robot durduktan sonra 2 s EKF settle var.
+  Üç headless koşuda EKF birikimli/son yaw hatası **0.028–0.091°**, üç RViz
+  koşusunda **0.045–0.046°**; altı koşunun tamamı PASS. `odom0_queue_size=10`
+  korundu: ölçülen timestamp yaşları milisaniye düzeyinde ve kuyruk taşması
+  kanıtı yok. Bu sonuç encoder yaw'ının EKF'de korunmasıdır; bağımsız sensörle
+  doğruluk iyileşmesi iddiası değildir.
+- ✅ EKF topic/TF/rate kabulü: `/odom` **100.000 Hz**, ground truth
+  **100.014 Hz**, `/odometry/filtered` **50.001 Hz**; `odom → base_footprint`
+  sürücüde kapalı ve EKF tarafından yayınlanıyor. Frame değerleri ve sonluluk
+  kabul aracınca doğrulandı.
+- ✅ Hata enjeksiyonu algılandı: iki tekere `%5` ölçek hatasında 10 m ham hata
+  **%4.997 FAIL**; gerçek wheel separation `0.520 m` iken 360° ham yaw hatası
+  **41.582° FAIL**, önerilen değer **0.51997 m**.
+- 🟡 `fake_imu.py` ile IMU boru/smoke testi: `/imu/data_raw → /imu/data → EKF`
+  50 Hz, `imu_link` ve sonlu/anlamlı kovaryanslar doğrulandı. Sahte IMU bağımsız
+  doğruluk kanıtı değildir; gerçek IMU kabulü yapılmadı.
+- **Genel durum: 🟡.** Sahte donanım kabul aracı ve boru başarılıdır; bu sonuçlar
+  gerçek araç/encoder/zemin kalibrasyonu sonucu gibi yorumlanamaz.
 
 - ⬜ `sahte:=false` ile gerçek seri port ve iki STM32 firmware uyumu kabul edilecek
+- ⬜ Gerçek encoder ile 10 m/360° saha testi ve wheel radius/separation kalibrasyonu
+- ⬜ Gerçek, bağımsız IMU ile füzyon doğruluğu kabulü
 - ⬜ Lift komut action/service'i ve fork/limit/hata geri bildirimi `base_driver`a bağlanacak
 - ⬜ Seri kopma/yeniden bağlanma, topic freshness ve ayrıntılı fault/diagnostic yayını eklenecek
 

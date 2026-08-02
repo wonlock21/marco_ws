@@ -42,6 +42,10 @@ def generate_launch_description() -> LaunchDescription:
             default_value="/dev/marco_stm32",
             description="STM32 seri port yolu",
         ),
+        DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_separation_actual", default_value="0.0"),
     ]
 
     driver = Node(
@@ -55,6 +59,16 @@ def generate_launch_description() -> LaunchDescription:
                 "use_fake_hardware": LaunchConfiguration("sahte"),
                 "publish_tf": LaunchConfiguration("tf"),
                 "serial_port": LaunchConfiguration("port"),
+                "fake_slip_factor": LaunchConfiguration("fake_slip_factor"),
+                "fake_wheel_scale_error_left": LaunchConfiguration(
+                    "fake_wheel_scale_error_left"
+                ),
+                "fake_wheel_scale_error_right": LaunchConfiguration(
+                    "fake_wheel_scale_error_right"
+                ),
+                "fake_wheel_separation_actual": LaunchConfiguration(
+                    "fake_wheel_separation_actual"
+                ),
             },
         ],
     )

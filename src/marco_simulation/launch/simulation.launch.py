@@ -10,14 +10,35 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
+def gazebo_environment(context, software_argument):
+    env = os.environ.copy()
+    software = LaunchConfiguration(software_argument).perform(context).lower() == 'true'
+    if software:
+        env['LIBGL_ALWAYS_SOFTWARE'] = '1'
+        env.pop('MESA_D3D12_DEFAULT_ADAPTER_NAME', None)
+    else:
+        env.pop('LIBGL_ALWAYS_SOFTWARE', None)
+        adapter = LaunchConfiguration('gazebo_gpu_adapter').perform(context)
+        if adapter:
+            env['MESA_D3D12_DEFAULT_ADAPTER_NAME'] = adapter
+        else:
+            env.pop('MESA_D3D12_DEFAULT_ADAPTER_NAME', None)
+    return env
+
+
+def gazebo_server(context, world):
+    return [ExecuteProcess(
+        cmd=['ign', 'gazebo', '-s', '-r', world], output='screen',
+        additional_env=gazebo_environment(context, 'software_gazebo_server')
+    )]
+
+
 def gazebo_gui(context):
     if LaunchConfiguration('gazebo_gui').perform(context).lower() != 'true':
         return []
-    env = os.environ.copy()
-    if LaunchConfiguration('software_gazebo_gui').perform(context).lower() == 'true':
-        env['LIBGL_ALWAYS_SOFTWARE'] = '1'
     return [TimerAction(period=3.0, actions=[ExecuteProcess(
-        cmd=['ign', 'gazebo', '-g'], output='screen', additional_env=env
+        cmd=['ign', 'gazebo', '-g'], output='screen',
+        additional_env=gazebo_environment(context, 'software_gazebo_gui')
     )])]
 
 
@@ -29,13 +50,6 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     robot_description = ParameterValue(Command(['xacro ', xacro_file]), value_type=str)
 
-    # Fortress Ogre2 crashes on WSLg's D3D12 texture-copy path. Sensors need
-    # Ogre2 (Ogre1 returns range_min for every GPU-lidar ray), so only Gazebo's
-    # rendering process uses llvmpipe. RViz keeps the normal WSLg renderer.
-    server_env = os.environ.copy()
-    server_env['LIBGL_ALWAYS_SOFTWARE'] = '1'
-    server = ExecuteProcess(cmd=['ign', 'gazebo', '-s', '-r', world],
-                            output='screen', additional_env=server_env)
     rsp = Node(package='robot_state_publisher', executable='robot_state_publisher',
                parameters=[{'robot_description': robot_description, 'use_sim_time': use_sim_time}],
                output='screen')
@@ -62,12 +76,28 @@ def generate_launch_description():
                  condition=IfCondition(LaunchConfiguration('visual_test')), output='screen')
 
     return LaunchDescription([
-        DeclareLaunchArgument('gazebo_gui', default_value='false'),
-        DeclareLaunchArgument('rviz', default_value='true'),
-        DeclareLaunchArgument('visual_test', default_value='false'),
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
-        DeclareLaunchArgument('software_gazebo_gui', default_value='false'),
-        server, rsp, bridge,
+        DeclareLaunchArgument(
+            'software_gazebo_server', default_value='false',
+            description='Use llvmpipe software rendering for the Gazebo server only.'),
+        DeclareLaunchArgument(
+            'software_gazebo_gui', default_value='false',
+            description='Use llvmpipe software rendering for the Gazebo GUI only.'),
+        DeclareLaunchArgument(
+            'gazebo_gpu_adapter', default_value='NVIDIA',
+            description='MESA D3D12 adapter name for GPU-mode Gazebo processes; empty disables it.'),
+        DeclareLaunchArgument(
+            'gazebo_gui', default_value='true',
+            description='Start the Gazebo graphical client.'),
+        DeclareLaunchArgument(
+            'rviz', default_value='true',
+            description='Start RViz with its normal inherited renderer environment.'),
+        DeclareLaunchArgument(
+            'visual_test', default_value='false',
+            description='Run the automatic visual driving route.'),
+        DeclareLaunchArgument(
+            'use_sim_time', default_value='true',
+            description='Use the Gazebo simulation clock in ROS nodes.'),
+        OpaqueFunction(function=gazebo_server, args=[world]), rsp, bridge,
         TimerAction(period=2.0, actions=[spawn]),
         TimerAction(period=4.0, actions=[rviz]),
         TimerAction(period=5.0, actions=[drive]),

@@ -24,6 +24,7 @@
   <exec_depend>python3-rclpy</exec_depend>
   <exec_depend>python3-geometry-msgs</exec_depend>
   <exec_depend>python3-nav-msgs</exec_depend>
+  <exec_depend>tf2_ros_py</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
