@@ -1,0 +1,8 @@
+# PLC'den (veya mock'tan) gorev iste.
+# Gercek protokol TEKNOFEST sonrasi gelince bu servisin arkasina baglanir.
+---
+bool success
+string task_id
+string pickup_node
+string dropoff_node
+string message

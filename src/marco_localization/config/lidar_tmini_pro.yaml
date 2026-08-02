@@ -1,0 +1,39 @@
+### YDLidar Tmini Pro — marco_ws konfigürasyonu ###
+#
+# Model kodu 150, Firmware 1.1, Hardware 2
+# Seri: 2025122400091259
+#
+# ONEMLI: frame_id orijinal surucudeki "laser_frame" degil "laser_link" —
+# URDF'de bu isim kullaniliyor. Ikisi farkli olursa TF agacinda kopukluk
+# olusur ve costmap lidar noktalarini robota yanlis bagli sanir.
+#
+# sample_rate 4 (4 kHz) → 10 Hz'de olculen 430 nokta/tur, 0.84 derece cozunurluk.
+# Acilista ~11 checksum hatasi olusuyor, sonra sifira duser; bu normal.
+
+ydlidar_ros2_driver_node:
+  ros__parameters:
+    port: /dev/ttyUSB0
+    frame_id: laser_link
+    ignore_array: ""
+    baudrate: 230400
+    lidar_type: 1
+    device_type: 0
+    # Bu birim intensity vermiyor: intensity=true yapilinca surucu kendisi
+    # "automatically adjusted to [0]bit" diyerek geri donuyor ve o sirada
+    # cerceve boyu yanlis hesaplandigi icin checksum hatalari uretiyor.
+    intensity: false
+    isSingleChannel: false
+    frequency: 10.0
+    sample_rate: 4
+    abnormal_check_count: 4
+    fixed_resolution: true
+    reversion: true
+    inverted: true
+    auto_reconnect: true
+    support_motor_dtr: false
+    angle_max: 180.0
+    angle_min: -180.0
+    range_max: 12.0
+    range_min: 0.03
+    invalid_range_is_inf: false
+    debug: false

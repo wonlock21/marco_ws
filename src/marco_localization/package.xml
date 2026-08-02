@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>marco_localization</name>
+  <version>0.1.0</version>
+  <description>
+    EKF (odometri + opsiyonel IMU), slam_toolbox haritalama ve nav2_amcl
+    harita lokalizasyonu. Haritalar marco_navigation/maps altina kaydedilir.
+  </description>
+  <maintainer email="marco@marmara.edu.tr">MarCO Yazilim Ekibi</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>marco_bringup</exec_depend>
+  <exec_depend>marco_navigation</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>imu_filter_madgwick</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>python3-rclpy</exec_depend>
+  <exec_depend>python3-geometry-msgs</exec_depend>
+  <exec_depend>python3-nav-msgs</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

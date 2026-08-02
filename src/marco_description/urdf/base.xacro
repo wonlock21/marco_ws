@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Cerceve yerlesimi:
+      base_footprint  zeminde (z=0), tahrik aksinin ortasinin izdusumu
+      base_link       tahrik aksi yuksekliginde (z = wheel_radius), aksin ortasi
+
+    base_link'in tahrik aksinin ortasina konmasi bilincli bir tercihtir:
+    diferansiyel surusta bu nokta robotun donme merkezidir, dolayisiyla
+    odometri ve Nav2 kinematigi ek bir donusum gerektirmez.
+  -->
+
+  <xacro:property name="chassis_height"   value="${total_height - ground_clearance}"/>
+  <xacro:property name="chassis_center_x" value="${-axle_from_rear + body_length/2.0}"/>
+  <xacro:property name="chassis_center_z" value="${(ground_clearance - wheel_radius) + chassis_height/2.0}"/>
+
+  <link name="base_footprint"/>
+
+  <joint name="base_footprint_to_base_link" type="fixed">
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link"/>
+
+  <!-- Ana sasi: 3 mm lazer kesim bukumlu celik sac -->
+  <joint name="base_link_to_chassis" type="fixed">
+    <parent link="base_link"/>
+    <child  link="chassis_link"/>
+    <origin xyz="${chassis_center_x} 0 ${chassis_center_z}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="chassis_link">
+    <visual>
+      <geometry><box size="${body_length} ${body_width} ${chassis_height}"/></geometry>
+      <material name="marco_steel"/>
+    </visual>
+    <collision>
+      <geometry><box size="${body_length} ${body_width} ${chassis_height}"/></geometry>
+    </collision>
+    <xacro:box_inertia m="${body_mass}" x="${body_length}" y="${body_width}" z="${chassis_height}"/>
+  </link>
+
+</robot>

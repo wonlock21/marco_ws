@@ -1,0 +1,109 @@
+### EKF — yalnizca tekerlek odometrisi ###
+#
+# Bu yapilandirma IMU olmadan, yalnizca tekerlek encoderlariyla calisir.
+# Kullanim: ros2 launch marco_localization localization.launch.py
+#          (imu:=false varsayilan)
+#
+# NEDEN SADECE TWIST FUZE EDILiYOR (POSE DEGiL)?
+# -----------------------------------------------
+# Odometri /odom topiginde hem mutlak poz (x,y,theta) hem de gövde hizlarini
+# (vx, vyaw) yayinlar. Bu hizlar encoder'dan dogrudan geliyor; poz ise onlarin
+# integrasyonu. Eger EKF mutlak pozu fuze ederse, encoder hatasinin birikmis
+# formuyla da ilgilenmis olur. Bunun yerine hizlari verip integrasyonu EKF'e
+# birakiyoruz: temiz olcum, temiz durum kestirimi.
+# Uzun vadeli konumsal sapma EKF'in degil AMCL'in sorunudur.
+#
+# KOVARYANS UYUMU:
+# base_driver.py hiz kovaryansini anlik hiza gore olcekliyor (linear_noise_ratio,
+# angular_noise_ratio). EKF bu degerleri dogrudan kullaniyor; araya gecici
+# buyuk kovaryans girmesi gerekmiyor.
+
+ekf_filter_node:
+  ros__parameters:
+    frequency: 50.0
+    sensor_timeout: 0.1
+
+    # Duz zemin varsayimi. z, roll, pitch durum degiskenleri sifira sabitlenir.
+    # EKF hesaplama maliyetini dusurur ve 2D parkurda tutarsiz IMU ivme
+    # olcumlerinin (bitis zeminleri, titresim) filtreye sizmasini onler.
+    two_d_mode: true
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: odom
+
+    # EKF odom -> base_footprint TF'ini yayinlar.
+    # base_driver publish_tf:=false olmali; localization.launch.py bunu saglar.
+    publish_tf: true
+
+    # --- Girdi 0: tekerlek odometrisi ---
+    odom0: /odom
+    # Durum vektoru siralama: x y z roll pitch yaw vx vy vz vroll vpitch vyaw ax ay az
+    # Fuze edilenler: vx (6) ve vyaw (11).
+    # x,y,yaw mutlak pozu FUZE EDILMIYOR: uzun vadeli drift AMCL duzeltir,
+    # burada EKF'i o birikimli hatayla kirletmeye gerek yok.
+    odom0_config: [false, false, false,  # x, y, z
+                   false, false, false,  # roll, pitch, yaw
+                   true,  false, false,  # vx, vy, vz
+                   false, false, true,   # vroll, vpitch, vyaw
+                   false, false, false]  # ax, ay, az
+    # differential: false — zaten hiz olcumu, farklilastirmaya gerek yok.
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+    odom0_nodelay: true
+
+    # --- Kontrol onkestirimi ---
+    # /cmd_vel, olcum gelene kadar durumu ilerletmek icin kullanilir.
+    # Motor tepkisi birinci mertebe oldugu icin ivme limitlerini buna gore sec:
+    # max_speed / motor_zaman_sabiti = 0.838 / 0.08 ≈ 10 m/s² (teorik),
+    # gercekte guvenli ust sinir olarak 3.0 m/s² kullaniyoruz.
+    use_control: true
+    stamped_control: false
+    control_timeout: 0.30
+    control_config: [true, false, false, false, false, true]  # vx, vyaw
+    acceleration_limits:  [3.0, 0.0, 0.0, 0.0, 0.0, 2.0]
+    deceleration_limits:  [4.0, 0.0, 0.0, 0.0, 0.0, 3.0]
+    acceleration_gains:   [0.8, 0.0, 0.0, 0.0, 0.0, 0.8]
+    deceleration_gains:   [1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+    # --- Surec gurultu kovaryans matrisi (Q, 15x15) ---
+    # Yalnizca iki durum aktif: vx (6) ve vyaw (11).
+    # Diger diyagonaller sifir birakilmaz; sayisal kararlilik icin kucuk deger.
+    # two_d_mode=true ile z(2), roll(3), pitch(4) zaten ihmal ediliyor.
+    process_noise_covariance:
+      [0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.06, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.04, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.10, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.015]
+
+    # Baslangic belirsizligi: bilis pozisyondan baslayacagiz (bekleme noktasi
+    # bilinen bir konum olacak), yani kucuk deger uygundur.
+    initial_estimate_covariance:
+      [1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5]

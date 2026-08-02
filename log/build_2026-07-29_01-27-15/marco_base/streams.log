@@ -1,0 +1,17 @@
+[1.613s] Invoking command in '/home/orangepi/marco_ws/build/marco_base': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_base/build --no-deps symlink_data
+[1.989s] running develop
+[2.171s] running egg_info
+[2.172s] writing marco_base.egg-info/PKG-INFO
+[2.172s] writing dependency_links to marco_base.egg-info/dependency_links.txt
+[2.178s] writing entry points to marco_base.egg-info/entry_points.txt
+[2.179s] writing requirements to marco_base.egg-info/requires.txt
+[2.180s] writing top-level names to marco_base.egg-info/top_level.txt
+[2.185s] reading manifest file 'marco_base.egg-info/SOURCES.txt'
+[2.186s] writing manifest file 'marco_base.egg-info/SOURCES.txt'
+[2.189s] running build_ext
+[2.190s] Creating /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco-base.egg-link (link to .)
+[2.191s] Installing base_driver script to /home/orangepi/marco_ws/install/marco_base/lib/marco_base
+[2.192s] 
+[2.192s] Installed /home/orangepi/marco_ws/build/marco_base
+[2.192s] running symlink_data
+[2.321s] Invoked command in '/home/orangepi/marco_ws/build/marco_base' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_base/build --no-deps symlink_data

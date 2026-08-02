@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "marco_msgs__rs",
+		"source" : "/home/orangepi/marco_ws/build/marco_msgs/marco_msgs__rs"
+	}
+}

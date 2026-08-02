@@ -1,0 +1,21 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from marco_msgs/srv/TaskComplete.srv
+// generated code does not contain a copyright notice
+
+
+module marco_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "Gorev bitince PLC'ye bildir.")
+    struct TaskComplete_Request {
+      string task_id;
+
+      boolean success;
+
+      string message;
+    };
+    struct TaskComplete_Response {
+      boolean acknowledged;
+    };
+  };
+};

@@ -1,0 +1,52 @@
+[2.773s] Invoking command in '/home/orangepi/marco_ws/build/marco_base': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --uninstall --editable --build-directory /home/orangepi/marco_ws/build/marco_base/build
+[3.140s] running develop
+[3.317s] Removing /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco-base.egg-link (link to .)
+[3.468s] Invoked command in '/home/orangepi/marco_ws/build/marco_base' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --uninstall --editable --build-directory /home/orangepi/marco_ws/build/marco_base/build
+[3.474s] Invoking command in '/home/orangepi/marco_ws/src/marco_base': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_base build --build-base /home/orangepi/marco_ws/build/marco_base/build install --record /home/orangepi/marco_ws/build/marco_base/install.log --install-scripts $base/lib/marco_base --single-version-externally-managed install_data --force
+[3.850s] running egg_info
+[3.851s] writing ../../build/marco_base/marco_base.egg-info/PKG-INFO
+[3.852s] writing dependency_links to ../../build/marco_base/marco_base.egg-info/dependency_links.txt
+[3.853s] writing entry points to ../../build/marco_base/marco_base.egg-info/entry_points.txt
+[3.853s] writing requirements to ../../build/marco_base/marco_base.egg-info/requires.txt
+[3.854s] writing top-level names to ../../build/marco_base/marco_base.egg-info/top_level.txt
+[3.857s] reading manifest file '../../build/marco_base/marco_base.egg-info/SOURCES.txt'
+[3.858s] adding license file 'LICENSE'
+[3.859s] writing manifest file '../../build/marco_base/marco_base.egg-info/SOURCES.txt'
+[3.860s] running build
+[3.861s] running build_py
+[3.861s] creating /home/orangepi/marco_ws/build/marco_base/build
+[3.862s] creating /home/orangepi/marco_ws/build/marco_base/build/lib
+[3.862s] creating /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base
+[3.863s] copying marco_base/base_driver.py -> /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base
+[3.863s] copying marco_base/protocol.py -> /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base
+[3.864s] copying marco_base/odometry.py -> /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base
+[3.864s] copying marco_base/__init__.py -> /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base
+[3.865s] copying marco_base/transport.py -> /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base
+[3.866s] copying marco_base/fake_stm32.py -> /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base
+[3.866s] running install
+[3.867s] running install_lib
+[3.867s] creating /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base
+[3.867s] copying /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base/base_driver.py -> /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base
+[3.867s] copying /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base/protocol.py -> /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base
+[3.868s] copying /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base/odometry.py -> /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base
+[3.868s] copying /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base/__init__.py -> /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base
+[3.868s] copying /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base/transport.py -> /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base
+[3.868s] copying /home/orangepi/marco_ws/build/marco_base/build/lib/marco_base/fake_stm32.py -> /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base
+[3.868s] byte-compiling /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base/base_driver.py to base_driver.cpython-310.pyc
+[3.872s] byte-compiling /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base/protocol.py to protocol.cpython-310.pyc
+[3.875s] byte-compiling /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base/odometry.py to odometry.cpython-310.pyc
+[3.877s] byte-compiling /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base/__init__.py to __init__.cpython-310.pyc
+[3.878s] byte-compiling /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base/transport.py to transport.cpython-310.pyc
+[3.879s] byte-compiling /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base/fake_stm32.py to fake_stm32.cpython-310.pyc
+[3.883s] running install_data
+[3.884s] copying resource/marco_base -> /home/orangepi/marco_ws/install/marco_base/share/ament_index/resource_index/packages
+[3.884s] copying package.xml -> /home/orangepi/marco_ws/install/marco_base/share/marco_base
+[3.885s] copying launch/base_driver.launch.py -> /home/orangepi/marco_ws/install/marco_base/share/marco_base/launch
+[3.885s] copying config/base_driver.yaml -> /home/orangepi/marco_ws/install/marco_base/share/marco_base/config
+[3.885s] copying docs/STM32_UART_PROTOKOL.md -> /home/orangepi/marco_ws/install/marco_base/share/marco_base/docs
+[3.886s] running install_egg_info
+[3.890s] Copying ../../build/marco_base/marco_base.egg-info to /home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages/marco_base-0.1.0-py3.10.egg-info
+[3.890s] running install_scripts
+[3.925s] Installing base_driver script to /home/orangepi/marco_ws/install/marco_base/lib/marco_base
+[3.925s] writing list of installed files to '/home/orangepi/marco_ws/build/marco_base/install.log'
+[4.049s] Invoked command in '/home/orangepi/marco_ws/src/marco_base' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_base/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_base/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_base build --build-base /home/orangepi/marco_ws/build/marco_base/build install --record /home/orangepi/marco_ws/build/marco_base/install.log --install-scripts $base/lib/marco_base --single-version-externally-managed install_data --force

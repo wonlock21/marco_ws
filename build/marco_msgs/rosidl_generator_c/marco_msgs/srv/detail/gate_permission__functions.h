@@ -1,0 +1,329 @@
+// generated from rosidl_generator_c/resource/idl__functions.h.em
+// with input from marco_msgs:srv/GatePermission.idl
+// generated code does not contain a copyright notice
+
+#ifndef MARCO_MSGS__SRV__DETAIL__GATE_PERMISSION__FUNCTIONS_H_
+#define MARCO_MSGS__SRV__DETAIL__GATE_PERMISSION__FUNCTIONS_H_
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+#include <stdbool.h>
+#include <stdlib.h>
+
+#include "rosidl_runtime_c/visibility_control.h"
+#include "marco_msgs/msg/rosidl_generator_c__visibility_control.h"
+
+#include "marco_msgs/srv/detail/gate_permission__struct.h"
+
+/// Initialize srv/GatePermission message.
+/**
+ * If the init function is called twice for the same message without
+ * calling fini inbetween previously allocated memory will be leaked.
+ * \param[in,out] msg The previously allocated message pointer.
+ * Fields without a default value will not be initialized by this function.
+ * You might want to call memset(msg, 0, sizeof(
+ * marco_msgs__srv__GatePermission_Request
+ * )) before or use
+ * marco_msgs__srv__GatePermission_Request__create()
+ * to allocate and initialize the message.
+ * \return true if initialization was successful, otherwise false
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Request__init(marco_msgs__srv__GatePermission_Request * msg);
+
+/// Finalize srv/GatePermission message.
+/**
+ * \param[in,out] msg The allocated message pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Request__fini(marco_msgs__srv__GatePermission_Request * msg);
+
+/// Create srv/GatePermission message.
+/**
+ * It allocates the memory for the message, sets the memory to zero, and
+ * calls
+ * marco_msgs__srv__GatePermission_Request__init().
+ * \return The pointer to the initialized message if successful,
+ * otherwise NULL
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+marco_msgs__srv__GatePermission_Request *
+marco_msgs__srv__GatePermission_Request__create();
+
+/// Destroy srv/GatePermission message.
+/**
+ * It calls
+ * marco_msgs__srv__GatePermission_Request__fini()
+ * and frees the memory of the message.
+ * \param[in,out] msg The allocated message pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Request__destroy(marco_msgs__srv__GatePermission_Request * msg);
+
+/// Check for srv/GatePermission message equality.
+/**
+ * \param[in] lhs The message on the left hand size of the equality operator.
+ * \param[in] rhs The message on the right hand size of the equality operator.
+ * \return true if messages are equal, otherwise false.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Request__are_equal(const marco_msgs__srv__GatePermission_Request * lhs, const marco_msgs__srv__GatePermission_Request * rhs);
+
+/// Copy a srv/GatePermission message.
+/**
+ * This functions performs a deep copy, as opposed to the shallow copy that
+ * plain assignment yields.
+ *
+ * \param[in] input The source message pointer.
+ * \param[out] output The target message pointer, which must
+ *   have been initialized before calling this function.
+ * \return true if successful, or false if either pointer is null
+ *   or memory allocation fails.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Request__copy(
+  const marco_msgs__srv__GatePermission_Request * input,
+  marco_msgs__srv__GatePermission_Request * output);
+
+/// Initialize array of srv/GatePermission messages.
+/**
+ * It allocates the memory for the number of elements and calls
+ * marco_msgs__srv__GatePermission_Request__init()
+ * for each element of the array.
+ * \param[in,out] array The allocated array pointer.
+ * \param[in] size The size / capacity of the array.
+ * \return true if initialization was successful, otherwise false
+ * If the array pointer is valid and the size is zero it is guaranteed
+ # to return true.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Request__Sequence__init(marco_msgs__srv__GatePermission_Request__Sequence * array, size_t size);
+
+/// Finalize array of srv/GatePermission messages.
+/**
+ * It calls
+ * marco_msgs__srv__GatePermission_Request__fini()
+ * for each element of the array and frees the memory for the number of
+ * elements.
+ * \param[in,out] array The initialized array pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Request__Sequence__fini(marco_msgs__srv__GatePermission_Request__Sequence * array);
+
+/// Create array of srv/GatePermission messages.
+/**
+ * It allocates the memory for the array and calls
+ * marco_msgs__srv__GatePermission_Request__Sequence__init().
+ * \param[in] size The size / capacity of the array.
+ * \return The pointer to the initialized array if successful, otherwise NULL
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+marco_msgs__srv__GatePermission_Request__Sequence *
+marco_msgs__srv__GatePermission_Request__Sequence__create(size_t size);
+
+/// Destroy array of srv/GatePermission messages.
+/**
+ * It calls
+ * marco_msgs__srv__GatePermission_Request__Sequence__fini()
+ * on the array,
+ * and frees the memory of the array.
+ * \param[in,out] array The initialized array pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Request__Sequence__destroy(marco_msgs__srv__GatePermission_Request__Sequence * array);
+
+/// Check for srv/GatePermission message array equality.
+/**
+ * \param[in] lhs The message array on the left hand size of the equality operator.
+ * \param[in] rhs The message array on the right hand size of the equality operator.
+ * \return true if message arrays are equal in size and content, otherwise false.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Request__Sequence__are_equal(const marco_msgs__srv__GatePermission_Request__Sequence * lhs, const marco_msgs__srv__GatePermission_Request__Sequence * rhs);
+
+/// Copy an array of srv/GatePermission messages.
+/**
+ * This functions performs a deep copy, as opposed to the shallow copy that
+ * plain assignment yields.
+ *
+ * \param[in] input The source array pointer.
+ * \param[out] output The target array pointer, which must
+ *   have been initialized before calling this function.
+ * \return true if successful, or false if either pointer
+ *   is null or memory allocation fails.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Request__Sequence__copy(
+  const marco_msgs__srv__GatePermission_Request__Sequence * input,
+  marco_msgs__srv__GatePermission_Request__Sequence * output);
+
+/// Initialize srv/GatePermission message.
+/**
+ * If the init function is called twice for the same message without
+ * calling fini inbetween previously allocated memory will be leaked.
+ * \param[in,out] msg The previously allocated message pointer.
+ * Fields without a default value will not be initialized by this function.
+ * You might want to call memset(msg, 0, sizeof(
+ * marco_msgs__srv__GatePermission_Response
+ * )) before or use
+ * marco_msgs__srv__GatePermission_Response__create()
+ * to allocate and initialize the message.
+ * \return true if initialization was successful, otherwise false
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Response__init(marco_msgs__srv__GatePermission_Response * msg);
+
+/// Finalize srv/GatePermission message.
+/**
+ * \param[in,out] msg The allocated message pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Response__fini(marco_msgs__srv__GatePermission_Response * msg);
+
+/// Create srv/GatePermission message.
+/**
+ * It allocates the memory for the message, sets the memory to zero, and
+ * calls
+ * marco_msgs__srv__GatePermission_Response__init().
+ * \return The pointer to the initialized message if successful,
+ * otherwise NULL
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+marco_msgs__srv__GatePermission_Response *
+marco_msgs__srv__GatePermission_Response__create();
+
+/// Destroy srv/GatePermission message.
+/**
+ * It calls
+ * marco_msgs__srv__GatePermission_Response__fini()
+ * and frees the memory of the message.
+ * \param[in,out] msg The allocated message pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Response__destroy(marco_msgs__srv__GatePermission_Response * msg);
+
+/// Check for srv/GatePermission message equality.
+/**
+ * \param[in] lhs The message on the left hand size of the equality operator.
+ * \param[in] rhs The message on the right hand size of the equality operator.
+ * \return true if messages are equal, otherwise false.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Response__are_equal(const marco_msgs__srv__GatePermission_Response * lhs, const marco_msgs__srv__GatePermission_Response * rhs);
+
+/// Copy a srv/GatePermission message.
+/**
+ * This functions performs a deep copy, as opposed to the shallow copy that
+ * plain assignment yields.
+ *
+ * \param[in] input The source message pointer.
+ * \param[out] output The target message pointer, which must
+ *   have been initialized before calling this function.
+ * \return true if successful, or false if either pointer is null
+ *   or memory allocation fails.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Response__copy(
+  const marco_msgs__srv__GatePermission_Response * input,
+  marco_msgs__srv__GatePermission_Response * output);
+
+/// Initialize array of srv/GatePermission messages.
+/**
+ * It allocates the memory for the number of elements and calls
+ * marco_msgs__srv__GatePermission_Response__init()
+ * for each element of the array.
+ * \param[in,out] array The allocated array pointer.
+ * \param[in] size The size / capacity of the array.
+ * \return true if initialization was successful, otherwise false
+ * If the array pointer is valid and the size is zero it is guaranteed
+ # to return true.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Response__Sequence__init(marco_msgs__srv__GatePermission_Response__Sequence * array, size_t size);
+
+/// Finalize array of srv/GatePermission messages.
+/**
+ * It calls
+ * marco_msgs__srv__GatePermission_Response__fini()
+ * for each element of the array and frees the memory for the number of
+ * elements.
+ * \param[in,out] array The initialized array pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Response__Sequence__fini(marco_msgs__srv__GatePermission_Response__Sequence * array);
+
+/// Create array of srv/GatePermission messages.
+/**
+ * It allocates the memory for the array and calls
+ * marco_msgs__srv__GatePermission_Response__Sequence__init().
+ * \param[in] size The size / capacity of the array.
+ * \return The pointer to the initialized array if successful, otherwise NULL
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+marco_msgs__srv__GatePermission_Response__Sequence *
+marco_msgs__srv__GatePermission_Response__Sequence__create(size_t size);
+
+/// Destroy array of srv/GatePermission messages.
+/**
+ * It calls
+ * marco_msgs__srv__GatePermission_Response__Sequence__fini()
+ * on the array,
+ * and frees the memory of the array.
+ * \param[in,out] array The initialized array pointer.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+void
+marco_msgs__srv__GatePermission_Response__Sequence__destroy(marco_msgs__srv__GatePermission_Response__Sequence * array);
+
+/// Check for srv/GatePermission message array equality.
+/**
+ * \param[in] lhs The message array on the left hand size of the equality operator.
+ * \param[in] rhs The message array on the right hand size of the equality operator.
+ * \return true if message arrays are equal in size and content, otherwise false.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Response__Sequence__are_equal(const marco_msgs__srv__GatePermission_Response__Sequence * lhs, const marco_msgs__srv__GatePermission_Response__Sequence * rhs);
+
+/// Copy an array of srv/GatePermission messages.
+/**
+ * This functions performs a deep copy, as opposed to the shallow copy that
+ * plain assignment yields.
+ *
+ * \param[in] input The source array pointer.
+ * \param[out] output The target array pointer, which must
+ *   have been initialized before calling this function.
+ * \return true if successful, or false if either pointer
+ *   is null or memory allocation fails.
+ */
+ROSIDL_GENERATOR_C_PUBLIC_marco_msgs
+bool
+marco_msgs__srv__GatePermission_Response__Sequence__copy(
+  const marco_msgs__srv__GatePermission_Response__Sequence * input,
+  marco_msgs__srv__GatePermission_Response__Sequence * output);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // MARCO_MSGS__SRV__DETAIL__GATE_PERMISSION__FUNCTIONS_H_

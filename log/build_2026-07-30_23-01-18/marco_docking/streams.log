@@ -1,0 +1,21 @@
+[2.861s] Invoking command in '/home/orangepi/marco_ws/src/marco_docking': PYTHONPATH=/home/orangepi/marco_ws/build/marco_docking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_docking build --build-base /home/orangepi/marco_ws/build/marco_docking/build install --record /home/orangepi/marco_ws/build/marco_docking/install.log --install-scripts $base/lib/marco_docking --single-version-externally-managed install_data
+[3.162s] running egg_info
+[3.164s] writing ../../build/marco_docking/marco_docking.egg-info/PKG-INFO
+[3.165s] writing dependency_links to ../../build/marco_docking/marco_docking.egg-info/dependency_links.txt
+[3.167s] writing entry points to ../../build/marco_docking/marco_docking.egg-info/entry_points.txt
+[3.172s] writing requirements to ../../build/marco_docking/marco_docking.egg-info/requires.txt
+[3.173s] writing top-level names to ../../build/marco_docking/marco_docking.egg-info/top_level.txt
+[3.179s] reading manifest file '../../build/marco_docking/marco_docking.egg-info/SOURCES.txt'
+[3.179s] adding license file 'LICENSE'
+[3.180s] writing manifest file '../../build/marco_docking/marco_docking.egg-info/SOURCES.txt'
+[3.180s] running build
+[3.181s] running build_py
+[3.181s] running install
+[3.181s] running install_lib
+[3.182s] running install_data
+[3.182s] running install_egg_info
+[3.183s] removing '/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages/marco_docking-0.0.0-py3.10.egg-info' (and everything under it)
+[3.183s] Copying ../../build/marco_docking/marco_docking.egg-info to /home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages/marco_docking-0.0.0-py3.10.egg-info
+[3.183s] running install_scripts
+[3.213s] writing list of installed files to '/home/orangepi/marco_ws/build/marco_docking/install.log'
+[3.295s] Invoked command in '/home/orangepi/marco_ws/src/marco_docking' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_docking/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/marco_docking build --build-base /home/orangepi/marco_ws/build/marco_docking/build install --record /home/orangepi/marco_ws/build/marco_docking/install.log --install-scripts $base/lib/marco_docking --single-version-externally-managed install_data

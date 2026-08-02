@@ -1,0 +1,17 @@
+setup.py
+marco_msgs/__init__.py
+marco_msgs.egg-info/PKG-INFO
+marco_msgs.egg-info/SOURCES.txt
+marco_msgs.egg-info/dependency_links.txt
+marco_msgs.egg-info/top_level.txt
+marco_msgs/action/__init__.py
+marco_msgs/action/_dock_to_station.py
+marco_msgs/msg/__init__.py
+marco_msgs/msg/_lane_offset.py
+marco_msgs/msg/_qr_detection.py
+marco_msgs/msg/_robot_status.py
+marco_msgs/srv/__init__.py
+marco_msgs/srv/_assign_task.py
+marco_msgs/srv/_gate_permission.py
+marco_msgs/srv/_start_mission.py
+marco_msgs/srv/_task_complete.py

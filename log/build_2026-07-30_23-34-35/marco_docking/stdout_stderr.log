@@ -1,0 +1,19 @@
+running develop
+running egg_info
+writing marco_docking.egg-info/PKG-INFO
+writing dependency_links to marco_docking.egg-info/dependency_links.txt
+writing entry points to marco_docking.egg-info/entry_points.txt
+writing requirements to marco_docking.egg-info/requires.txt
+writing top-level names to marco_docking.egg-info/top_level.txt
+reading manifest file 'marco_docking.egg-info/SOURCES.txt'
+writing manifest file 'marco_docking.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/orangepi/marco_ws/install/marco_docking/lib/python3.10/site-packages/marco-docking.egg-link (link to .)
+Installing dock_server script to /home/orangepi/marco_ws/install/marco_docking/lib/marco_docking
+
+Installed /home/orangepi/marco_ws/build/marco_docking
+running symlink_data
+symbolically linking /home/orangepi/marco_ws/build/marco_docking/resource/marco_docking -> /home/orangepi/marco_ws/install/marco_docking/share/ament_index/resource_index/packages
+symbolically linking /home/orangepi/marco_ws/build/marco_docking/package.xml -> /home/orangepi/marco_ws/install/marco_docking/share/marco_docking
+creating /home/orangepi/marco_ws/install/marco_docking/share/marco_docking/launch
+error: [Errno 2] No such file or directory: '/home/orangepi/marco_ws/install/marco_docking/share/marco_docking/launch/docking.launch.py'

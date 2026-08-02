@@ -1,0 +1,4 @@
+source;share/marco_navigation/local_setup.bash
+source;share/marco_navigation/local_setup.dsv
+source;share/marco_navigation/local_setup.sh
+source;share/marco_navigation/local_setup.zsh

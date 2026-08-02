@@ -1,0 +1,45 @@
+[0.895s] Invoking command in '/home/orangepi/marco_ws/build/marco_localization': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/orangepi/marco_ws/src/marco_localization -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/orangepi/marco_ws/install/marco_localization
+[1.341s] -- The C compiler identification is GNU 11.4.0
+[1.524s] -- The CXX compiler identification is GNU 11.4.0
+[1.534s] -- Detecting C compiler ABI info
+[1.785s] -- Detecting C compiler ABI info - done
+[1.795s] -- Check for working C compiler: /usr/bin/cc - skipped
+[1.796s] -- Detecting C compile features
+[1.799s] -- Detecting C compile features - done
+[1.807s] -- Detecting CXX compiler ABI info
+[2.089s] -- Detecting CXX compiler ABI info - done
+[2.139s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2.139s] -- Detecting CXX compile features
+[2.140s] -- Detecting CXX compile features - done
+[2.154s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[2.486s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[2.759s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[3.221s] -- Configuring done
+[3.221s] -- Generating done
+[3.224s] -- Build files have been written to: /home/orangepi/marco_ws/build/marco_localization
+[3.245s] Invoked command in '/home/orangepi/marco_ws/build/marco_localization' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/orangepi/marco_ws/src/marco_localization -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/orangepi/marco_ws/install/marco_localization
+[3.248s] Invoking command in '/home/orangepi/marco_ws/build/marco_localization': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_localization -- -j8 -l8
+[3.420s] Invoked command in '/home/orangepi/marco_ws/build/marco_localization' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_localization -- -j8 -l8
+[3.454s] Invoking command in '/home/orangepi/marco_ws/build/marco_localization': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_localization
+[3.507s] -- Install configuration: ""
+[3.508s] -- Execute custom install script
+[3.508s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/config/.gitkeep
+[3.976s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/launch/.gitkeep
+[3.977s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/ament_index/resource_index/package_run_dependencies/marco_localization
+[3.977s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/ament_index/resource_index/parent_prefix_path/marco_localization
+[3.977s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/environment/ament_prefix_path.sh
+[3.978s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/environment/ament_prefix_path.dsv
+[3.978s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/environment/path.sh
+[3.978s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/environment/path.dsv
+[3.978s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/local_setup.bash
+[3.978s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/local_setup.sh
+[3.978s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/local_setup.zsh
+[3.979s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/local_setup.dsv
+[3.980s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.dsv
+[3.981s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/ament_index/resource_index/packages/marco_localization
+[3.981s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/cmake/marco_localizationConfig.cmake
+[3.983s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/cmake/marco_localizationConfig-version.cmake
+[3.984s] -- Symlinking: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/package.xml
+[3.985s] -- Installing: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/scripts
+[3.986s] -- Installing: /home/orangepi/marco_ws/install/marco_localization/share/marco_localization/scripts/.gitkeep
+[4.055s] Invoked command in '/home/orangepi/marco_ws/build/marco_localization' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_localization

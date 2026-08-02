@@ -1,0 +1,45 @@
+<!--
+  MarCO — engelde DUR ve BEKLE.
+
+  Sartname: engelden kacinma YOK. Varsayilan Nav2 BT Spin/BackUp ile
+  engelin etrafindan dolasmaya calisir; bu agacta recovery yalnizca
+  costmap temizleme + Wait. Yol gecersiz olursa yeniden planlanir;
+  engel kalkinca Wait biter ve FollowPath devam eder.
+
+  Faz 7 (nav2_route) gelince serbest GridBased planlayici yerine rota
+  agi kullanilacak; bu agacin Wait davranisi korunacak.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="1000" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <Fallback>
+            <ReactiveSequence>
+              <Inverter>
+                <GlobalUpdatedGoal/>
+              </Inverter>
+              <IsPathValid path="{path}"/>
+            </ReactiveSequence>
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+          </Fallback>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <Sequence name="ClearAndWait">
+            <ClearEntireCostmap name="ClearLocal" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <Wait wait_duration="2"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <Sequence name="WaitForClearance">
+          <ClearEntireCostmap name="ClearLocal-Recovery" service_name="local_costmap/clear_entirely_local_costmap"/>
+          <ClearEntireCostmap name="ClearGlobal-Recovery" service_name="global_costmap/clear_entirely_global_costmap"/>
+          <Wait wait_duration="5"/>
+        </Sequence>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

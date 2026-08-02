@@ -1,0 +1,25 @@
+[0.894s] Invoking command in '/home/orangepi/marco_ws/build/marco_simulation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_simulation -- -j8 -l8
+[1.130s] Invoked command in '/home/orangepi/marco_ws/build/marco_simulation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --build /home/orangepi/marco_ws/build/marco_simulation -- -j8 -l8
+[1.134s] Invoking command in '/home/orangepi/marco_ws/build/marco_simulation': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_simulation
+[1.196s] -- Install configuration: ""
+[1.197s] -- Execute custom install script
+[1.197s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/worlds/.gitkeep
+[1.198s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/models/.gitkeep
+[1.198s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/launch/.gitkeep
+[1.198s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/config/.gitkeep
+[1.199s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/ament_index/resource_index/package_run_dependencies/marco_simulation
+[1.199s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/ament_index/resource_index/parent_prefix_path/marco_simulation
+[1.200s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/environment/ament_prefix_path.sh
+[1.200s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/environment/ament_prefix_path.dsv
+[1.200s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/environment/path.sh
+[1.201s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/environment/path.dsv
+[1.201s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/local_setup.bash
+[1.202s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/local_setup.sh
+[1.202s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/local_setup.zsh
+[1.203s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/local_setup.dsv
+[1.203s] -- Symlinking: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.dsv
+[1.204s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/ament_index/resource_index/packages/marco_simulation
+[1.205s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/cmake/marco_simulationConfig.cmake
+[1.205s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/cmake/marco_simulationConfig-version.cmake
+[1.206s] -- Up-to-date symlink: /home/orangepi/marco_ws/install/marco_simulation/share/marco_simulation/package.xml
+[1.274s] Invoked command in '/home/orangepi/marco_ws/build/marco_simulation' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/orangepi/marco_ws/install/marco_docking:/home/orangepi/marco_ws/install/marco_perception:/home/orangepi/marco_ws/install/marco_mission:/home/orangepi/marco_ws/install/marco_base:/home/orangepi/marco_ws/install/lane_tracking:/opt/ros/humble /usr/bin/cmake --install /home/orangepi/marco_ws/build/marco_simulation

@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Catal mekanizmasi. Tek prizmatik eklem dikey kaldirmayi temsil eder.
+
+    Gercek sistemde ikinci bir aktuator catala aci veriyor (yuk momentini
+    sonumlemek icin), ancak o eklem navigasyon acisindan onemsizdir ve
+    modele dahil edilmemistir. Lokalizasyon yalnizca catalin kalkik/inik
+    olmasindan etkilenir, cunku bu agirlik merkezini ve dolayisiyla
+    tekerlek kaymasini degistirir.
+  -->
+
+  <!--
+    Catallar ARKAYA bakar (-x). Ileri yon govde tarafidir; bkz.
+    properties.xacro basindaki "ILERI YON KARARI" notu. Eklem catalin
+    govdeye yakin ucuna oturur, disler oradan -x yonunde uzanir.
+  -->
+  <xacro:property name="fork_down_z" value="${ground_clearance - wheel_radius}"/>
+  <!-- Dislerin merkezi: kok noktasindan yarim uzunluk geride -->
+  <xacro:property name="tine_center_x" value="${-fork_length/2.0}"/>
+
+  <joint name="fork_lift_joint" type="prismatic">
+    <parent link="base_link"/>
+    <child  link="fork_link"/>
+    <origin xyz="${fork_root_x} 0 ${fork_down_z}" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="${fork_lift_stroke}" effort="200.0" velocity="0.05"/>
+  </joint>
+
+  <link name="fork_link">
+    <xacro:box_inertia m="${fork_mass}" x="${fork_length}" y="${fork_tine_spacing + fork_tine_width}" z="${fork_thickness}"/>
+
+    <!-- Sol catal disi -->
+    <visual>
+      <origin xyz="${tine_center_x} ${ fork_tine_spacing/2.0} ${fork_thickness/2.0}" rpy="0 0 0"/>
+      <geometry><box size="${fork_length} ${fork_tine_width} ${fork_thickness}"/></geometry>
+      <material name="marco_yellow"/>
+    </visual>
+    <collision>
+      <origin xyz="${tine_center_x} ${ fork_tine_spacing/2.0} ${fork_thickness/2.0}" rpy="0 0 0"/>
+      <geometry><box size="${fork_length} ${fork_tine_width} ${fork_thickness}"/></geometry>
+    </collision>
+
+    <!-- Sag catal disi -->
+    <visual>
+      <origin xyz="${tine_center_x} ${-fork_tine_spacing/2.0} ${fork_thickness/2.0}" rpy="0 0 0"/>
+      <geometry><box size="${fork_length} ${fork_tine_width} ${fork_thickness}"/></geometry>
+      <material name="marco_yellow"/>
+    </visual>
+    <collision>
+      <origin xyz="${tine_center_x} ${-fork_tine_spacing/2.0} ${fork_thickness/2.0}" rpy="0 0 0"/>
+      <geometry><box size="${fork_length} ${fork_tine_width} ${fork_thickness}"/></geometry>
+    </collision>
+  </link>
+
+</robot>

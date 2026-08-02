@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="marco">
+
+  <!--
+    MarCO otonom forklift - ust seviye robot tanimi.
+
+    Kullanim:
+      xacro marco.urdf.xacro                 -> gercek robot
+      xacro marco.urdf.xacro use_sim:=true   -> simulasyon eklentileriyle (Faz 2)
+  -->
+
+  <xacro:arg name="use_sim" default="false"/>
+
+  <xacro:include filename="$(find marco_description)/urdf/properties.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/common.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/base.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/wheels.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/fork.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/sensors.xacro"/>
+
+</robot>

@@ -1,0 +1,18 @@
+[3.199s] Invoking command in '/home/orangepi/marco_ws/build/marco_perception': PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_perception/build --no-deps symlink_data
+[3.567s] running develop
+[3.699s] /usr/lib/python3/dist-packages/setuptools/command/easy_install.py:355: UserWarning: Unbuilt egg for marco-mission [unknown version] (/home/orangepi/marco_ws/build/marco_mission)
+[3.700s]   self.local_index = Environment(self.shadow_path + sys.path)
+[3.767s] running egg_info
+[3.768s] writing marco_perception.egg-info/PKG-INFO
+[3.769s] writing dependency_links to marco_perception.egg-info/dependency_links.txt
+[3.774s] writing entry points to marco_perception.egg-info/entry_points.txt
+[3.775s] writing requirements to marco_perception.egg-info/requires.txt
+[3.776s] writing top-level names to marco_perception.egg-info/top_level.txt
+[3.783s] reading manifest file 'marco_perception.egg-info/SOURCES.txt'
+[3.784s] writing manifest file 'marco_perception.egg-info/SOURCES.txt'
+[3.794s] running build_ext
+[3.795s] Creating /home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages/marco-perception.egg-link (link to .)
+[3.796s] 
+[3.797s] Installed /home/orangepi/marco_ws/build/marco_perception
+[3.798s] running symlink_data
+[3.907s] Invoked command in '/home/orangepi/marco_ws/build/marco_perception' returned '0': PYTHONPATH=/home/orangepi/marco_ws/build/marco_perception/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/orangepi/marco_ws/install/marco_perception/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/orangepi/marco_ws/build/marco_perception/build --no-deps symlink_data
