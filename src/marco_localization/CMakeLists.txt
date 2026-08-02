@@ -15,6 +15,8 @@ install(PROGRAMS
   scripts/baslangic_poz.sh
   scripts/amcl_poz_kaydet.py
   scripts/fake_imu.py
+  scripts/slam_test_drive.py
+  scripts/slam_acceptance.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
