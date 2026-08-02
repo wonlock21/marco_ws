@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="marco">
+  <!-- Reuse the real robot geometry and frames; only simulation systems live here. -->
+  <xacro:arg name="use_sim" default="true"/>
+  <xacro:include filename="$(find marco_description)/urdf/properties.xacro"/>
+  <!-- Fortress clamps rays when the 3 cm minimum range overlaps the body top. -->
+  <xacro:property name="lidar_z" value="0.4845"/>
+  <xacro:include filename="$(find marco_description)/urdf/common.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/base.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/wheels.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/fork.xacro"/>
+  <xacro:include filename="$(find marco_description)/urdf/sensors.xacro"/>
+
+  <gazebo reference="left_wheel_link">
+    <mu1>1.2</mu1><mu2>1.2</mu2>
+  </gazebo>
+  <gazebo reference="right_wheel_link">
+    <mu1>1.2</mu1><mu2>1.2</mu2>
+  </gazebo>
+  <gazebo reference="front_left_caster_link"><mu1>0.02</mu1><mu2>0.02</mu2></gazebo>
+  <gazebo reference="front_right_caster_link"><mu1>0.02</mu1><mu2>0.02</mu2></gazebo>
+  <gazebo reference="rear_left_caster_link"><mu1>0.02</mu1><mu2>0.02</mu2></gazebo>
+  <gazebo reference="rear_right_caster_link"><mu1>0.02</mu1><mu2>0.02</mu2></gazebo>
+
+  <gazebo>
+    <plugin filename="ignition-gazebo-diff-drive-system"
+            name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>${wheel_separation}</wheel_separation>
+      <wheel_radius>${wheel_radius}</wheel_radius>
+      <topic>/cmd_vel</topic>
+      <odom_topic>/odom</odom_topic>
+      <tf_topic>/tf</tf_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_footprint</child_frame_id>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <max_linear_acceleration>0.6</max_linear_acceleration>
+      <min_linear_acceleration>-0.8</min_linear_acceleration>
+      <max_angular_acceleration>1.2</max_angular_acceleration>
+      <min_angular_acceleration>-1.2</min_angular_acceleration>
+      <max_linear_velocity>0.50</max_linear_velocity>
+      <min_linear_velocity>-0.25</min_linear_velocity>
+      <max_angular_velocity>0.60</max_angular_velocity>
+      <min_angular_velocity>-0.60</min_angular_velocity>
+    </plugin>
+    <plugin filename="ignition-gazebo-joint-state-publisher-system"
+            name="gz::sim::systems::JointStatePublisher">
+      <joint_name>left_wheel_joint</joint_name>
+      <joint_name>right_wheel_joint</joint_name>
+      <joint_name>fork_lift_joint</joint_name>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="laser_link">
+    <sensor name="marco_lidar" type="gpu_lidar">
+      <topic>/scan</topic>
+      <gz_frame_id>laser_link</gz_frame_id>
+      <update_rate>10</update_rate>
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>430</samples>
+            <resolution>1</resolution>
+            <min_angle>-${pi}</min_angle>
+            <max_angle>${pi}</max_angle>
+          </horizontal>
+        </scan>
+        <range><min>0.03</min><max>12.0</max><resolution>0.01</resolution></range>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="camera_front_optical_frame">
+    <sensor name="front_camera" type="camera">
+      <topic>/camera/image_raw</topic>
+      <gz_frame_id>camera_front_optical_frame</gz_frame_id>
+      <update_rate>15</update_rate>
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <camera>
+        <horizontal_fov>1.3962634</horizontal_fov>
+        <image><width>640</width><height>480</height><format>R8G8B8</format></image>
+        <clip><near>0.03</near><far>20.0</far></clip>
+        <camera_info_topic>/camera/camera_info</camera_info_topic>
+      </camera>
+    </sensor>
+  </gazebo>
+</robot>
