@@ -52,8 +52,8 @@ marco_base_driver:
 
     # --- Odometri gurultu modeli ---
     # Kovaryans anlik hiza gore olceklenir. EKF bu odometriyi
-    # odom0_differential: true ile tuketecek; onemli olan ardisik iki poz
-    # arasindaki farkin belirsizligi.
+    # yalniz encoderdan hesaplanan vx/vyaw alanlarini tuketecek. Pose ve twist
+    # birlikte fuzyona alinmaz; odom0_differential bu nedenle false'dur.
     linear_noise_ratio: 0.02
     angular_noise_ratio: 0.05
     min_noise: 0.001

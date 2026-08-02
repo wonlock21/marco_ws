@@ -58,6 +58,16 @@ def launch_setup(context, *args, **kwargs):
             "tf": "false",
             "rviz": LaunchConfiguration("rviz"),
             "lidar": LaunchConfiguration("lidar"),
+            "fake_slip_factor": LaunchConfiguration("fake_slip_factor"),
+            "fake_wheel_scale_error_left": LaunchConfiguration(
+                "fake_wheel_scale_error_left"
+            ),
+            "fake_wheel_scale_error_right": LaunchConfiguration(
+                "fake_wheel_scale_error_right"
+            ),
+            "fake_wheel_separation_actual": LaunchConfiguration(
+                "fake_wheel_separation_actual"
+            ),
         }.items(),
     )
 
@@ -136,6 +146,10 @@ def generate_launch_description() -> LaunchDescription:
             default_value="false",
             description="RViz2 gorsellestirici",
         ),
+        DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_separation_actual", default_value="0.0"),
     ]
 
     return LaunchDescription(arguments + [OpaqueFunction(function=launch_setup)])

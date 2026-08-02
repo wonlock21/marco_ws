@@ -88,6 +88,10 @@ def generate_launch_description() -> LaunchDescription:
                 "EKF devreye girdiginde false yapilmali."
             ),
         ),
+        DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),
+        DeclareLaunchArgument("fake_wheel_separation_actual", default_value="0.0"),
     ]
 
     robot_state_publisher = Node(
@@ -114,6 +118,16 @@ def generate_launch_description() -> LaunchDescription:
         launch_arguments={
             "sahte": LaunchConfiguration("sahte"),
             "tf": LaunchConfiguration("tf"),
+            "fake_slip_factor": LaunchConfiguration("fake_slip_factor"),
+            "fake_wheel_scale_error_left": LaunchConfiguration(
+                "fake_wheel_scale_error_left"
+            ),
+            "fake_wheel_scale_error_right": LaunchConfiguration(
+                "fake_wheel_scale_error_right"
+            ),
+            "fake_wheel_separation_actual": LaunchConfiguration(
+                "fake_wheel_separation_actual"
+            ),
         }.items(),
     )
 
