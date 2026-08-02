@@ -479,7 +479,7 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
   hareket eşiğiyle en çok 10 Hz örnekleniyor, 500 noktayla sınırlı ve 2 Hz,
   best-effort/depth 1 yayımlanıyor. Robot durduktan sonra 2 s EKF settle var.
   Üç headless koşuda EKF birikimli/son yaw hatası **0.028–0.091°**, üç RViz
-  koşusunda **0.045–0.046°**; altı koşunun tamamı PASS. `odom0_queue_size=10`
+  koşusunda **0.049–0.060°**; altı koşunun tamamı PASS. `odom0_queue_size=10`
   korundu: ölçülen timestamp yaşları milisaniye düzeyinde ve kuyruk taşması
   kanıtı yok. Bu sonuç encoder yaw'ının EKF'de korunmasıdır; bağımsız sensörle
   doğruluk iyileşmesi iddiası değildir.
@@ -509,12 +509,39 @@ sınırlıyor. Elektronik ekibiyle görüşülüp watchdog'un 100 ms'e indirilme
 `nav2_collision_monitor` güvenlik bölgelerinin bu mesafeye göre boyutlanması gerekiyor.
 Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
 
-### Faz 4 — Haritalama 🟡 masa borusu (29.07)
+### Faz 4 — Haritalama 🟡 simülasyon kabulü (03.08.2026)
 - `slam_toolbox` async mode, YDLidar Tmini Pro (0.03–12 m) parametreleri
 - `ros2 launch marco_localization mapping.launch.py` → EKF + LiDAR + slam
 - `ros2 run marco_localization harita_kaydet.sh <isim>` → `marco_navigation/maps/`
 - **Masa borusu:** `/map` yayınlandı, `map→odom` TF oluştu ve `oda_test` kaydedildi
-- **Eksik kabul:** hareketli gerçek araçta encoder + LiDAR ile geçerli parkur haritası ve 60 dk prova
+- ✅ WSL/Gazebo Fortress `scan → slam_toolbox → /map` zinciri gerçek süreçlerle çalıştı
+- ✅ `map → odom → base_footprint → base_link → laser_link` TF zinciri doğrulandı;
+  mapping sırasında base_driver/EKF çalıştırılmadı ve her dinamik TF'nin tek sahibi vardı
+- ✅ Harita iki bağımsız boş SLAM oturumunda kaydedildi: 279×199 ve 279×200 @ 0.05 m;
+  bilinen hücre oranı %96.47 / %96.33, TF kesintisi 0, son `/cmd_vel` sıfır
+- ✅ YAML+PGM yapısı, boş/dolu/bilinmeyen sınıfları doğrulandı; ikinci harita gerçek
+  `nav2_map_server` lifecycle düğümünde active olup 279×200 `/map` olarak yeniden yüklendi
+- ✅ Kontrollü topic-yok/map-yok koşusu `/scan`, `/odom`, `/map`, TF ve map-saver
+  hatalarını PASS vermeden raporladı; Ignition oturum izolasyonu tekrarlı koşu için eklendi
+- ✅ Dönüşteki geçici LaserScan ayrışmasının simülasyon kök nedeni ölçüldü: DiffDrive'ın
+  tekerlekten bütünlediği odometri, temas/kaster kayması sırasında GPU LiDAR'ın fiziksel
+  gövde pozundan ayrılıyordu. Simülasyonda tek `odom→base_footprint` sahibi Fortress
+  OdometryPublisher yapıldı; tekerlek odometrisi yalnız `/wheel_odom`/`/wheel_tf`te tutuldu
+- ✅ 15 Hz LiDAR ve fiziksel-pose odometrisiyle endpoint→occupied ortalama/p95 hata
+  0.20, 0.35 ve 0.50 rad/s dönüşlerde sırasıyla 0.0209/0.0374 m,
+  0.0202/0.0368 m ve 0.0205/0.0368 m oldu (eski 0.50 rad/s ortalama 0.446 m);
+  TF extrapolation 0, odom 50 Hz, TF 90 Hz, RTF ortalama 0.984, son komut sıfır
+- ✅ `missing_laser_link` kontrollü negatifinde scan 14.89 Hz gelirken SLAM `/map`
+  üretmedi ve kabul aracı 8.46 saniyede FAIL verdi; eksik sensör TF gizlenmedi
+- **Deskew sınırı:** Fortress GPU LiDAR `scan_time=0` ve `time_increment=0` yayıyor;
+  uydurma ışın zamanı/deskew eklenmedi. Bu davranış gerçek YDLidar ile sahada yeniden
+  ölçülüp doğrulanmalıdır
+- 🟡 RViz yapılandırması Map, RobotModel, TF, LaserScan, Odometry ve Path ile hazır;
+  dönüş hizası sayısal kabulü geçti, son WSLg görsel incelemesi operatör kabulüdür
+- ⬜ Gerçek araç + gerçek encoder + gerçek YDLidar ile geçerli parkur haritası
+- ⬜ Sahada 60 dakikalık kurulum/haritalama/kayıt provası
+- **Sınır:** `marco_test.sdf` sonucu simülasyon kabulüdür; resmî parkur veya gerçek araç
+  kabulü değildir. Bu nedenle genel Faz 4 durumu 🟡 kalır.
 
 ### Faz 5 — Lokalizasyon 🟡 boru (29.07)
 - `nav2_amcl` + `map_server` + lifecycle; `amcl.launch.py`

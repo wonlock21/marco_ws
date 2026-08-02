@@ -3,7 +3,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction, TimerAction
+from launch.actions import (DeclareLaunchArgument, ExecuteProcess, OpaqueFunction,
+                            SetEnvironmentVariable, TimerAction)
 from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
@@ -49,6 +50,9 @@ def generate_launch_description():
     rviz_config = os.path.join(share, 'config', 'marco_simulation.rviz')
     use_sim_time = LaunchConfiguration('use_sim_time')
     robot_description = ParameterValue(Command(['xacro ', xacro_file]), value_type=str)
+    # Fortress discovery records can outlive a server briefly.  A per-launch
+    # partition prevents a later spawn request from reaching an old world.
+    ign_partition = 'marco_sim_%d' % os.getpid()
 
     rsp = Node(package='robot_state_publisher', executable='robot_state_publisher',
                parameters=[{'robot_description': robot_description, 'use_sim_time': use_sim_time}],
@@ -70,12 +74,14 @@ def generate_launch_description():
                   remappings=[('/world/marco_test/model/marco/joint_state', '/joint_states')])
     rviz = Node(package='rviz2', executable='rviz2', arguments=['-d', rviz_config],
                 parameters=[{'use_sim_time': use_sim_time}],
-                condition=IfCondition(LaunchConfiguration('rviz')), output='screen')
+                condition=IfCondition(LaunchConfiguration('simulation_rviz')), output='screen')
     drive = Node(package='marco_simulation', executable='visual_test_drive.py',
                  parameters=[{'use_sim_time': use_sim_time}],
-                 condition=IfCondition(LaunchConfiguration('visual_test')), output='screen')
+                 condition=IfCondition(LaunchConfiguration('simulation_visual_test')),
+                 output='screen')
 
     return LaunchDescription([
+        SetEnvironmentVariable('IGN_PARTITION', ign_partition),
         DeclareLaunchArgument(
             'software_gazebo_server', default_value='false',
             description='Use llvmpipe software rendering for the Gazebo server only.'),
@@ -94,6 +100,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'visual_test', default_value='false',
             description='Run the automatic visual driving route.'),
+        DeclareLaunchArgument(
+            'simulation_rviz', default_value=LaunchConfiguration('rviz'),
+            description='Internal alias; defaults to rviz for backward compatibility.'),
+        DeclareLaunchArgument(
+            'simulation_visual_test', default_value=LaunchConfiguration('visual_test'),
+            description='Internal alias; defaults to visual_test.'),
         DeclareLaunchArgument(
             'use_sim_time', default_value='true',
             description='Use the Gazebo simulation clock in ROS nodes.'),
