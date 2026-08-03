@@ -24,6 +24,7 @@ bool success
 
 # Duruldugu andaki olculen hata. Kalibrasyon ve saha analizi icin kaydedilir.
 float32 final_position_error  # [m]
+float32 final_longitudinal_error # [m]
 float32 final_yaw_error       # [rad]
 
 uint8 RESULT_OK=0
@@ -32,6 +33,7 @@ uint8 RESULT_LANE_LOST=2          # serit kaybedildi
 uint8 RESULT_TIMEOUT=3
 uint8 RESULT_OBSTACLE=4
 uint8 RESULT_ABORTED=5
+uint8 RESULT_CAMERA_LOST=6
 uint8 result_code
 
 string message

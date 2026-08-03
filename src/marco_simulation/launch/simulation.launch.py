@@ -28,9 +28,13 @@ def gazebo_environment(context, software_argument):
 
 
 def gazebo_server(context, world):
+    env = gazebo_environment(context, 'software_gazebo_server')
+    models = os.path.join(os.path.dirname(os.path.dirname(world)), 'models')
+    env['IGN_GAZEBO_RESOURCE_PATH'] = (
+        models + ':' + env.get('IGN_GAZEBO_RESOURCE_PATH', ''))
     return [ExecuteProcess(
         cmd=['ign', 'gazebo', '-s', '-r', world], output='screen',
-        additional_env=gazebo_environment(context, 'software_gazebo_server')
+        additional_env=env
     )]
 
 
@@ -68,6 +72,8 @@ def generate_launch_description():
                       '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
                       '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
                       '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+                      '/camera_rear/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
+                      '/camera_rear/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
                       '/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
                       '/model/marco/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
                       '/world/marco_test/dynamic_pose/info@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
@@ -85,6 +91,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         SetEnvironmentVariable('IGN_PARTITION', ign_partition),
+        SetEnvironmentVariable(
+            'IGN_GAZEBO_RESOURCE_PATH',
+            os.path.join(share, 'models') + ':' +
+            os.environ.get('IGN_GAZEBO_RESOURCE_PATH', '')),
         DeclareLaunchArgument(
             'software_gazebo_server', default_value='false',
             description='Use llvmpipe software rendering for the Gazebo server only.'),

@@ -1,6 +1,7 @@
-"""Hassas yanasma (Faz 9): dock_server + istege bagli perception mock.
+r"""
+Hassas yanasma (Faz 9): dock_server + istege bagli perception mock.
 
-  ros2 launch marco_docking docking.launch.py mock:=true
+    ros2 launch marco_docking docking.launch.py mock:=false
 
   ros2 action send_goal /dock_to_station marco_msgs/action/DockToStation \\
     "{station_id: 'istasyon_A', position_tolerance: 0.075, yaw_tolerance: 0.087,
@@ -52,7 +53,7 @@ def generate_launch_description() -> LaunchDescription:
         [
             DeclareLaunchArgument(
                 "mock",
-                default_value="true",
+                default_value="false",
                 description="true: sahte /lane/offset + /qr/detection",
             ),
             DeclareLaunchArgument("station_id", default_value="istasyon_A"),

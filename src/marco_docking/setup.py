@@ -29,6 +29,10 @@ setup(
     entry_points={
         'console_scripts': [
             'dock_server = marco_docking.dock_server:main',
+            'phase9_acceptance = marco_docking.phase9_acceptance:main',
+            'phase9_negative = marco_docking.phase9_negative:main',
+            'phase9_visualizer = marco_docking.phase9_visualizer:main',
+            'phase9_sim_inputs = marco_docking.phase9_sim_inputs:main',
         ],
     },
 )

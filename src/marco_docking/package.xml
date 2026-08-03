@@ -13,7 +13,10 @@
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>marco_msgs</depend>
-  <exec_depend>marco_perception</exec_depend>
+  <depend>tf2_msgs</depend>
+  <depend>ros_gz_interfaces</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>visualization_msgs</depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>

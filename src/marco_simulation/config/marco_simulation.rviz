@@ -300,6 +300,18 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /camera/image_raw
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Phase 9 Lane QR Errors
+      Namespaces:
+        phase9: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /phase9/markers
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 35; 40; 48
