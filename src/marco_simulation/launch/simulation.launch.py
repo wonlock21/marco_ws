@@ -69,6 +69,9 @@ def generate_launch_description():
                       '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
                       '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
                       '/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
+                      '/model/marco/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
+                      '/world/marco_test/dynamic_pose/info@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
+                      '/world/marco_test/stats@ros_gz_interfaces/msg/WorldStatistics[gz.msgs.WorldStatistics',
                       '/world/marco_test/model/marco/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model',
                   ],
                   remappings=[('/world/marco_test/model/marco/joint_state', '/joint_states')])
