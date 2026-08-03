@@ -9,7 +9,8 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Opaq
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetRemap
+from launch.actions import GroupAction
 from launch_ros.parameter_descriptions import ParameterValue
 
 
@@ -57,11 +58,15 @@ def setup(context):
     scan_gate = Node(package='marco_navigation', executable='simulation_scan_gate.py',
                      output='screen',
                      parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}])
-    nav2 = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(bringup, 'launch', 'navigation_launch.py')),
-        launch_arguments={'use_sim_time': LaunchConfiguration('use_sim_time'),
-                          'params_file': params_path, 'autostart': 'true',
-                          'use_composition': 'False', 'use_respawn': 'False'}.items())
+    nav2 = GroupAction(actions=[
+        SetRemap(src='cmd_vel', dst=LaunchConfiguration('cmd_vel_output')),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(bringup, 'launch', 'navigation_launch.py')),
+            launch_arguments={'use_sim_time': LaunchConfiguration('use_sim_time'),
+                              'params_file': params_path, 'autostart': 'true',
+                              'use_composition': 'False',
+                              'use_respawn': 'False'}.items())])
     common = {'use_sim_time': ParameterValue(LaunchConfiguration('use_sim_time'), value_type=bool),
               'scenario': LaunchConfiguration('goal_scenario'),
               'timeout': ParameterValue(LaunchConfiguration('navigation_timeout'), value_type=float),
@@ -106,5 +111,6 @@ def generate_launch_description():
         DeclareLaunchArgument('navigate_to_pose_bt', default_value=''),
         DeclareLaunchArgument('result_path', default_value='/tmp/marco_phase6/acceptance.json'),
         DeclareLaunchArgument('navigation_timeout', default_value='600.0'),
+        DeclareLaunchArgument('cmd_vel_output', default_value='/cmd_vel'),
         DeclareLaunchArgument('use_sim_time', default_value='true')]
     return LaunchDescription(args + [OpaqueFunction(function=setup)])

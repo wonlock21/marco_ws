@@ -75,6 +75,14 @@ class MissionManager(Node):
         self.create_subscription(
             Bool, "/base/manual_mode", self._on_manual, 10, callback_group=self._cb
         )
+        self.create_subscription(
+            Bool, "/safety/obstacle_detected", self._on_obstacle, 10,
+            callback_group=self._cb
+        )
+        self.create_subscription(
+            Bool, "/safety/navigation_abort", self._on_safety_abort, 10,
+            callback_group=self._cb
+        )
 
         self._cli_assign = self.create_client(
             AssignTask, "/plc/assign_task", callback_group=self._cb
@@ -105,6 +113,14 @@ class MissionManager(Node):
 
     def _on_manual(self, msg: Bool) -> None:
         self._manual = bool(msg.data)
+
+    def _on_obstacle(self, msg: Bool) -> None:
+        """Use only the measured safety supervisor state, never an estimate."""
+        self._obstacle = bool(msg.data)
+
+    def _on_safety_abort(self, msg: Bool) -> None:
+        if msg.data and self._busy:
+            self._fail("guvenlik engel bekleme zaman asimi")
 
     def _publish_status(self) -> None:
         msg = RobotStatus()

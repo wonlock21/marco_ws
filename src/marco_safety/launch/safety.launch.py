@@ -18,6 +18,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -33,7 +34,8 @@ def generate_launch_description() -> LaunchDescription:
         name="collision_monitor",
         output="screen",
         parameters=[cm_params, {"use_sim_time": use_sim_time}],
-        remappings=[("tf", "/tf"), ("tf_static", "/tf_static")],
+        remappings=[("tf", "/tf"), ("tf_static", "/tf_static"),
+                    ("scan", LaunchConfiguration("scan_topic"))],
     )
 
     lifecycle = Node(
@@ -59,13 +61,40 @@ def generate_launch_description() -> LaunchDescription:
         remappings=[("cmd_vel_out", "/cmd_vel")],
     )
 
+    supervisor = Node(
+        package="marco_safety",
+        executable="safety_supervisor.py",
+        name="safety_supervisor",
+        output="screen",
+        parameters=[{
+            "use_sim_time": use_sim_time,
+            "base_frame": LaunchConfiguration("base_frame"),
+            "scan_timeout_s": ParameterValue(
+                LaunchConfiguration("scan_timeout_s"), value_type=float),
+            "tf_timeout_s": ParameterValue(
+                LaunchConfiguration("tf_timeout_s"), value_type=float),
+            "input_timeout_s": ParameterValue(
+                LaunchConfiguration("input_timeout_s"), value_type=float),
+            "obstacle_wait_timeout_s": ParameterValue(
+                LaunchConfiguration("obstacle_wait_timeout_s"), value_type=float),
+        }],
+        remappings=[("scan", LaunchConfiguration("scan_topic"))],
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument("use_sim_time", default_value="false"),
+            DeclareLaunchArgument("scan_topic", default_value="/scan"),
+            DeclareLaunchArgument("base_frame", default_value="base_footprint"),
+            DeclareLaunchArgument("scan_timeout_s", default_value="0.5"),
+            DeclareLaunchArgument("tf_timeout_s", default_value="0.5"),
+            DeclareLaunchArgument("input_timeout_s", default_value="0.5"),
+            DeclareLaunchArgument("obstacle_wait_timeout_s", default_value="15.0"),
             LogInfo(msg=f"collision_monitor: {cm_params}"),
             LogInfo(msg=f"twist_mux: {mux_params}"),
             collision_monitor,
             lifecycle,
             twist_mux,
+            supervisor,
         ]
     )
