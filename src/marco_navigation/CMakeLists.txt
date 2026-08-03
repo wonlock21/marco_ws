@@ -9,6 +9,9 @@ install(DIRECTORY config launch behavior_trees maps graphs
 
 install(PROGRAMS
   scripts/rota_hesapla.py
+  scripts/nav2_test_goals.py
+  scripts/nav2_acceptance.py
+  scripts/simulation_scan_gate.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
