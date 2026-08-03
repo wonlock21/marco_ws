@@ -583,16 +583,52 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
   gerçek encoder odometrisi, gerçek YDLidar, gerçek parkur haritası, 5 dakika gerçek
   araç sürüşü, saha <5 cm/<3° kabulü ve başlangıç/yeniden lokalizasyon saha provası.
 
-### Faz 6 — Temel Nav2 🟡 planlama borusu (30.07)
-- Poligon ayak izi (CAD: `[[0.50,±0.35],[-1.18,±0.35]]`), global/local costmap,
-  Mevcut DWB yalnız ileri; RPP + `allow_reversing` veya eşdeğeri uygulanacak
-- Serbest hedefe gidiş — mimarinin bütününün çalıştığını doğrulamak için
-- `navigation.launch.py` + `nav2_params.yaml`; odom `/odometry/filtered`; max 0.50 m/s
-- BT: `navigate_to_pose_wait.xml` — engelde **Wait** (Spin/BackUp yok; şartname)
-- Global costmap: yalnız static+inflation (dinamik engelden kaçınma yok)
-- `nav_test` 10×10 m harita (`oda_test` CAD ayak izi için çok küçük)
-- **Boru kanıtı:** lifecycle active, `compute_path_to_pose` SUCCEEDED
-- **Kabul (saha):** RViz'den verilen hedefe araç çarpmadan ulaşıyor
+### Faz 6 — Temel Nav2 🟡 simülasyon entegrasyonu (03.08.2026)
+- ✅ Simülasyona özel `simulation_navigation.launch.py`, Faz 5
+  `simulation_localization.launch.py` zincirini `auto_drive:=false` ve Faz 5 kabulü
+  kapalı include ediyor; map_server, AMCL, initial pose ve TF yayıncıları çoğaltılmıyor.
+- ✅ Dokuz lifecycle düğümü gerçek WSL/Fortress koşusunda active görüldü:
+  map_server, amcl, planner/controller/smoother/behavior server, bt_navigator,
+  waypoint_follower ve velocity_smoother.
+- ✅ Kurulu plugin XML'lerinden doğrulanan Smac Hybrid (`REEDS_SHEPP`) + Rotation
+  Shim içinde Regulated Pure Pursuit yüklendi. RPP `allow_reversing: true` ve
+  `use_rotate_to_heading: false`; shim yalnız son hedef yaw hizalamasını yapıyor ve
+  başlangıçta 180° dönerek Reeds-Shepp geri segmentini ileriye çevirmiyor.
+- ✅ Simülasyon odom girdisi `/odom`; gerçek donanım `navigation.launch.py` ve
+  `nav2_params.yaml` değiştirilmedi. Hızlar +0.50/-0.30 m/s ve ±0.60 rad/s ile sınırlı.
+- ✅ CAD footprint `[[0.50,0.35],[0.50,-0.35],[-1.18,-0.35],[-1.18,0.35]]`;
+  global costmap static+inflation ve unknown/outside kapalı, local costmap `/scan`
+  marking/clearing+inflation olarak gerçek düğümlerde yüklendi.
+- ✅ `ComputePathToPose`: serbest hedef SUCCEEDED (2.000 m, 29 poz, map frame);
+  occupied, harita dışı ve eksik-TF hedefleri kontrollü FAIL verdi.
+- ✅ Uzun arka footprint için geçersiz ilk geri hedefin kök nedeni statik kırmızı
+  kutuya yetersiz açıklıktı; footprint/inflation küçültülmedi. Açık alandaki yeni
+  hedefte planın 12/12 segmenti geri, Nav2 minimum `linear.x=-0.30 m/s`, action
+  SUCCEEDED, final 0.081 m/3.71°, kesişim 0 ve son Twist sıfır ölçüldü.
+- ✅ Dört hedefli dizinin üç bağımsız temiz headless oturumu PASS. AMCL konum p95:
+  0.0303/0.0382/0.0368 m; yaw p95: 0.429/0.533/0.447°; minimum footprint
+  açıklığı 0.0739/0.0360/0.0735 m; tüm action'lar SUCCEEDED, TF drop/extrapolation
+  ve footprint kesişimi 0, final Twist sıfır.
+- ✅ Kontrollü kırmızı dinamik engel local costmap/RPP tarafından görüldü; robot
+  durdu, BT Wait görüldü, engel kaldırılınca aynı action SUCCEEDED oldu. Wait 14.22 s,
+  kesişim 0 ve son Twist sıfır.
+- ✅ Action cancel ayrı gerçek oturumda CANCELED ve cmd_vel sıfır; controller lifecycle
+  inactive testi action'ı güvenli FAIL'e götürdü ve controller yeniden active yapıldı.
+  Occupied, harita dışı ve eksik-TF hedefleri kontrollü FAIL verdi.
+- ✅ Kalan negatifler ayrı temiz süreç/JSON ile gerçek çalıştırıldı: izole Nav2 scan
+  gate kapatıldığında local costmap freshness (`expected_update_rate=0.20 s`) düştü,
+  action güvenli timeout/cancel ve sıfır hızla bitti; Smac `max_planning_time=1 µs`
+  planı kontrollü FAIL yaptı; initial pose verilmeden action server hedefi kabul etmedi;
+  AMCL deactivate + TF cache expiry sonrası map→odom kaybı güvenli timeout/cancel ile
+  sonlandı. Her koşudan sonra Twist sıfırlandı ve süreçler SIGINT ile temizlendi.
+- ✅ Son görünür WSL koşusu dört hedefle PASS (`/tmp/marco_phase6/final.json`): Gazebo
+  server/GUI software renderer, RViz WSLg D3D12 GPU/OpenGL 4.2; Map, robot, TF,
+  Best Effort scan, AMCL, iki costmap, planlar, footprint ve iki tahmin yolu açık.
+  Operatör map/plan/costmap/footprint/LiDAR görüntüsünü, dört hedefi, recovery=0 ve
+  son cmd_vel sıfırı onayladı; ardından Gazebo/RViz/launch kontrollü SIGINT ile kapatıldı.
+- **Genel durum: 🟡.** Gerçek encoder ve YDLidar, gerçek parkur haritası, gerçek araçta
+  hedefe gidiş/çarpışmasızlık, hız-ivme kalibrasyonu, fiziksel acil durdurma ve
+  yüklü/yüksüz ileri/geri saha davranışı açık kalır.
 
 ### Faz 7 — Rota ağı 🟡 rota hesaplama borusu (30.07)
 - `nav2_route` entegrasyonu, GeoJSON graf formatının projeye uyarlanması
