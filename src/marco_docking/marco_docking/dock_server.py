@@ -1,282 +1,218 @@
 #!/usr/bin/env python3
-"""DockToStation action server — hassas yanasma kontrolu (Faz 9).
+"""Fail-safe camera lane/QR DockToStation action server."""
 
-Girdi:  /lane/offset, /qr/detection  (goruntu ekibi veya mock)
-Cikti:  /cmd_vel_dock → twist_mux (nav'dan yuksek oncelik)
-
-Fazlar: qr_verify → lane_align → final_approach → settling
-
-  ros2 launch marco_docking docking.launch.py
-  ros2 action send_goal /dock_to_station marco_msgs/action/DockToStation \\
-    "{station_id: 'istasyon_A', position_tolerance: 0.075, yaw_tolerance: 0.087,
-      approach_type: 0, timeout: 60.0}"
-"""
-
-from __future__ import annotations
-
+import math
+import threading
 import time
-from typing import Optional
 
 import rclpy
 from geometry_msgs.msg import Twist
+from marco_msgs.action import DockToStation
+from marco_msgs.msg import LaneOffset, QrDetection
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
-from rclpy.action.server import ServerGoalHandle
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-
-from marco_msgs.action import DockToStation
-from marco_msgs.msg import LaneOffset, QrDetection
+from std_msgs.msg import Bool
 
 
 class DockServer(Node):
-    """Serit/QR ile kapali cevrim yanaşma."""
+    """Drive only through cmd_vel_dock and require all three terminal errors."""
 
-    def __init__(self) -> None:
-        super().__init__("dock_server")
-        self.declare_parameter("control_rate_hz", 20.0)
-        self.declare_parameter("max_linear_vel", 0.05)
-        self.declare_parameter("max_angular_vel", 0.40)
-        self.declare_parameter("kp_lateral", 1.2)
-        self.declare_parameter("kp_heading", 1.5)
-        self.declare_parameter("lane_lost_timeout_s", 1.5)
-        self.declare_parameter("settle_cycles", 10)
-        self.declare_parameter("min_confidence", 0.3)
-        self.declare_parameter("align_heading_tol", 0.12)
-        self.declare_parameter("align_lateral_tol", 0.10)
-
-        self._rate = float(self.get_parameter("control_rate_hz").value)
-        self._vmax = float(self.get_parameter("max_linear_vel").value)
-        self._wmax = float(self.get_parameter("max_angular_vel").value)
-        self._kp_y = float(self.get_parameter("kp_lateral").value)
-        self._kp_w = float(self.get_parameter("kp_heading").value)
-        self._lost_t = float(self.get_parameter("lane_lost_timeout_s").value)
-        self._settle_n = int(self.get_parameter("settle_cycles").value)
-        self._min_conf = float(self.get_parameter("min_confidence").value)
-        self._align_yaw = float(self.get_parameter("align_heading_tol").value)
-        self._align_lat = float(self.get_parameter("align_lateral_tol").value)
-
+    def __init__(self):
+        super().__init__('dock_server')
+        defaults = {
+            'control_rate_hz': 20.0, 'max_linear_vel': 0.05,
+            'max_angular_vel': 0.40, 'kp_lateral': 1.2,
+            'kp_heading': 1.5, 'kp_longitudinal': 0.6,
+            'lane_timeout_s': 0.5, 'qr_timeout_s': 0.5,
+            'camera_timeout_s': 0.7, 'min_lane_confidence': 0.3,
+            'min_qr_confidence': 0.3, 'target_stop_distance_m': 0.55,
+            'longitudinal_tolerance_m': 0.05, 'settle_cycles': 8,
+            'front_camera_frame': 'camera_front_optical_frame',
+            'rear_camera_frame': 'camera_rear_optical_frame'}
+        for name, value in defaults.items():
+            self.declare_parameter(name, value)
+        self._p = {name: self.get_parameter(name).value for name in defaults}
         self._cb = ReentrantCallbackGroup()
-        self._lane: Optional[LaneOffset] = None
-        self._qr: Optional[QrDetection] = None
-        self._lane_stamp = 0.0
+        self._lane = self._qr = None
+        self._lane_valid = self._qr_valid = None
+        self._lane_wall = self._qr_wall = 0.0
+        self._lane_valid_wall = self._qr_valid_wall = 0.0
+        self._estop = self._obstacle = False
         self._busy = False
+        self._busy_lock = threading.Lock()
+        self.create_subscription(LaneOffset, '/lane/offset', self._on_lane,
+                                 qos_profile_sensor_data, callback_group=self._cb)
+        self.create_subscription(QrDetection, '/qr/detection', self._on_qr,
+                                 qos_profile_sensor_data, callback_group=self._cb)
+        self.create_subscription(Bool, '/base/estop', self._on_estop, 10,
+                                 callback_group=self._cb)
+        self.create_subscription(Bool, '/safety/obstacle_detected', self._on_obstacle,
+                                 10, callback_group=self._cb)
+        self._pub = self.create_publisher(Twist, '/cmd_vel_dock', 10)
+        self._server = ActionServer(self, DockToStation, 'dock_to_station',
+                                    execute_callback=self._execute,
+                                    goal_callback=self._goal,
+                                    cancel_callback=lambda _: CancelResponse.ACCEPT,
+                                    callback_group=self._cb)
 
-        self.create_subscription(
-            LaneOffset,
-            "/lane/offset",
-            self._on_lane,
-            qos_profile_sensor_data,
-            callback_group=self._cb,
-        )
-        self.create_subscription(
-            QrDetection,
-            "/qr/detection",
-            self._on_qr,
-            qos_profile_sensor_data,
-            callback_group=self._cb,
-        )
-        self._cmd_pub = self.create_publisher(Twist, "/cmd_vel_dock", 10)
+    def _on_lane(self, msg):
+        self._lane, self._lane_wall = msg, time.monotonic()
+        if (msg.detected and msg.confidence >= float(self._p['min_lane_confidence'])
+                and self._finite(msg.lateral_offset, msg.heading_error,
+                                 msg.confidence)):
+            self._lane_valid, self._lane_valid_wall = msg, self._lane_wall
 
-        self._server = ActionServer(
-            self,
-            DockToStation,
-            "dock_to_station",
-            execute_callback=self._execute,
-            goal_callback=self._goal_cb,
-            cancel_callback=self._cancel_cb,
-            callback_group=self._cb,
-        )
-        self.get_logger().info(
-            "dock_server hazir | action=/dock_to_station | cmd=/cmd_vel_dock"
-        )
+    def _on_qr(self, msg):
+        self._qr, self._qr_wall = msg, time.monotonic()
+        if (msg.detected and msg.confidence >= float(self._p['min_qr_confidence'])
+                and self._finite(msg.pose_in_camera.x, msg.pose_in_camera.y,
+                                 msg.pose_in_camera.theta, msg.confidence)):
+            self._qr_valid, self._qr_valid_wall = msg, self._qr_wall
 
-    def _on_lane(self, msg: LaneOffset) -> None:
-        self._lane = msg
-        self._lane_stamp = time.monotonic()
+    def _on_estop(self, msg):
+        self._estop = bool(msg.data)
 
-    def _on_qr(self, msg: QrDetection) -> None:
-        self._qr = msg
+    def _on_obstacle(self, msg):
+        self._obstacle = bool(msg.data)
 
-    def _goal_cb(self, _goal_request: DockToStation.Goal) -> GoalResponse:
-        if self._busy:
-            self.get_logger().warn("docking zaten aktif — yeni hedef reddedildi")
-            return GoalResponse.REJECT
+    def _goal(self, _request):
+        with self._busy_lock:
+            if self._busy:
+                return GoalResponse.REJECT
+            self._busy = True  # reserve immediately; closes simultaneous-goal race
         return GoalResponse.ACCEPT
 
-    def _cancel_cb(self, _goal_handle: ServerGoalHandle) -> CancelResponse:
-        return CancelResponse.ACCEPT
+    def _stop(self):
+        self._pub.publish(Twist())
 
-    def _stop(self) -> None:
-        self._cmd_pub.publish(Twist())
+    @staticmethod
+    def _finite(*values):
+        return all(math.isfinite(float(v)) for v in values)
 
-    def _clamp(self, v: float, lo: float, hi: float) -> float:
-        return max(lo, min(hi, v))
+    def _finish(self, handle, result, code, message, canceled=False):
+        self._stop()
+        result.success = code == DockToStation.Result.RESULT_OK
+        result.result_code, result.message = code, message
+        if canceled:
+            handle.canceled()
+        elif result.success:
+            handle.succeed()
+        else:
+            handle.abort()
+        return result
 
-    def _execute(self, goal_handle: ServerGoalHandle) -> DockToStation.Result:
-        self._busy = True
-        goal: DockToStation.Goal = goal_handle.request
+    def _execute(self, handle):
         result = DockToStation.Result()
-
-        pos_tol = goal.position_tolerance if goal.position_tolerance > 0 else 0.075
-        yaw_tol = goal.yaw_tolerance if goal.yaw_tolerance > 0 else 0.087
-        timeout = goal.timeout if goal.timeout > 0 else 60.0
-        station = goal.station_id
-
-        feedback = DockToStation.Feedback()
-        t0 = time.monotonic()
-        phase = "qr_verify"
-        settle_ok = 0
-        dt = 1.0 / self._rate
-
-        self.get_logger().info(
-            f"docking basladi station={station!r} pos_tol={pos_tol:.3f} "
-            f"yaw_tol={yaw_tol:.3f} timeout={timeout:.0f}s"
-        )
-
+        goal = handle.request
+        rate = 1.0 / float(self._p['control_rate_hz'])
+        pos_tol = goal.position_tolerance or 0.075
+        yaw_tol = goal.yaw_tolerance or 0.087
+        long_tol = float(self._p['longitudinal_tolerance_m'])
+        target = float(self._p['target_stop_distance_m'])
+        # Pickup approaches forks-first through rear camera; dropoff uses front.
+        rear = goal.approach_type == DockToStation.Goal.APPROACH_PICKUP
+        frame = str(self._p['rear_camera_frame' if rear else 'front_camera_frame'])
+        direction = -1.0 if rear else 1.0
+        deadline = time.monotonic() + (goal.timeout or 60.0)
+        sensor_deadline = time.monotonic() + float(self._p['camera_timeout_s'])
+        settle = 0
         try:
             while rclpy.ok():
-                if goal_handle.is_cancel_requested:
-                    goal_handle.canceled()
-                    self._stop()
-                    result.success = False
-                    result.result_code = DockToStation.Result.RESULT_ABORTED
-                    result.message = "iptal edildi"
-                    return result
-
                 now = time.monotonic()
-                if now - t0 > timeout:
-                    goal_handle.abort()
+                if handle.is_cancel_requested:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_ABORTED,
+                                        'cancel edildi', canceled=True)
+                if self._estop:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_ABORTED, 'e-stop')
+                if self._obstacle:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_OBSTACLE, 'engel')
+                if now > deadline:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_TIMEOUT, 'zaman asimi')
+                lane, qr = self._lane_valid, self._qr_valid
+                if (lane is None or qr is None) and now <= sensor_deadline:
                     self._stop()
-                    result.success = False
-                    result.result_code = DockToStation.Result.RESULT_TIMEOUT
-                    result.message = "zaman asimi"
-                    return result
-
-                qr = self._qr
-                lane = self._lane
-
-                if phase == "qr_verify":
-                    feedback.phase = phase
-                    feedback.position_error = 0.0
-                    feedback.yaw_error = 0.0
-                    feedback.distance_remaining = 1.5
-                    goal_handle.publish_feedback(feedback)
-                    if qr is not None and qr.detected and qr.confidence >= self._min_conf:
-                        if qr.data != station:
-                            goal_handle.abort()
-                            self._stop()
-                            result.success = False
-                            result.result_code = DockToStation.Result.RESULT_QR_MISMATCH
-                            result.message = (
-                                f"QR uyusmadi: okunan={qr.data!r} beklenen={station!r}"
-                            )
-                            return result
-                        phase = "lane_align"
-                        self.get_logger().info("QR dogrulandi → lane_align")
-                    self._stop()
-                    time.sleep(dt)
+                    time.sleep(rate)
                     continue
-
-                # lane gerekli
-                if (
-                    lane is None
-                    or not lane.detected
-                    or lane.confidence < self._min_conf
-                    or (now - self._lane_stamp) > self._lost_t
-                ):
-                    goal_handle.abort()
+                lane_stale = (lane is None or now - self._lane_valid_wall >
+                              float(self._p['lane_timeout_s']))
+                qr_stale = (qr is None or now - self._qr_valid_wall >
+                            float(self._p['qr_timeout_s']))
+                if (lane_stale or qr_stale) and now <= sensor_deadline:
                     self._stop()
-                    result.success = False
-                    result.result_code = DockToStation.Result.RESULT_LANE_LOST
-                    result.message = "serit kaybedildi"
-                    return result
-
-                lat = float(lane.lateral_offset)
-                yaw = float(lane.heading_error)
-                pos_err = abs(lat)
-                yaw_err = abs(yaw)
-
-                feedback.phase = phase
-                feedback.position_error = pos_err
-                feedback.yaw_error = yaw_err
-                feedback.distance_remaining = max(0.0, pos_err + 0.5 * yaw_err)
-                goal_handle.publish_feedback(feedback)
-
+                    time.sleep(rate)
+                    continue
+                if lane_stale:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_LANE_LOST,
+                                        'LaneOffset stale/kayip')
+                if qr_stale:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_CAMERA_LOST,
+                                        'QR/kamera stale/kayip')
+                if lane.camera_frame != frame or qr.camera_frame != frame:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_CAMERA_LOST,
+                                        'yanlis kamera')
+                if qr.data != goal.station_id:
+                    return self._finish(handle, result,
+                                        DockToStation.Result.RESULT_QR_MISMATCH,
+                                        'QR uyusmazligi')
+                lat, yaw = float(lane.lateral_offset), float(lane.heading_error)
+                longitudinal = float(qr.pose_in_camera.x) - target
+                result.final_position_error = abs(lat)
+                result.final_longitudinal_error = abs(longitudinal)
+                result.final_yaw_error = abs(yaw)
+                feedback = DockToStation.Feedback()
+                feedback.phase = 'settling' if settle else 'final_approach'
+                feedback.position_error = abs(lat)
+                feedback.yaw_error = abs(yaw)
+                feedback.distance_remaining = abs(longitudinal)
+                handle.publish_feedback(feedback)
+                within = (abs(lat) <= pos_tol and abs(yaw) <= yaw_tol and
+                          abs(longitudinal) <= long_tol)
+                settle = settle + 1 if within else 0
+                if settle >= int(self._p['settle_cycles']):
+                    return self._finish(handle, result, DockToStation.Result.RESULT_OK,
+                                        'docking basarili')
                 cmd = Twist()
-                # Pozitif lateral = serit solda → robota sola ( +vy yok, diff drive:
-                # sola donmek icin +wz; ileri giderken cross-track icin -kp*lat ile
-                # yaw duzeltmesi).
-                w = self._clamp(
-                    -self._kp_w * yaw - self._kp_y * lat,
-                    -self._wmax,
-                    self._wmax,
-                )
-                cmd.angular.z = w
-
-                if phase == "lane_align":
-                    cmd.linear.x = 0.0
-                    if yaw_err < self._align_yaw and pos_err < self._align_lat:
-                        phase = "final_approach"
-                        self.get_logger().info("hizalama tamam → final_approach")
-                elif phase == "final_approach":
-                    # Yavas ileri; yan hata buyukse hizi dusur.
-                    scale = self._clamp(1.0 - pos_err / 0.20, 0.2, 1.0)
-                    cmd.linear.x = self._vmax * scale
-                    if pos_err <= pos_tol and yaw_err <= yaw_tol:
-                        phase = "settling"
-                        settle_ok = 0
-                        self.get_logger().info("tolerans icinde → settling")
-                elif phase == "settling":
-                    cmd.linear.x = 0.0
-                    cmd.angular.z = self._clamp(-self._kp_w * yaw, -self._wmax * 0.5, self._wmax * 0.5)
-                    if pos_err <= pos_tol and yaw_err <= yaw_tol:
-                        settle_ok += 1
-                    else:
-                        settle_ok = 0
-                        phase = "final_approach"
-                    if settle_ok >= self._settle_n:
-                        self._stop()
-                        goal_handle.succeed()
-                        result.success = True
-                        result.result_code = DockToStation.Result.RESULT_OK
-                        result.final_position_error = pos_err
-                        result.final_yaw_error = yaw_err
-                        result.message = "docking basarili"
-                        self.get_logger().info(
-                            f"SUCCEEDED pos_err={pos_err:.4f}m yaw_err={yaw_err:.4f}rad"
-                        )
-                        return result
-
-                self._cmd_pub.publish(cmd)
-                time.sleep(dt)
+                cmd.linear.x = direction * max(-float(self._p['max_linear_vel']), min(
+                    float(self._p['max_linear_vel']),
+                    float(self._p['kp_longitudinal']) * longitudinal))
+                cmd.angular.z = max(-float(self._p['max_angular_vel']), min(
+                    float(self._p['max_angular_vel']),
+                    direction * (float(self._p['kp_heading']) * yaw +
+                                 float(self._p['kp_lateral']) * lat)))
+                self._pub.publish(cmd)
+                time.sleep(rate)
         finally:
             self._stop()
-            self._busy = False
-
-        goal_handle.abort()
-        result.success = False
-        result.result_code = DockToStation.Result.RESULT_ABORTED
-        result.message = "beklenmeyen cikis"
+            with self._busy_lock:
+                self._busy = False
         return result
 
 
-def main() -> None:
+def main():
     rclpy.init()
     node = DockServer()
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:
         executor.spin()
-    except KeyboardInterrupt:
-        pass
     finally:
-        node._stop()
+        if rclpy.ok():
+            node._stop()
         executor.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

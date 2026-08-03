@@ -8,8 +8,16 @@ dock_server:
     max_angular_vel: 0.40
     kp_lateral: 1.2
     kp_heading: 1.5
-    lane_lost_timeout_s: 1.5
-    settle_cycles: 10
-    min_confidence: 0.3
-    align_heading_tol: 0.12
-    align_lateral_tol: 0.10
+    kp_longitudinal: 0.6
+    lane_timeout_s: 0.5
+    qr_timeout_s: 0.5
+    camera_timeout_s: 0.7
+    settle_cycles: 8
+    min_lane_confidence: 0.3
+    min_qr_confidence: 0.3
+    # Sim target is optical-axis camera-to-QR distance; chosen before the floor
+    # QR leaves the calibrated field of view. Real hardware must recalibrate it.
+    target_stop_distance_m: 0.75
+    longitudinal_tolerance_m: 0.05
+    front_camera_frame: camera_front_optical_frame
+    rear_camera_frame: camera_rear_optical_frame

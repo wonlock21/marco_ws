@@ -228,9 +228,9 @@ arayüz, mock veya masa borusu var · ⬜ = gerçek uygulama/entegrasyon yok.
 | Yüklü/yüksüz ve ters yönde sürüş | ⬜ DWB yapılandırması yalnız ileri sürüyor; yük durumu rota kontrolüne bağlı değil | Yüklü hız profili, geri sürüşe uygun kontrolcü (`RPP allow_reversing` veya doğrulanmış eşdeğer), ön/arka algı seçimi ve graf yön metadata'sı uygulanmalı. |
 | Kenar hız limiti ve rota olayları | 🟡 GeoJSON'da hız metadata'sı var, `TriggerEvent` yok | Mevcut BT `ComputeRoute + FollowPath` olduğu için `AdjustSpeedLimit` takip sırasında uygulanmıyor. `ComputeAndTrackRoute`/eşdeğer akışa geçilmeli; QR, docking ve q5 PLC olayları gerçek callback/action'lara bağlanmalı. |
 | Engel algılama, durma ve devam | 🟡 Collision Monitor masa testi var | Hareketli araçta durma mesafesi ve aynı rotadan devam kanıtlanmalı. Geri sürüş için arka stop alanı eklenmeli; mevcut stop poligonu aracın -x tarafının tamamını kapsamıyor. Engel durumu görev/GUI'ye bağlanmalı. |
-| Gerçek şerit algılama | 🟡 Ayrı `lane_tracking` prototipi var ama sözleşmeye uymuyor | Kamera düğümü piksel `Float32` yerine kalibre edilmiş `LaneOffset` (metre, açı, güven, kamera) yayınlamalı. Mevcut doğrudan `/pwm_left/right` yolu güvenlik zincirini baypas etmemeli; `/cmd_vel_dock` mimarisine bağlanmalı. Taze kurulumdaki `trackerfinal` entry-point'i de kaynakta yok. |
-| QR okuma ve QR pozu | ⬜ Yalnız mock `QrDetection` var | GM67 veri düğümü, hedef kimliği doğrulama ve kamera/OpenCV ile QR pozu üretimi yazılmalı; ön/arka kamera seçimi ve yanlış/eskimiş QR hata akışı test edilmeli. |
-| Hassas yanaşma | 🟡 Action server mock veriyle çalışıyor | Gerçek kamera topic'leri bağlanmalı. Boylamsal mesafe/son durma ölçümü eklenmeli; mevcut kontrol başarıyı yalnız yanal sapma ve açıyla belirliyor. E-stop/engel sonucu ve 20 denemede ≥18 başarı saha kanıtı gerekli. |
+| Gerçek şerit algılama | ⬜ Görüntü işleme ekibi kapsamında, Faz 9 docking kabulüne dahil değil | Gerçek kamera kalibrasyonu, şerit/ışık koşulları ve fiziksel kabul açık. |
+| QR okuma ve QR pozu | ⬜ Görüntü işleme ekibi kapsamında, Faz 9 docking kabulüne dahil değil | Gerçek kamera QR/PnP ve gerçek GM67 geliştirme/donanım kabulü açık. |
+| Hassas yanaşma | 🟡 WSL/Gazebo docking kontrol kabulü 20/20 PASS (04.08) | Girdiler açıkça simulation-only ground truth yayıncısından; negatif 11/11. Gerçek perception ve fiziksel ≥18/20 açık. |
 | Yük alma/bırakma ve lift | 🟡 UART protokolünde fork komutu/geri bildirimi var | ROS service/action, `base_driver` komut yolu, limit-switch/fork hata geri bildirimi ve görev durumları yazılmalı. Lift yalnız doğru QR+docking sonrası çalışmalı; yüklü/yüksüz durum doğrulanmalı. |
 | PLC ve kapı geçişi | 🟡 ROS servis sözleşmeleri + mock PLC var | Yarışma Wi-Fi/PLC protokol köprüsü, bağlantı yeniden kurma, zaman aşımı/ret davranışı, q5'te fiziksel bekleme ve görev tamamlandı bildirimi gerçek PLC ile test edilmeli. |
 | PC/mobil GUI entegrasyonu | 🟡 `RobotStatus` mesajı var, ağ köprüsü yok | `rosbridge`/seçilecek taşıma katmanı kurulmalı. Harita/poz/rota, bağlantılar, batarya-akım-voltaj-sıcaklık, QR, engel, hata ve olay günlüğü canlı veriden beslenmeli. Mevcut `mission_manager` pozunu sıfır, rota hatasını 0, lokalizasyonu sürekli geçerli yayımlıyor. |
@@ -718,13 +718,25 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
   saha durma mesafesi testleri yapılacak.
 - **Kabul (saha):** ölçülen güvenli mesafede duruş, engel kalkınca aynı rota ve ≤10 cm sapma
 
-### Faz 9 — Hassas yanaşma 🟡 yalnız mock veriyle (30.07)
+### Faz 9 — Hassas yanaşma 🟡 WSL docking kontrol kabulü tamam, saha açık (04.08)
 - Docking action server: `marco_docking` `/dock_to_station` → `/cmd_vel_dock`
-- 🟡 Mock `/lane/offset` + `/qr/detection` ile action smoke testi başarılı
-- ⬜ `lane_tracking` piksel Float32 üretiyor; `LaneOffset` metre/açı/güven sözleşmesine dönüştürülecek
-- ⬜ Doğrudan `/pwm_left/right` kontrolü kaldırılıp güvenli `/cmd_vel_dock` yoluna alınacak
-- ⬜ GM67 okuma ve kamera tabanlı gerçek QR poz düğümü yazılacak
-- ⬜ Boylamsal mesafe/son durma ölçümü ile e-stop/engel/action iptal davranışı eklenecek
+- ✅ `lane_tracking` başka ekibin paketidir ve Faz 9 kapsamında değiştirilmemiştir.
+- ✅ Açıkça simulation/test-only düğüm Gazebo ground truth'tan sözleşmeye uygun
+  `LaneOffset`/`QrDetection` üretir; 20 değişken başlangıçta **20/20 PASS** alındı.
+- ✅ Docking çalışma akışında `/pwm_left/right` yok; `/cmd_vel_dock` yayıncısı yalnız
+  `dock_server`, `/cmd_vel` yayıncısı yalnız `twist_mux` olarak ölçüldü.
+- ✅ Sim test girdisi Lane/QR hızları 15.85/15.85 Hz, TF 50.29 Hz ölçüldü;
+  bu sonuç gerçek perception başarısı değildir.
+- ✅ Action boylamsal QR mesafesi, ayrı Lane/QR freshness, kamera yönü, confidence,
+  NaN/Inf, e-stop, engel, cancel, timeout ve eşzamanlı goal denetimi içerir.
+- ✅ Headless kanıt `/tmp/marco_phase9/headless_sim_only_final.json`: 20/20; en büyük
+  hatalar lateral 0.0608 m, longitudinal 0.0426 m, yaw 0.0527 rad.
+- ✅ Negatif kanıt `/tmp/marco_phase9/negative_final.json`: 11/11; tümünde action
+  sonucu ve sıfır hız doğrulandı. Görünür kanıt `visible_sim_only_final.json`; robot durmuş,
+  Gazebo+RViz açık bırakıldı.
+- ⬜ Gerçek lane tracking, kamera QR/PnP, kamera kalibrasyonu, gerçek GM67,
+  gerçek şerit/ışık koşulları ve fiziksel
+  20 denemede ≥18 başarı tamamlanacak; bu nedenle genel Faz 9 🟡 kalır.
 - **Kabul (saha):** gerçek kamera+QR ile 20 denemenin en az 18'inde ±7.5 cm ve ±5°
 
 ### Faz 10 — Görev, PLC ve GUI 🟡 yalnız mock arayüz (30.07)
