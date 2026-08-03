@@ -543,12 +543,45 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
 - **Sınır:** `marco_test.sdf` sonucu simülasyon kabulüdür; resmî parkur veya gerçek araç
   kabulü değildir. Bu nedenle genel Faz 4 durumu 🟡 kalır.
 
-### Faz 5 — Lokalizasyon 🟡 boru (29.07)
-- `nav2_amcl` + `map_server` + lifecycle; `amcl.launch.py`
-- Başlangıç pozu: `baslangic_poz.sh` veya `baslangic:=true x:=… y:=… yaw:=…`
-- Poz kaydı: `amcl_poz_kaydet.py` → CSV
-- **Boru kanıtı:** harita yükleniyor, AMCL active, initial pose alınıyor
-- **Kabul (saha, bekliyor):** 5 dk sürüşte <5 cm / <3° — gerçek araç + çalışan LiDAR
+### Faz 5 — Lokalizasyon 🟡 simülasyon kabulü (03.08.2026)
+- ✅ WSL/Fortress tek komut zinciri: simülasyon + `map_server` + `nav2_amcl` +
+  lifecycle + güvenilir `/initialpose` + kontrollü sürüş + kabul aracı + isteğe bağlı RViz.
+- ✅ Paketlenmiş **simülasyon test haritası** `marco_test`: 279×199, 0.05 m,
+  origin `[-6.96,-4.98,0]`; install alanından map_server ile yüklendi. Bu resmî
+  parkur haritası veya gerçek araç haritası değildir.
+- ✅ TF sahipliği: AMCL `map→odom`, Fortress OdometryPublisher
+  `odom→base_footprint`, robot_state_publisher robot içi TF'ler; slam_toolbox,
+  EKF ve base_driver simülasyon launch'ında yok. Kurulu zincir sonrasında exact-time
+  TF düşmesi/ekstrapolasyonu üç nominal koşuda sıfır.
+- ✅ Bağımsız karşılaştırma: `/odom` truth sayılmadı. Gazebo
+  `/world/marco_test/dynamic_pose/info` içindeki model/world pozu TF yayınlamayan
+  `/ground_truth/odom` konusuna çevrildi. SLAM başlangıcında map ve world eksenleri
+  çakıştığından sabit `map←world=[0,0,0]` dönüşümü açıkça uygulandı.
+- ✅ Üç temiz nominal koşunun tamamı PASS. Konum mean/p95/max/final (m):
+  `0.0148/0.0285/0.0368/0.0132`, `0.0132/0.0283/0.0364/0.0082`,
+  `0.0144/0.0287/0.0361/0.0214`. Yaw mean/p95/max/final (°):
+  `0.552/1.549/1.808/0.099`, `0.527/1.564/1.850/0.032`,
+  `0.542/1.548/1.848/0.062`. Yakınsama: 7.32/7.33/7.02 s; scan ≈14.8 Hz,
+  odom ≈48.9 Hz, AMCL ≈4.8 Hz, RTF ortalama 0.981, 301 parçacık, final cmd sıfır.
+- ✅ Doğruya yakın initial pose (+0.10 m/+5°): 10.39 s yakınsama, rota PASS.
+- 🟡 Hatalı initial pose (+0.50 m/+15°): 57.22 s içinde hedef banda döndü ve final
+  0.0188 m/0.043° oldu; warm-up dâhil p95 konum 0.472 m olduğundan nominal kabul
+  JSON'u dürüstçe FAIL. Bu sonuç yalnız yeniden yakınsama senaryosudur.
+- ✅ Kontrollü lifecycle restart: map_server ve Gazebo açıkken AMCL
+  deactivate→cleanup→configure→activate; yeni initial pose ve hareket sonrası
+  `/amcl_pose` ile `map→odom` geri geldi, ek TF sahibi oluşmadı.
+- 🟡 `reinitialize_global_localization` servisi mevcut ve çağrıldı. Simetrik test
+  dünyasında kısa dönüş sonrası parçacık tahmini doğru moda toplanmadı
+  (pozisyon covariance toplamı ≈0.918); sonuç gizlenmeden belirsiz/FAIL bırakıldı.
+- ✅ Negatif kanıt: olmayan map yolu launch'u açık hata ile reddetti. Initial pose
+  verilmeyen kontrollü timeout `/amcl_pose`, `map→odom`, yakınsama ve initial-pose
+  koşullarını FAIL raporladı ve kabul aracı `/cmd_vel=0` yayımladı.
+- ✅ Operatör RViz simülasyon görsel kabulünü onayladı: map, robot, TF,
+  Best Effort/queue=1/decay=0 scan, odom, AMCL covariance/particles ile farklı
+  renkli ground-truth ve AMCL yolları görünür doğrulandı.
+- **Genel durum: 🟡.** Aşağıdaki gerçek donanım kabul maddeleri tamamlanmadı:
+  gerçek encoder odometrisi, gerçek YDLidar, gerçek parkur haritası, 5 dakika gerçek
+  araç sürüşü, saha <5 cm/<3° kabulü ve başlangıç/yeniden lokalizasyon saha provası.
 
 ### Faz 6 — Temel Nav2 🟡 planlama borusu (30.07)
 - Poligon ayak izi (CAD: `[[0.50,±0.35],[-1.18,±0.35]]`), global/local costmap,

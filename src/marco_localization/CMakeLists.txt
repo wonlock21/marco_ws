@@ -3,7 +3,7 @@ project(marco_localization)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY config launch
+install(DIRECTORY config launch simulation_test_maps
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -17,6 +17,10 @@ install(PROGRAMS
   scripts/fake_imu.py
   scripts/slam_test_drive.py
   scripts/slam_acceptance.py
+  scripts/ground_truth_pose.py
+  scripts/amcl_initial_pose.py
+  scripts/amcl_test_drive.py
+  scripts/amcl_acceptance.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
