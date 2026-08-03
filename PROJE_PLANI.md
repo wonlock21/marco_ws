@@ -680,17 +680,42 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
 - ⬜ Resmî parkur graph'ı; gerçek pickup/dropoff/q5/şarj rolleri; gerçek araçta ≤10 cm;
   gerçek hız profilleri; QR/PLC/docking TriggerEvent; graph editörü ve saha engel/bekleme kabulü açık.
 
-### Faz 8 — Güvenlik ve engel davranışı 🟡 masa borusu (30.07)
+### Faz 8 — Güvenlik ve engel davranışı 🟡 simülasyon kabulü (04.08)
 - `nav2_collision_monitor` yavaşlama/durma bölgeleri (`marco_safety`)
 - "Dur ve bekle, kaçınma" davranış ağacı (Faz 6/7 Wait BT)
 - `twist_mux` öncelik zinciri: estop > dock > manual > nav;
   e-stop `/base/estop`, manuel `/base/manual_mode` kilitleri
 - Zincir: Nav2 → `cmd_vel_raw` → CM → `cmd_vel_safe` → mux → `cmd_vel`
 - `route_safe.launch.py`
-- 🟡 Masa testinde stop poligonunda LiDAR → `cmd_vel_safe=0` görüldü
-- ⬜ Geri sürüşte aracın -x boyunu kapsayan arka stop/yavaşlama bölgesi eklenecek
-- ⬜ Engel durumu görev yöneticisi ve GUI'ye bağlanacak; action beklerken zaman aşımı politikası tanımlanacak
-- ⬜ E-stop, STM32 haberleşme kaybı ve sensör freshness için fiziksel fail-safe testi yapılacak
+- ✅ WSL/Fortress gerçek süreç zinciri: `/cmd_vel_raw` → Collision Monitor →
+  `/cmd_vel_safe` → twist_mux → `/cmd_vel`; üç çıkışın her birinde tek yayıncı doğrulandı.
+- ✅ CAD arka ucu `x=-1.18 m` kapsayan arka stop (`-1.40 m`) ve yavaşlama
+  (`-1.85 m`) poligonları eklendi. Sim ölçümü: ileri/geri yavaş hız
+  `0.100/0.075 m/s`, stop hızı `0/0`, durma süresi `0.0156/0.0258 s`,
+  durma mesafesi `0.0152/0.0087 m`; engel kalkınca aynı kesintisiz komut akışı
+  `0.104/0.144 s` içinde sürdü.
+- ✅ Collision Monitor Humble paketinde durum topic'i olmadığı yerel kurulumdan
+  doğrulandı; scan+TF'den ölçen `safety_supervisor` `/safety/state` ve
+  `/safety/obstacle_detected` yayımlıyor. Mission `RobotStatus.obstacle_detected`
+  yalnız bu gerçek kaynağa bağlandı.
+- ✅ `obstacle_wait_timeout_s` parametreli (varsayılan 15 s; sim launch 8 s).
+  2 s negatif koşuda navigasyon iptal isteği ve sürekli gerçek sıfır hız doğrulandı;
+  zaman aşımı dışındaki görünür Nav2/route engel koşusunda tek NavigateToPose goal
+  UUID `eb61fbf2-2cb2-4043-aacc-6270901c7033` engel boyunca aktif kaldı ve aynı UUID
+  SUCCEEDED oldu. Collision Monitor stop algısı `0.488 s`, engel kalkınca hareketin
+  sürmesi `5.732 s`; Wait görüldü, Spin/BackUp/replan/alternatif rota görülmedi,
+  cross-track p95/max `0.0133/0.0135 m`, son Twist sıfır
+  (`/tmp/marco_phase8/nav_action_obstacle.json`).
+- ✅ Sim e-stop: `/base/estop=true` sonrası `/cmd_vel=0` 0.0334 s; kaldırınca
+  kendiliğinden hareket yok, yeni sıfır-dışı komut gerekli. Mux gerçek mesajlarla
+  dock>manual>nav ve manual-mode kilidi doğrulandı; safety guard e-stop'u hepsinin
+  üzerinde kesiyor.
+- ✅ Sim negatifleri: scan freshness, missing/stale TF ve seçili input timeout
+  durumlarında twist_mux'un tek yayıncısı üzerinden sürekli `/cmd_vel=0`.
+- ✅ Headless kabul kanıtı `/tmp/marco_phase8/headless_final.json`; scan/odom/TF/cmd
+  hızları `14.61/48.20/67.50/34.16 Hz`, TF drop `0`, son Twist sıfır.
+- ⬜ Gerçek STM32 haberleşme kaybı, fiziksel e-stop, gerçek sensör freshness ve
+  saha durma mesafesi testleri yapılacak.
 - **Kabul (saha):** ölçülen güvenli mesafede duruş, engel kalkınca aynı rota ve ≤10 cm sapma
 
 ### Faz 9 — Hassas yanaşma 🟡 yalnız mock veriyle (30.07)

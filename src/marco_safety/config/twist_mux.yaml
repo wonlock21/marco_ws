@@ -19,12 +19,13 @@ twist_mux:
         topic: cmd_vel_dock
         timeout: 0.5
         priority: 120
-    locks:
-      # True iken priority < 255 olan tum girisler kesilir.
-      estop:
-        topic: base/estop
-        timeout: 0.0
+      # safety_supervisor yalniz hata/e-stop aninda surekli sifir yollar.
+      # Bu, "publisher sustu" yerine olculebilir gercek sifir cikisi saglar.
+      safety_guard:
+        topic: cmd_vel_safety_guard
+        timeout: 0.25
         priority: 255
+    locks:
       # Manuel modda nav (10) kilitlenir; manual/dock devam edebilir.
       manual_mode:
         topic: base/manual_mode

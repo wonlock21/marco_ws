@@ -39,6 +39,7 @@ def setup(context):
             'auto_navigation': 'false', 'run_acceptance': 'false',
             'goal_scenario': 'route',
             'navigate_to_pose_bt': os.path.join(share, 'behavior_trees', 'navigate_route_wait.xml'),
+            'cmd_vel_output': LaunchConfiguration('cmd_vel_output'),
             'use_sim_time': 'true'}.items())
     route = Node(package='nav2_route', executable='route_server', name='route_server', output='screen',
                  parameters=[os.path.join(share, 'config', 'route_server_sim.yaml'),
@@ -101,4 +102,5 @@ def generate_launch_description():
             DeclareLaunchArgument('run_final_acceptance', default_value='false'),
             DeclareLaunchArgument('route_scenario', default_value='nominal'),
             DeclareLaunchArgument('result_path', default_value='/tmp/marco_phase7/final.json')]
+    args.append(DeclareLaunchArgument('cmd_vel_output', default_value='/cmd_vel'))
     return LaunchDescription(args + [OpaqueFunction(function=setup)])
