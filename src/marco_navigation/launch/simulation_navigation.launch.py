@@ -18,7 +18,9 @@ def setup(context):
     loc = get_package_share_directory('marco_localization')
     bringup = get_package_share_directory('nav2_bringup')
     params_source = os.path.join(nav, 'config', 'nav2_sim_params.yaml')
-    bt = os.path.join(nav, 'behavior_trees', 'navigate_to_pose_sim_wait.xml')
+    bt = LaunchConfiguration('navigate_to_pose_bt').perform(context)
+    if not bt:
+        bt = os.path.join(nav, 'behavior_trees', 'navigate_to_pose_sim_wait.xml')
     through_bt = os.path.join(nav, 'behavior_trees', 'navigate_through_poses_sim_wait.xml')
     with open(params_source, encoding='utf-8') as stream:
         params_text = stream.read()
@@ -27,6 +29,11 @@ def setup(context):
     if LaunchConfiguration('goal_scenario').perform(context) == 'planner_timeout':
         params_text = params_text.replace('max_planning_time: 5.0\n',
                                           'max_planning_time: 0.000001\n')
+    if LaunchConfiguration('goal_scenario').perform(context) == 'route':
+        # Route paths contain deliberate 90-degree node transitions. Keep the
+        # Phase 6 default intact, but let the shim align at graph nodes here.
+        params_text = params_text.replace('angular_dist_threshold: 3.14\n',
+                                          'angular_dist_threshold: 0.60\n')
     marker = 'default_nav_to_pose_bt_xml: ""'
     through_marker = 'default_nav_through_poses_bt_xml: ""'
     if marker not in params_text or through_marker not in params_text:
@@ -96,6 +103,7 @@ def generate_launch_description():
         DeclareLaunchArgument('auto_navigation', default_value='false'),
         DeclareLaunchArgument('run_acceptance', default_value='false'),
         DeclareLaunchArgument('goal_scenario', default_value='nominal'),
+        DeclareLaunchArgument('navigate_to_pose_bt', default_value=''),
         DeclareLaunchArgument('result_path', default_value='/tmp/marco_phase6/acceptance.json'),
         DeclareLaunchArgument('navigation_timeout', default_value='600.0'),
         DeclareLaunchArgument('use_sim_time', default_value='true')]

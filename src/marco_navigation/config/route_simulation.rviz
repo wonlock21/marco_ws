@@ -1,0 +1,31 @@
+Panels:
+  - {Class: rviz_common/Displays, Name: Phase 7 Route Displays}
+  - {Class: nav2_rviz_plugins/Navigation 2, Name: Navigation 2}
+Visualization Manager:
+  Class: ""
+  Displays:
+    - {Class: rviz_default_plugins/Grid, Name: Grid, Enabled: true, Cell Size: 1, Plane Cell Count: 30}
+    - {Class: rviz_default_plugins/Map, Name: Map, Enabled: true, Topic: {Value: /map, Durability Policy: Transient Local}, Alpha: 0.7}
+    - {Class: rviz_default_plugins/RobotModel, Name: RobotModel, Enabled: true, Description Topic: {Value: /robot_description}}
+    - {Class: rviz_default_plugins/TF, Name: TF, Enabled: true, Show Axes: true, Marker Scale: 0.3}
+    - {Class: rviz_default_plugins/LaserScan, Name: LaserScan, Enabled: true, Topic: {Value: /scan, Reliability Policy: Best Effort}, Style: Points, Size (Pixels): 3}
+    - {Class: rviz_default_plugins/PoseWithCovariance, Name: AMCL, Enabled: true, Topic: {Value: /amcl_pose}}
+    - {Class: nav2_rviz_plugins/ParticleCloud, Name: AMCL particles, Enabled: true, Topic: {Value: /particle_cloud, Reliability Policy: Best Effort}}
+    - {Class: rviz_default_plugins/Map, Name: Global costmap, Enabled: true, Topic: {Value: /global_costmap/costmap, Durability Policy: Transient Local}, Alpha: 0.3}
+    - {Class: rviz_default_plugins/Map, Name: Local costmap, Enabled: true, Topic: {Value: /local_costmap/costmap, Durability Policy: Transient Local}, Alpha: 0.4}
+    - {Class: rviz_default_plugins/MarkerArray, Name: Directed route graph and labels, Enabled: true, Topic: {Value: /route_graph/markers, Durability Policy: Transient Local}}
+    - {Class: rviz_default_plugins/Path, Name: Active route path, Enabled: true, Topic: {Value: /route_path}, Color: 0; 255; 0, Line Width: 0.07}
+    - {Class: rviz_default_plugins/Path, Name: Controller path, Enabled: true, Topic: {Value: /local_plan}, Color: 255; 180; 0, Line Width: 0.04}
+    - {Class: rviz_default_plugins/Polygon, Name: CAD footprint, Enabled: true, Topic: {Value: /local_costmap/published_footprint}, Color: 255; 0; 0}
+    - {Class: rviz_default_plugins/Path, Name: Ground truth, Enabled: true, Topic: {Value: /ground_truth/path, Reliability Policy: Best Effort}, Color: 0; 255; 255, Line Width: 0.04}
+    - {Class: rviz_default_plugins/Path, Name: AMCL path, Enabled: true, Topic: {Value: /amcl/path, Reliability Policy: Best Effort}, Color: 255; 0; 255, Line Width: 0.04}
+  Global Options: {Background Color: 35; 38; 45, Fixed Frame: map, Frame Rate: 30}
+  Tools:
+    - {Class: rviz_default_plugins/Interact}
+    - {Class: rviz_default_plugins/MoveCamera}
+    - {Class: rviz_default_plugins/Select}
+    - {Class: nav2_rviz_plugins/GoalTool, Topic: {Value: /goal_pose}}
+    - {Class: rviz_default_plugins/SetInitialPose, Topic: {Value: /initialpose}}
+  Views:
+    Current: {Class: rviz_default_plugins/TopDownOrtho, Name: Route overview, Scale: 22}
+Window Geometry: {Height: 900, Width: 1400}

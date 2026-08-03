@@ -1,0 +1,24 @@
+/distance/route_server:
+  ros__parameters:
+    use_sim_time: true
+    base_frame: base_footprint
+    route_frame: map
+    path_density: 0.025
+    max_iterations: 0
+    max_planning_time: 2.0
+    smooth_corners: false
+    tracker_update_rate: 20.0
+    boundary_radius_to_achieve_node: 0.12
+    radius_to_achieve_node: 0.10
+    max_prune_dist_from_edge: 0.40
+    min_prune_dist_from_goal: 0.05
+    min_prune_dist_from_start: 0.05
+    prune_goal: true
+    enable_nn_search: true
+    max_nn_search_iterations: 10000
+    num_nearest_nodes: 3
+    graph_filepath: ""
+    graph_file_loader: GeoJsonGraphFileLoader
+    GeoJsonGraphFileLoader: {plugin: "nav2_route::GeoJsonGraphFileLoader"}
+    edge_cost_functions: [DistanceScorer]
+    DistanceScorer: {plugin: "nav2_route::DistanceScorer", weight: 1.0, speed_tag: geometric_only}

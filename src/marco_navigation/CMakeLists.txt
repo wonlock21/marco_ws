@@ -12,6 +12,11 @@ install(PROGRAMS
   scripts/nav2_test_goals.py
   scripts/nav2_acceptance.py
   scripts/simulation_scan_gate.py
+  scripts/route_graph_validator.py
+  scripts/route_graph_visualizer.py
+  scripts/route_acceptance.py
+  scripts/route_test_mission.py
+  scripts/phase7_final_acceptance.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
