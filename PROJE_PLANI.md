@@ -644,6 +644,42 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
 - ⬜ Çapraz rota hatası hesaplanıp `/robot_status` ve güvenlik limitine bağlanacak
 - **Kabul (saha):** araç yalnız tanımlı kenarlarda, en iyi rotayı seçerek sapma ≤10 cm
 
+**Simülasyon kabulü (03.08.2026):**
+- ✅ `simulation_route.launch.py`, Faz 6 simülasyon zincirini tek kez kullanıyor; simülasyona özel
+  route server/lifecycle, doğrulanmış `marco_test_route.geojson`, RViz graph görünümü ve kabul
+  istemcileri eklendi. Gerçek `route.launch.py` ve gerçek parametreler değiştirilmedi.
+- ✅ Kurulu `ComputeRoute`, `ComputeAndTrackRoute`, `Route/RouteNode/RouteEdge`, `SpeedLimit`,
+  `DynamicEdgesScorer`, `AdjustSpeedLimit` arayüzleri yerel kurulumdan doğrulandı.
+- ✅ Graph validator GeoJSON/ID/uç/directed erişilebilirlik/metadata/hız/CAD footprint map sweep
+  kontrollerini route server başlamadan uyguluyor (6 node, 12 yönlü edge).
+- ✅ Gerçek `ComputeRoute` action: node→node, ters yön, aynı node, olmayan node ve tek-yön
+  alternatif kontrolleri; path frame/sonluluk/uzunluk/maliyet ve edge dizisi bağımsız doğrulandı.
+- ✅ Üç temiz nominal simülasyon koşusunda beş görev segmenti SUCCEEDED; hızlı `0.50`, yavaş
+  `0.15`, geri `0.15 m/s` limitleri uygulandı; geri edge Nav2 ile negatif `linear.x` üretti;
+  son hız limiti reset ve son `/cmd_vel=0` oldu.
+- ✅ Ground-truth çapraz hata: üç koşuda p95 `0.079/0.072/0.070 m`, maksimum
+  `0.081/0.076/0.071 m`; simülasyon ≤10 cm kabulü geçti. Bu sonuç saha kabulü değildir.
+- ✅ Üç nominal koşu tamamlandı.
+- ✅ Faz 7 lifecycle/TF/scan/cancel negatifleri yeniden çalıştırılmadı; ortak Nav2 zinciri için
+  Faz 6 bölümündeki scan gate, controller inactive, map→odom kaybı, planner timeout,
+  pre-convergence ve action cancel gerçek koşu kanıtları referans alındı.
+- ✅ Dynamic edge kabulü tamamlandı: edge `106` rota öncesi kapatılınca `[106,107]` yerine
+  `[105]` seçildi; tekrar açılınca `[106,107]` geri geldi.
+- ✅ SpeedLimit kabulü tamamlandı: tek `/speed_limit` yayıncısı, aktif GeoJSON
+  `abs_speed_limit` kaynağı, hızlı/yavaş/geri gerçek cmd sınırları ve rota bitimi/cancel/hata
+  resetleri doğrulandı; son `/cmd_vel=0`.
+- ✅ Canlı ağırlıklı scorer kabulü: saf `DistanceScorer` gerçek `ComputeRoute` sonucunda
+  kısa edge `[105]`, saf `TimeScorer` ise hızlı `[106,107]` seçti; scorer kontrolünde robot
+  hareket ettirilmedi (`/tmp/marco_phase7/scorer_live.json`).
+- ✅ Aktif kısa edge `105` üzerindeki tek engel koşusunda rota öncesi ve engel sırasında
+  `[105]` kaldı; Wait görüldü, Spin/BackUp görülmedi, engel kalkınca aynı action SUCCEEDED
+  oldu. Dynamic edge/alternatif rota kullanılmadı; son Twist sıfır ve hız limiti resetlendi.
+- ✅ Aynı koşunun ground-truth ölçümü: footprint kesişimi `0`, minimum açıklık `0.1972 m`,
+  yanlış-edge ve graph-dışı kestirme örneği `0`; cross-track mean/p95/max
+  `0.0261/0.0631/0.0665 m` (`/tmp/marco_phase7/obstacle_route.json`).
+- ⬜ Resmî parkur graph'ı; gerçek pickup/dropoff/q5/şarj rolleri; gerçek araçta ≤10 cm;
+  gerçek hız profilleri; QR/PLC/docking TriggerEvent; graph editörü ve saha engel/bekleme kabulü açık.
+
 ### Faz 8 — Güvenlik ve engel davranışı 🟡 masa borusu (30.07)
 - `nav2_collision_monitor` yavaşlama/durma bölgeleri (`marco_safety`)
 - "Dur ve bekle, kaçınma" davranış ağacı (Faz 6/7 Wait BT)

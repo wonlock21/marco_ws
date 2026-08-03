@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "name": "marco_test_simulation_route",
+  "crs": {"type": "name", "properties": {"name": "map"}},
+  "features": [
+    {"type":"Feature","properties":{"id":0,"frame":"map","metadata":{"name":"start_wait","role":"start"}},"geometry":{"type":"Point","coordinates":[0.0,0.0]}},
+    {"type":"Feature","properties":{"id":1,"frame":"map","metadata":{"name":"center","role":"transit"}},"geometry":{"type":"Point","coordinates":[1.0,0.0]}},
+    {"type":"Feature","properties":{"id":2,"frame":"map","metadata":{"name":"simulation_pickup","role":"pickup"}},"geometry":{"type":"Point","coordinates":[2.0,0.0]}},
+    {"type":"Feature","properties":{"id":3,"frame":"map","metadata":{"name":"simulation_door_wait","role":"door_wait"}},"geometry":{"type":"Point","coordinates":[2.0,-2.5]}},
+    {"type":"Feature","properties":{"id":4,"frame":"map","metadata":{"name":"simulation_dropoff","role":"dropoff"}},"geometry":{"type":"Point","coordinates":[0.0,-2.5]}},
+    {"type":"Feature","properties":{"id":5,"frame":"map","metadata":{"name":"fast_detour","role":"transit"}},"geometry":{"type":"Point","coordinates":[1.0,-3.6]}},
+
+    {"type":"Feature","properties":{"id":100,"startid":0,"endid":1,"metadata":{"name":"start_center_fast","speed_limit":0.50,"abs_speed_limit":0.50,"class":"fast"}},"geometry":{"type":"MultiLineString","coordinates":[[[0.0,0.0],[1.0,0.0]]]}},
+    {"type":"Feature","properties":{"id":101,"startid":1,"endid":2,"metadata":{"name":"center_pickup_slow","speed_limit":0.15,"abs_speed_limit":0.15,"class":"slow"}},"geometry":{"type":"MultiLineString","coordinates":[[[1.0,0.0],[2.0,0.0]]]}},
+    {"type":"Feature","properties":{"id":102,"startid":2,"endid":3,"metadata":{"name":"pickup_door","speed_limit":0.20,"abs_speed_limit":0.20,"class":"normal"}},"geometry":{"type":"MultiLineString","coordinates":[[[2.0,0.0],[2.0,-2.5]]]}},
+    {"type":"Feature","properties":{"id":103,"startid":3,"endid":4,"metadata":{"name":"door_dropoff_reverse","speed_limit":0.15,"abs_speed_limit":0.15,"class":"reverse","reverse":true}},"geometry":{"type":"MultiLineString","coordinates":[[[2.0,-2.5],[0.0,-2.5]]]}},
+    {"type":"Feature","properties":{"id":104,"startid":4,"endid":0,"metadata":{"name":"dropoff_start_one_way","speed_limit":0.20,"abs_speed_limit":0.20,"class":"one_way"}},"geometry":{"type":"MultiLineString","coordinates":[[[0.0,-2.5],[0.0,0.0]]]}},
+    {"type":"Feature","properties":{"id":105,"startid":1,"endid":3,"metadata":{"name":"short_slow_disableable","speed_limit":0.15,"abs_speed_limit":0.15,"class":"slow","disableable":true}},"geometry":{"type":"MultiLineString","coordinates":[[[1.0,0.0],[2.0,-2.5]]]}},
+    {"type":"Feature","properties":{"id":106,"startid":1,"endid":5,"metadata":{"name":"long_fast_a","speed_limit":0.50,"abs_speed_limit":0.50,"class":"fast"}},"geometry":{"type":"MultiLineString","coordinates":[[[1.0,0.0],[1.0,-3.6]]]}},
+    {"type":"Feature","properties":{"id":107,"startid":5,"endid":3,"metadata":{"name":"long_fast_b","speed_limit":0.50,"abs_speed_limit":0.50,"class":"fast"}},"geometry":{"type":"MultiLineString","coordinates":[[[1.0,-3.6],[2.0,-3.6],[2.0,-2.5]]]}},
+    {"type":"Feature","properties":{"id":108,"startid":3,"endid":2,"metadata":{"name":"door_pickup_return","speed_limit":0.30,"abs_speed_limit":0.30,"class":"normal"}},"geometry":{"type":"MultiLineString","coordinates":[[[2.0,-2.5],[2.0,0.0]]]}},
+    {"type":"Feature","properties":{"id":109,"startid":0,"endid":4,"metadata":{"name":"start_dropoff_return","speed_limit":0.30,"abs_speed_limit":0.30,"class":"normal"}},"geometry":{"type":"MultiLineString","coordinates":[[[0.0,0.0],[0.0,-2.5]]]}},
+    {"type":"Feature","properties":{"id":110,"startid":2,"endid":1,"metadata":{"name":"pickup_center_return","speed_limit":0.30,"abs_speed_limit":0.30,"class":"normal"}},"geometry":{"type":"MultiLineString","coordinates":[[[2.0,0.0],[1.0,0.0]]]}},
+    {"type":"Feature","properties":{"id":111,"startid":1,"endid":0,"metadata":{"name":"center_start_return","speed_limit":0.30,"abs_speed_limit":0.30,"class":"normal"}},"geometry":{"type":"MultiLineString","coordinates":[[[1.0,0.0],[0.0,0.0]]]}}
+  ]
+}
