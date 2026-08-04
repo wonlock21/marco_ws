@@ -1,0 +1,7 @@
+# GUI manual test task. Accepted only when manual_task_enabled is true.
+string task_id
+string pickup_node
+string dropoff_node
+---
+bool accepted
+string message

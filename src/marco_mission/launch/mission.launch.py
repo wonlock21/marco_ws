@@ -1,44 +1,39 @@
-"""Gorev katmani + sahte PLC (Faz 10 arayuz).
+"""Phase-10 mission layer. Production default is the existing ROS PLC contract."""
 
-  ros2 launch marco_mission mission.launch.py
-  ros2 service call /mission/start marco_msgs/srv/StartMission "{}"
-  ros2 topic echo /robot_status
-"""
+import os
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
-    simulate = LaunchConfiguration("simulate_steps")
-    step_delay = LaunchConfiguration("step_delay_s")
-
-    return LaunchDescription(
-        [
-            DeclareLaunchArgument("simulate_steps", default_value="true"),
-            DeclareLaunchArgument("step_delay_s", default_value="0.5"),
-            LogInfo(msg=["mission launch simulate_steps=", simulate]),
-            Node(
-                package="marco_mission",
-                executable="mock_plc",
-                name="mock_plc",
-                output="screen",
-            ),
-            Node(
-                package="marco_mission",
-                executable="mission_manager",
-                name="mission_manager",
-                output="screen",
-                parameters=[
-                    {
-                        "simulate_steps": simulate,
-                        "step_delay_s": step_delay,
-                        "status_rate_hz": 5.0,
-                        "gate_node": "kapi_q5",
-                    }
-                ],
-            ),
-        ]
-    )
+    graph = os.path.join(get_package_share_directory('marco_navigation'), 'graphs',
+                         'phase10_route.geojson')
+    source = LaunchConfiguration('task_source')
+    test_lift = LaunchConfiguration('test_only_lift')
+    return LaunchDescription([
+        DeclareLaunchArgument('task_source', default_value='plc',
+                              description='plc (production) or mock_plc (simulation)'),
+        DeclareLaunchArgument('manual_task_enabled', default_value='false'),
+        DeclareLaunchArgument('simulate_steps', default_value='false'),
+        DeclareLaunchArgument('graph_file', default_value=graph),
+        DeclareLaunchArgument('test_only_lift', default_value='false'),
+        Node(package='marco_mission', executable='mock_plc', name='mock_plc',
+             output='screen',
+             condition=IfCondition(PythonExpression(["'", source,
+                                                     "' == 'mock_plc'"]))),
+        Node(package='marco_mission', executable='test_lift_server',
+             name='test_only_lift_server', output='screen',
+             condition=IfCondition(test_lift), parameters=[{'test_only': True}]),
+        Node(package='marco_mission', executable='mission_manager',
+             name='mission_manager', output='screen', parameters=[{
+                 'task_source': source,
+                 'simulate_steps': LaunchConfiguration('simulate_steps'),
+                 'manual_task_enabled': LaunchConfiguration('manual_task_enabled'),
+                 'graph_file': LaunchConfiguration('graph_file'),
+             }]),
+    ])

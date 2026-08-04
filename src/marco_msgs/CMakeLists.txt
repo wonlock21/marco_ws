@@ -15,10 +15,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/QrDetection.msg"
   "msg/RobotStatus.msg"
   "action/DockToStation.action"
+  "action/LiftLoad.action"
   "srv/AssignTask.srv"
   "srv/GatePermission.srv"
   "srv/TaskComplete.srv"
   "srv/StartMission.srv"
+  "srv/SubmitManualTask.srv"
+  "srv/CancelMission.srv"
+  "srv/ResetMissionSafety.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )
 

@@ -1,0 +1,4 @@
+# Explicit operator acknowledgement after e-stop/safety abort.
+---
+bool accepted
+string message
