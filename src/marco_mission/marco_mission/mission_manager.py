@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 import rclpy
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav2_msgs.action import ComputeRoute, FollowPath
 from nav2_msgs.msg import SpeedLimit
 from rclpy.action import ActionClient
@@ -84,7 +84,6 @@ class MissionManager(Node):
 
         self._status_pub = self.create_publisher(RobotStatus, '/robot_status', 10)
         self._event_pub = self.create_publisher(String, '/mission/events', 50)
-        self._zero_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self._speed_pub = self.create_publisher(SpeedLimit, '/speed_limit', 10)
         self.create_subscription(Bool, '/base/estop', self._on_estop, 10,
                                  callback_group=self._cb)
@@ -203,7 +202,6 @@ class MissionManager(Node):
         reset.percentage = False
         reset.speed_limit = 0.0
         self._speed_pub.publish(reset)
-        self._zero_pub.publish(Twist())
 
     def _validate(self, pickup: str, dropoff: str) -> Optional[str]:
         required = (pickup, dropoff, self._gate_node, self._home_node)

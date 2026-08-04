@@ -14,24 +14,30 @@ Visualization Manager:
     - Class: rviz_default_plugins/TF
       Name: TF
       Enabled: true
+      Show Axes: false
+      Show Names: false
+      Marker Scale: 0.35
     - Class: rviz_default_plugins/Odometry
       Name: Ham Odometri (kirmizi)
-      Enabled: true
+      Enabled: false
       Topic: {Value: /odom}
       Color: 255; 0; 0
       Keep: 100
+      Covariance: {Value: false}
     - Class: rviz_default_plugins/Odometry
       Name: EKF Odometri (mavi)
-      Enabled: true
+      Enabled: false
       Topic: {Value: /odometry/filtered}
       Color: 0; 80; 255
       Keep: 100
+      Covariance: {Value: false}
     - Class: rviz_default_plugins/Odometry
       Name: Ground Truth (yesil)
-      Enabled: true
+      Enabled: false
       Topic: {Value: /base/ground_truth}
       Color: 0; 255; 0
       Keep: 100
+      Covariance: {Value: false}
     - Class: rviz_default_plugins/Path
       Name: Ham Path (kirmizi)
       Enabled: true
@@ -80,10 +86,11 @@ Visualization Manager:
     - Class: rviz_default_plugins/Select
   Views:
     Current:
-      Class: rviz_default_plugins/Orbit
-      Distance: 18
-      Pitch: 0.75
-      Yaw: 0.75
+      Class: rviz_default_plugins/TopDownOrtho
+      Angle: 0
+      Scale: 40
+      X: 5
+      Y: 0
 Window Geometry:
   Height: 900
   Width: 1400
