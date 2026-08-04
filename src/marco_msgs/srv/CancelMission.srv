@@ -1,0 +1,4 @@
+# Cancel the one active mission. Clearing e-stop never calls this implicitly.
+---
+bool accepted
+string message

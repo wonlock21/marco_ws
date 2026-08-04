@@ -739,16 +739,34 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
   20 denemede ≥18 başarı tamamlanacak; bu nedenle genel Faz 9 🟡 kalır.
 - **Kabul (saha):** gerçek kamera+QR ile 20 denemenin en az 18'inde ±7.5 cm ve ±5°
 
-### Faz 10 — Görev, PLC ve GUI 🟡 yalnız mock arayüz (30.07)
-- ✅ Servis/mesaj sözleşmeleri, `mock_plc`, `/mission/start` ve temel durum geçişleri var
-- 🟡 `simulate_steps:=true` yalnız zaman gecikmesiyle senaryoyu taklit ediyor
-- ⬜ `simulate_steps:=false` için Nav2 `ComputeAndTrackRoute`/FollowPath action client'ı yok
-- ⬜ Docking action client'ı, lift action'ı, yük durumu ve dönüş rotası bağlanmadı
-- ⬜ E-stop/hata sırasında aktif action iptali ve durum geçişlerini dondurma yok
-- ⬜ Gerçek PLC Wi-Fi/protokol köprüsü, yeniden bağlanma ve q5 fiziksel bekleme yok
-- ⬜ GUI Wi-Fi/rosbridge katmanı ve manuel joystick/lift komut yolu yok
-- ⬜ `/robot_status` poz, kovaryans, rota sapması, engel ve QR alanları canlı topic'lerden gelmiyor
-- ⬜ Batarya politikası, otonom şarj, sistem mesajları ve zaman damgalı olay günlüğü yok
+### Faz 10 — Görev, PLC ve GUI 🟡 ROS/sim kabulü tamam, saha açık (04.08)
+- ✅ Tek ortak durum makinesi `plc` (varsayılan), `mock_plc` ve izinli `gui` görevlerini
+  alıyor; aktif görev/kaynak çakışması ve graph dışı kimlikler reddediliyor.
+- ✅ Sahte sleep akışı kaldırıldı. `simulate_steps:=false` zinciri gerçek ROS action
+  sözleşmeleriyle `ComputeRoute → FollowPath → DockToStation → LiftLoad`, q5 kapı servisi,
+  dönüş rotası ve `/plc/task_complete` çağrısını sonuç/ret/timeout üzerinden yürütüyor.
+- ✅ 3 alma + 3 bırakma düğümlü `phase10_route.geojson`; mock PLC ardışık aynı çifti
+  üretmiyor. Headless koşuda üç farklı rastgele çift ve bir GUI görevi PASS.
+- ✅ E-stop, safety abort, PLC kaybı, cancel ve action timeout/hatalarında aktif goal
+  iptal ediliyor; hız limiti reseti ve son sıfır Twist yayımlanıyor. E-stop/safety sonrası
+  açık operatör resetine kadar yeni görev reddediliyor; kendiliğinden devam yok.
+- ✅ `/robot_status`: AMCL pozu/kovaryansı ve freshness geçerliliği, canlı edge/next node,
+  cross-track, engel, QR, görev kaynağı/kimliği, PLC heartbeat ve kapı izni bağlandı.
+  `/mission/events` zaman damgalı JSON olayları yayımlıyor.
+- ✅ 04.08 headless kabul: tüm nominal/negatifler PASS; her senaryoda tek aktif action
+  sahipliği ve son Twist sıfır (`/tmp/marco_phase10/headless_acceptance.json`). Faz 6–9
+  nominal testleri bu koşuda tekrarlanmadı.
+- 🟡 `phase10_test_interfaces` ve `test_lift_server` açıkça test-only'dir; sonuçları gerçek
+  Nav2 hareketi, kamera docking'i veya lift donanımı kanıtı değildir.
+- ✅ Görünür sim koşusu Gazebo+RViz ile tamamlandı, son odometri `(1.478, 0.574) m`,
+  son Twist sıfır; robot dururken pencereler açık bırakıldı
+  (`/tmp/marco_phase10/visible_pass.json`).
+- ⬜ Gerçek PLC kablo/TCP saha protokolü mevcut belgelerde tanımlı değil; uydurulmadı.
+  `/plc/assign_task`, `/plc/gate_permission`, `/plc/task_complete` ve `/plc/connected`
+  arkasına takılacak değiştirilebilir Wi-Fi adaptörünün saha protokolü **AÇIK**.
+- ⬜ Gerçek lift/limit-switch, gerçek PLC/Wi-Fi, fiziksel Nav2+docking ve Flutter/rosbridge
+  ağ katmanı testleri açık. GUI joystick/lift manuel kontrolü bu görev gönderme kapsamına dahil değil.
+- ⬜ Batarya politikası ve otonom şarj açık.
 - **Kabul:** rastgele görev → alma → QR/şerit → lift → q5 izin → bırakma → bekleme →
   PLC tamamlandı akışı; ret/zaman aşımı/e-stop/engel/haberleşme kaybı testleriyle gerçek sistemde çalışmalı
 

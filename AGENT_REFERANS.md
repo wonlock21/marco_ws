@@ -117,7 +117,7 @@ camera_rear_link, left/right_wheel_link, caster_*_link ×4, fork_link(prizmatik)
 | 7 | nav2_route rota ağı | sapma <10cm, en kısa rota doğru | ✅ boru 30.07³ |
 | 8 | Güvenlik + engel davranışı | engelde dur, kalkınca devam | ✅ boru 30.07⁴ |
 | 9 | Hassas yanaşma | 20 denemede ≥18 kez ±7.5cm/±5° | ✅ boru 30.07⁵ |
-| 10 | Görev katmanı + PLC | (kapsam dışı, arayüz tanımlanacak) | ✅ arayüz 30.07⁶ |
+| 10 | Görev katmanı + PLC | ortak PLC/mock/GUI zinciri | 🟡 ROS/sim 04.08⁶ |
 | 11 | Gerçek donanım | saha kalibrasyonu | ⬜ |
 
 ## FAZ 1 ÇIKTISI (URDF)

@@ -33,6 +33,7 @@ bool obstacle_detected
 
 # --- Gorev ayrintilari ---
 string task_id
+string task_source             # plc | mock_plc | gui
 string pickup_node
 string dropoff_node
 string last_qr_data
