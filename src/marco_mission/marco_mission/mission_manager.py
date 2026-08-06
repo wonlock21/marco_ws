@@ -14,15 +14,22 @@ import rclpy
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
 from nav2_msgs.action import ComputeRoute, FollowPath
 from nav2_msgs.msg import SpeedLimit
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.time import Time
+from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, Float32, String
 from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformException, TransformListener
 
+from marco_mission.localization_validity import LocalizationHealth
+from marco_mission.localization_validity import evaluate_localization
 from marco_msgs.action import DockToStation, LiftLoad
 from marco_msgs.msg import QrDetection, RobotStatus
 from marco_msgs.srv import (AssignTask, CancelMission, GatePermission,
@@ -47,7 +54,12 @@ class MissionManager(Node):
             ('graph_file', graph_default), ('gate_node', 'kapi_q5'),
             ('home_node', 'bekla_A'), ('action_timeout_s', 120.0),
             ('gate_timeout_s', 30.0), ('plc_freshness_s', 3.0),
-            ('localization_freshness_s', 2.0), ('status_rate_hz', 5.0),
+            ('localization_tf_timeout_s', 2.0),
+            ('localization_scan_timeout_s', 2.0),
+            ('localization_odom_timeout_s', 2.0),
+            ('localization_tf_lookup_timeout_s', 0.05),
+            ('localization_max_position_covariance', 1.0),
+            ('status_rate_hz', 5.0),
         ):
             self.declare_parameter(name, default)
         self._default_source = str(self.get_parameter('task_source').value)
@@ -59,8 +71,16 @@ class MissionManager(Node):
         self._action_timeout = float(self.get_parameter('action_timeout_s').value)
         self._gate_timeout = float(self.get_parameter('gate_timeout_s').value)
         self._plc_freshness = float(self.get_parameter('plc_freshness_s').value)
-        self._loc_freshness = float(
-            self.get_parameter('localization_freshness_s').value)
+        self._tf_freshness = float(
+            self.get_parameter('localization_tf_timeout_s').value)
+        self._scan_freshness = float(
+            self.get_parameter('localization_scan_timeout_s').value)
+        self._odom_freshness = float(
+            self.get_parameter('localization_odom_timeout_s').value)
+        self._tf_lookup_timeout = float(
+            self.get_parameter('localization_tf_lookup_timeout_s').value)
+        self._max_position_covariance = float(
+            self.get_parameter('localization_max_position_covariance').value)
         self._nodes = self._load_graph(str(self.get_parameter('graph_file').value))
         if self._default_source not in ('plc', 'mock_plc'):
             raise ValueError('task_source plc veya mock_plc olmali')
@@ -85,8 +105,13 @@ class MissionManager(Node):
         self._plc_connected = False
         self._plc_seen = 0.0
         self._pose: Optional[PoseWithCovarianceStamped] = None
-        self._pose_seen = 0.0
+        self._scan_seen = 0.0
+        self._odom_seen = 0.0
         self._cross_track = math.nan
+
+        self._tf_buffer = Buffer(cache_time=Duration(seconds=10.0))
+        self._tf_listener = TransformListener(
+            self._tf_buffer, self, spin_thread=False)
 
         self._status_pub = self.create_publisher(RobotStatus, '/robot_status', 10)
         self._event_pub = self.create_publisher(String, '/mission/events', 50)
@@ -104,6 +129,12 @@ class MissionManager(Node):
                                  callback_group=self._cb)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose',
                                  self._on_pose, 10, callback_group=self._cb)
+        self.create_subscription(LaserScan, '/scan', self._on_scan, 10,
+                                 callback_group=self._cb)
+        self.create_subscription(Odometry, '/odom', self._on_odom, 10,
+                                 callback_group=self._cb)
+        self.create_subscription(Odometry, '/odometry/filtered', self._on_odom, 10,
+                                 callback_group=self._cb)
         self.create_subscription(Float32, '/route/cross_track_error',
                                  lambda m: setattr(self, '_cross_track', float(m.data)),
                                  10, callback_group=self._cb)
@@ -169,7 +200,12 @@ class MissionManager(Node):
 
     def _on_pose(self, msg: PoseWithCovarianceStamped) -> None:
         self._pose = msg
-        self._pose_seen = time.monotonic()
+
+    def _on_scan(self, _msg: LaserScan) -> None:
+        self._scan_seen = time.monotonic()
+
+    def _on_odom(self, _msg: Odometry) -> None:
+        self._odom_seen = time.monotonic()
 
     def _on_qr(self, msg: QrDetection) -> None:
         if msg.detected:
@@ -245,11 +281,45 @@ class MissionManager(Node):
                 return 'ayni alma/birakma noktasi kullanilamaz'
         return None
 
-    def _localization_ready(self) -> bool:
-        if self._pose is None or time.monotonic() - self._pose_seen > self._loc_freshness:
-            return False
-        cov = self._pose.pose.covariance
-        return math.isfinite(float(cov[0] + cov[7]))
+    def _transform_age(self, target: str, source: str) -> Optional[float]:
+        try:
+            transform = self._tf_buffer.lookup_transform(
+                target, source, Time(),
+                timeout=Duration(seconds=self._tf_lookup_timeout))
+        except TransformException:
+            return None
+        stamp = transform.header.stamp
+        stamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+        if stamp_ns <= 0:
+            return None
+        return max(0.0, (self.get_clock().now().nanoseconds - stamp_ns) / 1e9)
+
+    def _localization_health(self) -> LocalizationHealth:
+        pose = self._pose
+        covariance = math.inf
+        pose_finite = False
+        if pose is not None:
+            values = (
+                pose.pose.pose.position.x, pose.pose.pose.position.y,
+                pose.pose.pose.position.z, pose.pose.pose.orientation.x,
+                pose.pose.pose.orientation.y, pose.pose.pose.orientation.z,
+                pose.pose.pose.orientation.w, *pose.pose.covariance)
+            pose_finite = all(math.isfinite(float(value)) for value in values)
+            covariance = float(pose.pose.covariance[0] +
+                               pose.pose.covariance[7])
+        now = time.monotonic()
+        return evaluate_localization(
+            has_pose=pose is not None,
+            pose_finite=pose_finite,
+            position_covariance=covariance,
+            max_position_covariance=self._max_position_covariance,
+            map_odom_tf_age=self._transform_age('map', 'odom'),
+            odom_base_tf_age=self._transform_age('odom', 'base_footprint'),
+            tf_timeout=self._tf_freshness,
+            scan_age=(now - self._scan_seen if self._scan_seen else None),
+            scan_timeout=self._scan_freshness,
+            odom_age=(now - self._odom_seen if self._odom_seen else None),
+            odom_timeout=self._odom_freshness)
 
     def _reserve(self, task_id: str, route_nodes, source: str,
                  return_home: bool = True, start_immediately: bool = True,
@@ -265,8 +335,10 @@ class MissionManager(Node):
                 return 'task_id bos olamaz'
             if task_id in self._known_task_ids:
                 return f'mukerrer task_id: {task_id}'
-            if require_localization and not self._localization_ready():
-                return 'lokalizasyon gecersiz veya stale'
+            if require_localization:
+                health = self._localization_health()
+                if not health.valid:
+                    return f'lokalizasyon gecersiz: {health.reason}'
             error = self._validate_route(route_nodes)
             if error:
                 return error
@@ -299,8 +371,10 @@ class MissionManager(Node):
                     if self._obstacle:
                         res.accepted, res.message = False, 'engel algilandi'
                         return res
-                    if not self._localization_ready():
-                        res.accepted, res.message = False, 'lokalizasyon gecersiz veya stale'
+                    health = self._localization_health()
+                    if not health.valid:
+                        res.accepted = False
+                        res.message = f'lokalizasyon gecersiz: {health.reason}'
                         return res
                     self._running = True
                     threading.Thread(target=self._run, daemon=True).start()
@@ -558,6 +632,7 @@ class MissionManager(Node):
             time.sleep(0.02)
 
     def _publish_status(self) -> None:
+        health = self._localization_health()
         msg = RobotStatus()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
@@ -567,14 +642,11 @@ class MissionManager(Node):
             msg.pose = self._pose
             cov = self._pose.pose.covariance
             msg.position_covariance = float(cov[0] + cov[7])
-            msg.localization_valid = (time.monotonic() - self._pose_seen <=
-                                      self._loc_freshness and
-                                      math.isfinite(msg.position_covariance))
         else:
             msg.pose = PoseWithCovarianceStamped()
             msg.pose.header = msg.header
             msg.position_covariance = math.inf
-            msg.localization_valid = False
+        msg.localization_valid = health.valid
         msg.current_route_edge, msg.next_node = self._edge, self._next_node
         msg.cross_track_error = float(self._cross_track)
         msg.obstacle_detected = self._obstacle

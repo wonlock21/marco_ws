@@ -788,6 +788,9 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
   eksik STM32 cihazı düğüm başlatılmadan anlaşılır hata verdi. Smoke için rosbridge yalnız geçici `/tmp`
   overlay'inden kullanıldı; kalıcı sistem paketi ve YDLidar sürücü overlay'i bu makinede
   kurulu değil. Gerçek seri/LiDAR cihaz testi ve motor çalıştırma yapılmadı.
+- 🟡 06.08.2026 lokalizasyon sağlık düzeltmesi: `marco_mission` derlemesi ve paket
+  testleri 9 PASS/1 SKIP; sabit robot, eksik TF, stale scan/odom, NaN kovaryans ve
+  başlangıçta poz yok senaryoları unit + güvenli mock düğümle geçti. Hareket yapılmadı.
 - İki gerçek STM32'nin port/topolojisi, firmware protokolü, motor PID, encoder ve lift kabulü
 - YDLidar'ın mm cinsinden montaj TF'i; gerçek encoder ile SLAM ve AMCL saha kalibrasyonu
 - IMX219 veya USB yedek kamera, GM67 ve gerçek `LaneOffset`/`QrDetection` düğümleri
