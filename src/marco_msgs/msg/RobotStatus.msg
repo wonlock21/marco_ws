@@ -36,6 +36,9 @@ string task_id
 string task_source             # plc | mock_plc | gui
 string pickup_node
 string dropoff_node
+string[] route_nodes          # secim sirasindaki tum alma/birakma duraklari
+uint32 current_stop_index     # route_nodes icinde siradaki/aktif durak
+bool return_home
 string last_qr_data
 bool plc_connected
 bool gate_permission_granted

@@ -189,6 +189,7 @@ def _setup(context, *args, **kwargs):
             "task_source": "mock_plc" if fake else "plc",
             "simulate_steps": "false",
             "graph_file": graph_file,
+            "manual_task_enabled": "true",
             "test_only_lift": "true" if fake else "false",
         }.items(),
     )

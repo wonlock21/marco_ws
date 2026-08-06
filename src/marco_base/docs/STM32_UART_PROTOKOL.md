@@ -1,7 +1,7 @@
 # Orange Pi 5 ↔ STM32 UART Haberleşme Protokolü
 
 **Sürüm:** 0.3 · **Tarih:** 30.07.2026 · **Hazırlayan:** Yazılım / Navigasyon
-**Değişiklikler:** Baud 115200 · encoder tick 2¹⁶ sarma · host sıçrama filtresi (`max_tick_delta`)
+**Değişiklikler:** Baud 115200 · yönlü/kümülatif 360 tick/tur · host sıçrama filtresi (`max_tick_delta`)
 
 Bu belge Orange Pi üzerinde çalışan ROS 2 katmanı ile STM32 alt seviye kontrolcüsü
 arasındaki seri haberleşmeyi tanımlar. Protokolü navigasyon ekibi belirler çünkü
@@ -113,8 +113,8 @@ Bu, protokolün en kritik mesajıdır. Odometrinin tamamı buradan türetilir.
 | Ofset | Tip | Alan | Birim |
 |---|---|---|---|
 | 0 | uint32 | `timestamp_us` | STM32 açılışından beri geçen mikrosaniye |
-| 4 | int32 | `left_ticks` | **kümülatif** encoder; değer daima **[0, 65535]** (2¹⁶ sarma) |
-| 8 | int32 | `right_ticks` | **kümülatif** encoder; değer daima **[0, 65535]** (2¹⁶ sarma) |
+| 4 | int32 | `left_ticks` | **işaretli, yönlü ve kümülatif** encoder tick sayacı |
+| 8 | int32 | `right_ticks` | **işaretli, yönlü ve kümülatif** encoder tick sayacı |
 | 12 | int16 | `left_speed` | mm/s, STM32'nin ölçtüğü anlık hız |
 | 14 | int16 | `right_speed` | mm/s |
 
@@ -128,10 +128,10 @@ STM32 tarafı mümkün olan en kısa sürede tam 16 bayta indirmelidir.
 onarır — sonraki mesaj toplam mesafeyi yine doğru taşır. Fark gönderilseydi kaybolan
 her çerçeve odometriden kalıcı olarak mesafe silerdi ve hata birikirdi.
 
-**Sayaç sınırı 2¹⁶ (65536).** Değer 65535'ten sonra **0'a döner** ve artmaya devam
-eder. Kablo alanı geriye dönük uyumluluk için int32 kalır; anlamlı aralık uint16'dır.
-Host `tick_delta` ile sarmayı çözer. Üst sınır, uzun koşularda float ara değerlerde
-hassasiyet kaybını da önler.
+**Sayaç işaretli ve yönlüdür.** İleri harekette artar, geri harekette azalır;
+her mesaj bir önceki çerçevenin farkını değil firmware açılışından beri kümülatif
+tick değerini taşır. Kablo alanı int32'dir. Host `tick_delta` ile ardışık iki
+değerin farkını alır ve sayaç sarmasını güvenli biçimde çözer.
 
 **Sıçrama filtresi (host).** İki ardışık okuma arasındaki `|Δtick|` parametre
 `max_tick_delta` (varsayılan 2000) üstündeyse çerçeve **işlenmez**; referans korunur.
@@ -141,11 +141,12 @@ hassasiyet kaybını da önler.
 gecikmesi değişkendir ve hız hesabına doğrudan gürültü olarak yansır. STM32'nin kendi
 monotonik sayacı bu jitteri ortadan kaldırır.
 
-**Ham tick gönderilir, metre değil.** Encoder'ın redüktörün öncesinde mi sonrasında mı
-olduğu henüz netleşmedi. Ham tick gönderildiğinde bu belirsizlik protokolü etkilemez;
-tick→metre katsayısı ROS tarafında bir parametredir ve kalibrasyonla ayarlanır.
+**Ham tick gönderilir, metre değil.** Orange Pi üzerinde doğrulanan firmware,
+tekerin bir tam turunda yönlü ve kümülatif 360 tick üretir. Bu değer firmware'in
+nihai çıktısıdır; ROS tarafında yeniden dördül ×4 uygulanmaz. 0.100 m teker yarıçapı
+için katsayı yaklaşık 1.745 mm/tick'tir.
 
-Yön kuralı: robot ileri giderken her iki sayaç da **artar** (mod 65536).
+Yön kuralı: robot ileri giderken her iki sayaç da **artar**, geri giderken azalır.
 
 ### 4.2 `0x82` STATE_STATUS — 10 Hz
 
@@ -212,9 +213,8 @@ STM32'nin sayacı sıfırlaması gerekmez.
 Bu protokolü uygulamak için netleşmesi gereken üç konu var; ikisi zaten navigasyon
 tarafında da açık soru olarak duruyor:
 
-1. **Encoder redüktörün öncesinde mi sonrasında mı?** Ham tick gönderdiğimiz için
-   protokolü etkilemiyor, ama tick/tur değerini bilmemiz gerekiyor. Tekerlek milinde
-   ise dördül kod çözmeyle 1440 tick/tur bekliyoruz.
+1. **Encoder tick sözleşmesi doğrulandı:** firmware teker turu başına yönlü ve
+   kümülatif 360 tick gönderir; ROS tarafı bu değere yeniden ×4 uygulamaz.
 2. **Tekerlek ekseni arası mesafe** — kinematik dönüşüm Orange Pi'de yapıldığı için
    bu değer bize lazım.
 3. **STM32 zamanlayıcı çözünürlüğü** — `timestamp_us` alanının gerçekten mikrosaniye

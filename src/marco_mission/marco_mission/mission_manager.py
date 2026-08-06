@@ -21,12 +21,13 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import Bool, Float32, String
+from std_srvs.srv import Trigger
 
 from marco_msgs.action import DockToStation, LiftLoad
 from marco_msgs.msg import QrDetection, RobotStatus
 from marco_msgs.srv import (AssignTask, CancelMission, GatePermission,
                             ResetMissionSafety, StartMission, SubmitManualTask,
-                            TaskComplete)
+                            SubmitMission, TaskComplete)
 
 
 class MissionAbort(RuntimeError):
@@ -67,12 +68,17 @@ class MissionManager(Node):
         self._cb = ReentrantCallbackGroup()
         self._lock = threading.RLock()
         self._busy = False
+        self._running = False
         self._abort_reason = ''
         self._latched_abort = False
         self._active_goal = None
         self._active_kind = ''
         self._state = RobotStatus.STATE_IDLE
         self._task_id = self._source = self._pickup = self._dropoff = ''
+        self._route_nodes = []
+        self._current_stop_index = 0
+        self._return_home = True
+        self._known_task_ids = set()
         self._next_node = self._edge = self._last_qr = ''
         self._current_node = self._home_node
         self._gate_ok = self._estop = self._manual = self._obstacle = False
@@ -125,10 +131,14 @@ class MissionManager(Node):
                             callback_group=self._cb)
         self.create_service(SubmitManualTask, '/mission/submit_manual_task',
                             self._on_manual_task, callback_group=self._cb)
+        self.create_service(SubmitMission, '/mission/submit',
+                            self._on_submit_mission, callback_group=self._cb)
         self.create_service(CancelMission, '/mission/cancel', self._on_cancel,
                             callback_group=self._cb)
         self.create_service(ResetMissionSafety, '/mission/reset_safety',
                             self._on_reset_safety, callback_group=self._cb)
+        self.create_service(Trigger, '/mission/emergency_stop',
+                            self._on_emergency_stop, callback_group=self._cb)
         rate = float(self.get_parameter('status_rate_hz').value)
         self.create_timer(1.0 / rate, self._publish_status)
         self._event('ready', source=self._default_source,
@@ -187,10 +197,25 @@ class MissionManager(Node):
 
     def _request_abort(self, reason: str, latch: bool) -> None:
         with self._lock:
+            if latch:
+                self._latched_abort = True
             if not self._busy:
+                if latch:
+                    self._state = RobotStatus.STATE_ESTOP
+                    self._abort_reason = reason
+                    self._safe_stop()
+                    self._event('abort_latched', reason=reason)
+                return
+            if not self._running:
+                self._busy = False
+                self._abort_reason = reason
+                self._state = (RobotStatus.STATE_ESTOP if latch else
+                               RobotStatus.STATE_IDLE)
+                self._next_node = ''
+                self._safe_stop()
+                self._event('queued_mission_aborted', reason=reason)
                 return
             self._abort_reason = self._abort_reason or reason
-            self._latched_abort = self._latched_abort or latch
             goal = self._active_goal
         self._event('abort_requested', reason=reason, active_action=self._active_kind)
         if goal is not None:
@@ -203,33 +228,85 @@ class MissionManager(Node):
         reset.speed_limit = 0.0
         self._speed_pub.publish(reset)
 
-    def _validate(self, pickup: str, dropoff: str) -> Optional[str]:
-        required = (pickup, dropoff, self._gate_node, self._home_node)
+    def _validate_route(self, route_nodes) -> Optional[str]:
+        if not route_nodes:
+            return 'bos gorev'
+        if len(route_nodes) < 2 or len(route_nodes) % 2:
+            return 'rota alma/birakma ciftlerinden olusmali'
+        required = tuple(route_nodes) + (self._gate_node, self._home_node)
         missing = [node for node in required if node not in self._nodes]
-        return f"gecersiz graph node: {', '.join(missing)}" if missing else None
+        if missing:
+            return f"gecersiz graph node: {', '.join(sorted(set(missing)))}"
+        for index, node in enumerate(route_nodes):
+            prefix = 'alma_' if index % 2 == 0 else 'birak_'
+            if not node.startswith(prefix):
+                return f'{index + 1}. durak {prefix} ile baslamali: {node}'
+            if index and node == route_nodes[index - 1]:
+                return 'ayni alma/birakma noktasi kullanilamaz'
+        return None
 
-    def _reserve(self, task_id: str, pickup: str, dropoff: str,
-                 source: str) -> Optional[str]:
+    def _localization_ready(self) -> bool:
+        if self._pose is None or time.monotonic() - self._pose_seen > self._loc_freshness:
+            return False
+        cov = self._pose.pose.covariance
+        return math.isfinite(float(cov[0] + cov[7]))
+
+    def _reserve(self, task_id: str, route_nodes, source: str,
+                 return_home: bool = True, start_immediately: bool = True,
+                 require_localization: bool = False) -> Optional[str]:
         with self._lock:
             if self._busy:
                 return f'aktif gorev var: {self._source}/{self._task_id}'
             if self._estop or self._latched_abort:
                 return 'e-stop/safety kilidi aktif; operator reset gerekli'
-            error = self._validate(pickup, dropoff)
+            if self._obstacle:
+                return 'engel algilandi; gorev kabul edilmedi'
+            if not task_id:
+                return 'task_id bos olamaz'
+            if task_id in self._known_task_ids:
+                return f'mukerrer task_id: {task_id}'
+            if require_localization and not self._localization_ready():
+                return 'lokalizasyon gecersiz veya stale'
+            error = self._validate_route(route_nodes)
             if error:
                 return error
             self._busy = True
+            self._running = start_immediately
             self._abort_reason = ''
-            self._task_id, self._pickup, self._dropoff = task_id, pickup, dropoff
+            self._route_nodes = list(route_nodes)
+            self._current_stop_index = 0
+            self._return_home = bool(return_home)
+            self._task_id = task_id
+            self._pickup, self._dropoff = route_nodes[0], route_nodes[1]
             self._source = source
-        self._event('task_accepted', pickup=pickup, dropoff=dropoff)
-        threading.Thread(target=self._run, daemon=True).start()
+            self._known_task_ids.add(task_id)
+        self._state = RobotStatus.STATE_TASK_RECEIVED
+        self._next_node = route_nodes[0]
+        self._event('task_accepted', pickup=self._pickup, dropoff=self._dropoff,
+                    route_nodes=list(route_nodes), queued=not start_immediately)
+        if start_immediately:
+            threading.Thread(target=self._run, daemon=True).start()
         return None
 
     def _on_start(self, _req: StartMission.Request,
                   res: StartMission.Response) -> StartMission.Response:
         with self._lock:
             if self._busy:
+                if self._source == 'gui' and not self._running:
+                    if self._estop or self._latched_abort:
+                        res.accepted, res.message = False, 'guvenlik kilidi aktif'
+                        return res
+                    if self._obstacle:
+                        res.accepted, res.message = False, 'engel algilandi'
+                        return res
+                    if not self._localization_ready():
+                        res.accepted, res.message = False, 'lokalizasyon gecersiz veya stale'
+                        return res
+                    self._running = True
+                    threading.Thread(target=self._run, daemon=True).start()
+                    res.accepted, res.message = True, 'GUI gorevi baslatildi'
+                    self._event('mission_started', route_nodes=self._route_nodes)
+                    return res
                 res.accepted, res.message = False, 'aktif gorev var'
                 return res
             if self._estop or self._latched_abort:
@@ -244,8 +321,9 @@ class MissionManager(Node):
                 raise MissionAbort(reply.message)
             with self._lock:
                 self._busy = False
-            error = self._reserve(reply.task_id, reply.pickup_node,
-                                  reply.dropoff_node, self._default_source)
+            error = self._reserve(reply.task_id,
+                                  [reply.pickup_node, reply.dropoff_node],
+                                  self._default_source)
             res.accepted, res.message = error is None, error or 'gorev kabul edildi'
         except MissionAbort as exc:
             with self._lock:
@@ -261,10 +339,25 @@ class MissionManager(Node):
             self._event('task_rejected', requested_source='gui', reason=res.message)
             return res
         task_id = req.task_id or f'gui_{int(time.time())}'
-        error = self._reserve(task_id, req.pickup_node, req.dropoff_node, 'gui')
+        error = self._reserve(task_id, [req.pickup_node, req.dropoff_node], 'gui')
         res.accepted, res.message = error is None, error or 'GUI gorevi kabul edildi'
         if error:
             self._event('task_rejected', requested_source='gui', reason=error)
+        return res
+
+    def _on_submit_mission(self, req: SubmitMission.Request,
+                           res: SubmitMission.Response) -> SubmitMission.Response:
+        if not self._manual_enabled:
+            res.accepted, res.message = False, 'manual_task_enabled=false'
+        else:
+            error = self._reserve(req.task_id, list(req.route_nodes), 'gui',
+                                  return_home=req.return_home,
+                                  start_immediately=False,
+                                  require_localization=True)
+            res.accepted = error is None
+            res.message = error or 'GUI gorevi kabul edildi; baslatma bekleniyor'
+        if not res.accepted:
+            self._event('task_rejected', requested_source='gui', reason=res.message)
         return res
 
     def _on_cancel(self, _req: CancelMission.Request,
@@ -287,6 +380,14 @@ class MissionManager(Node):
                 self._state = RobotStatus.STATE_IDLE
                 res.accepted, res.message = True, 'operator safety reset kabul edildi'
                 self._event('safety_reset')
+        return res
+
+    def _on_emergency_stop(self, _req: Trigger.Request,
+                           res: Trigger.Response) -> Trigger.Response:
+        self._state = RobotStatus.STATE_ESTOP
+        self._request_abort('GUI yazilimsal acil durdurma', latch=True)
+        res.success = True
+        res.message = 'yazilimsal acil durdurma kilitlendi; fiziksel e-stop yerine gecmez'
         return res
 
     def _service_call(self, client, request, timeout: float, label: str):
@@ -400,24 +501,33 @@ class MissionManager(Node):
         success, reason = False, ''
         try:
             self._gate_ok = False
-            self._set_state(RobotStatus.STATE_TASK_RECEIVED, self._pickup)
-            self._navigate(self._pickup, loaded=False)
-            self._do_dock(self._pickup, pickup=True)
-            self._do_lift(self._pickup, pickup=True)
-            self._navigate(self._gate_node, loaded=True)
-            self._set_state(RobotStatus.STATE_WAITING_PLC, self._gate_node)
-            gate_req = GatePermission.Request()
-            gate_req.node_id = self._gate_node
-            gate = self._service_call(self._gate, gate_req, self._gate_timeout,
-                                      'PLC gate_permission')
-            if not gate.granted:
-                raise MissionAbort(f'kapi reddi: {gate.message}')
-            self._gate_ok = True
-            self._navigate(self._dropoff, loaded=True)
-            self._do_dock(self._dropoff, pickup=False)
-            self._do_lift(self._dropoff, pickup=False)
-            self._set_state(RobotStatus.STATE_RETURNING, self._home_node)
-            self._navigate(self._home_node, loaded=False)
+            loaded = False
+            self._set_state(RobotStatus.STATE_TASK_RECEIVED,
+                            self._route_nodes[0])
+            for index, station in enumerate(self._route_nodes):
+                self._current_stop_index = index
+                pickup = index % 2 == 0
+                self._pickup = station if pickup else self._pickup
+                self._dropoff = (self._route_nodes[index + 1] if pickup else station)
+                self._navigate(station, loaded=loaded)
+                self._do_dock(station, pickup=pickup)
+                self._do_lift(station, pickup=pickup)
+                loaded = pickup
+                if pickup:
+                    self._navigate(self._gate_node, loaded=True)
+                    self._set_state(RobotStatus.STATE_WAITING_PLC, self._gate_node)
+                    gate_req = GatePermission.Request()
+                    gate_req.node_id = self._gate_node
+                    gate = self._service_call(self._gate, gate_req,
+                                              self._gate_timeout,
+                                              'PLC gate_permission')
+                    if not gate.granted:
+                        raise MissionAbort(f'kapi reddi: {gate.message}')
+                    self._gate_ok = True
+            self._current_stop_index = len(self._route_nodes)
+            if self._return_home:
+                self._set_state(RobotStatus.STATE_RETURNING, self._home_node)
+                self._navigate(self._home_node, loaded=False)
             success = True
             self._set_state(RobotStatus.STATE_IDLE)
         except Exception as exc:  # mission boundary must always fail safe
@@ -431,6 +541,7 @@ class MissionManager(Node):
             self._event('mission_complete', success=success, reason=reason)
             with self._lock:
                 self._busy = False
+                self._running = False
                 self._active_goal, self._active_kind = None, ''
                 if not self._latched_abort and not self._estop and not success:
                     self._state = RobotStatus.STATE_ERROR
@@ -469,6 +580,9 @@ class MissionManager(Node):
         msg.obstacle_detected = self._obstacle
         msg.task_id, msg.task_source = self._task_id, self._source
         msg.pickup_node, msg.dropoff_node = self._pickup, self._dropoff
+        msg.route_nodes = list(self._route_nodes)
+        msg.current_stop_index = self._current_stop_index
+        msg.return_home = self._return_home
         msg.last_qr_data = self._last_qr
         msg.plc_connected = (self._plc_connected and
                              time.monotonic() - self._plc_seen <= self._plc_freshness)

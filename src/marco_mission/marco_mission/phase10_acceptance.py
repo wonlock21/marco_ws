@@ -6,14 +6,14 @@ import os
 import time
 
 import rclpy
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import Bool, Float32, String
 
 from marco_msgs.msg import RobotStatus
 from marco_msgs.srv import (CancelMission, ResetMissionSafety, StartMission,
-                            SubmitManualTask)
+                            SubmitManualTask, SubmitMission)
 
 
 class Acceptance(Node):
@@ -39,6 +39,8 @@ class Acceptance(Node):
                                          '/mission/submit_manual_task')
         self.cancel = self.create_client(CancelMission, '/mission/cancel')
         self.reset = self.create_client(ResetMissionSafety, '/mission/reset_safety')
+        self.submit = self.create_client(SubmitMission, '/mission/submit')
+        self.pose = self.create_publisher(PoseWithCovarianceStamped, '/amcl_pose', 10)
 
     def _event(self, msg: String) -> None:
         self.events.append(json.loads(msg.data))
@@ -94,6 +96,10 @@ class Acceptance(Node):
 
     def run(self) -> dict:
         results = {}
+        pose = PoseWithCovarianceStamped()
+        pose.header.frame_id = 'map'
+        pose.pose.pose.orientation.w = 1.0
+        self.pose.publish(pose)
         time.sleep(0.7)
         self.gate_delay.publish(Float32(data=0.02))
         pairs = set()
@@ -116,6 +122,33 @@ class Acceptance(Node):
         results['gui_nominal'] = {'pass': bool(response.accepted and done and
                                                done['success']),
                                   **self.invariant(begin)}
+
+        request = SubmitMission.Request()
+        request.task_id = 'gui_multi_stop'
+        request.route_nodes = ['alma_1', 'birak_1', 'alma_2', 'birak_3']
+        request.return_home = True
+        self.pose.publish(pose)
+        time.sleep(0.05)
+        begin = len(self.events)
+        queued = self.call(self.submit, request)
+        count = len([e for e in self.events if e['event'] == 'mission_complete'])
+        started = self.call(self.start, StartMission.Request())
+        done = self.wait_complete(count, timeout=12.0)
+        visited = [e.get('next_node') for e in self.events[begin:]
+                   if e['event'] == 'state_transition']
+        all_visited = all(node in visited for node in request.route_nodes)
+        results['gui_multi_stop'] = {
+            'pass': bool(queued.accepted and started.accepted and done and
+                         done['success'] and all_visited),
+            'visited': visited, **self.invariant(begin)}
+
+        empty = SubmitMission.Request()
+        empty.task_id = 'gui_empty'
+        empty.return_home = True
+        empty_response = self.call(self.submit, empty)
+        results['empty_route_rejected'] = {
+            'pass': not empty_response.accepted,
+            'message': empty_response.message}
 
         response, _ = self.gui('invalid', 'not_a_node', 'birak_1')
         results['invalid_node'] = {'pass': not response.accepted,

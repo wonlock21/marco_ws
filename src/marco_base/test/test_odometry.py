@@ -17,8 +17,8 @@ from marco_base.odometry import (
 
 # MarCO gercek parametreleri
 WHEEL_RADIUS = 0.100
-WHEEL_SEPARATION = 0.520
-TICKS_PER_REV = 1440
+WHEEL_SEPARATION = 0.460
+TICKS_PER_REV = 360
 
 
 def make_odom(**kwargs):
@@ -27,9 +27,9 @@ def make_odom(**kwargs):
 
 def test_metre_basina_tick():
     odom = make_odom()
-    # Cevre = 2*pi*0.1 = 0.6283 m, 1440 tick'e bolunur
-    assert odom.meters_per_tick == pytest.approx(0.6283185 / 1440, rel=1e-6)
-    assert odom.meters_per_tick == pytest.approx(0.0004363, abs=1e-7)
+    # Cevre = 2*pi*0.1 = 0.6283 m, firmware'in 360 tick/tur degerine bolunur.
+    assert odom.meters_per_tick == pytest.approx(0.6283185 / 360, rel=1e-6)
+    assert odom.meters_per_tick == pytest.approx(0.0017453, abs=1e-7)
 
 
 def test_ilk_cagri_referans_alir():
@@ -55,7 +55,7 @@ def test_yerinde_donus_ilerlemez():
     odom.update(0, 0, 0)
     odom.update(-TICKS_PER_REV, TICKS_PER_REV, 1_000_000)
 
-    # d_theta = (d_right - d_left) / separation = (0.6283 - (-0.6283)) / 0.52
+    # d_theta = (d_right - d_left) / separation = (0.6283 - (-0.6283)) / 0.46
     beklenen = (2 * 0.6283185) / WHEEL_SEPARATION
     beklenen = math.atan2(math.sin(beklenen), math.cos(beklenen))
 
@@ -199,8 +199,8 @@ def test_twist_duz_ileri():
 
 def test_twist_yerinde_donus():
     left, right = twist_to_wheel_speeds(0.0, 1.0, WHEEL_SEPARATION, 0.838)
-    assert left == pytest.approx(-0.26)
-    assert right == pytest.approx(0.26)
+    assert left == pytest.approx(-0.23)
+    assert right == pytest.approx(0.23)
 
 
 def test_twist_oransal_kirpma_yonu_korur():
@@ -208,14 +208,15 @@ def test_twist_oransal_kirpma_yonu_korur():
     left, right = twist_to_wheel_speeds(2.0, 1.0, WHEEL_SEPARATION, 0.838)
 
     assert max(abs(left), abs(right)) == pytest.approx(0.838)
-    # Kirpma oncesi oran: (2-0.26)/(2+0.26) = 1.74/2.26
-    assert left / right == pytest.approx(1.74 / 2.26, rel=1e-6)
+    # Kirpma oncesi oran: (2-0.23)/(2+0.23) = 1.77/2.23
+    assert left / right == pytest.approx(1.77 / 2.23, rel=1e-6)
 
 
 def test_gecersiz_parametre_reddedilir():
     with pytest.raises(ValueError):
-        DifferentialOdometry(0.0, 0.52, 1440)
+        DifferentialOdometry(0.0, WHEEL_SEPARATION, TICKS_PER_REV)
     with pytest.raises(ValueError):
-        DifferentialOdometry(0.1, 0.52, 0)
+        DifferentialOdometry(0.1, WHEEL_SEPARATION, 0)
     with pytest.raises(ValueError):
-        DifferentialOdometry(0.1, 0.52, 1440, max_tick_delta=40000)
+        DifferentialOdometry(
+            0.1, WHEEL_SEPARATION, TICKS_PER_REV, max_tick_delta=40000)

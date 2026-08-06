@@ -83,8 +83,9 @@ bırakma noktası → QR + şerit → bırak → bekleme noktasına dön → PLC
 - **Gerçek maksimum hız:** 80 RPM × 0.6283 m = **0.838 m/s**
   Raporun belirttiği 1.46 m/s, 24 V / 140 RPM değeridir; 12 V çalışmada ulaşılamaz.
   Nav2 `max_vel_x` bu değere göre değil, gerçek tavana göre ayarlanacak.
-- **Odometri çözünürlüğü:** 360 PPR × 4 (dördül kod çözme) = 1440 tick/tur
-  → 0.6283 / 1440 = **0.436 mm/tick**. Yeterli.
+- **Odometri çözünürlüğü:** Gerçek firmware teker turu başına yönlü ve
+  kümülatif **360 tick/tur** gönderir; bu değere yeniden ×4 uygulanmaz.
+  0.6283 / 360 = yaklaşık **1.745 mm/tick**.
 - **Ayak izi yarıçapları:** çevrel 0.834 m, iç teğet 0.325 m. Dairesel ayak izi
   varsayımı bu araçta kullanılamaz; poligon zorunlu.
 

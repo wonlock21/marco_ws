@@ -23,7 +23,7 @@ _UINT32_SPAN = 1 << 32
 _UINT32_HALF = 1 << 31
 
 # Tek örneklemede kabul edilen en büyük tick artımı.
-# ~0.84 m/s × 0.5 s / 0.436 mm/tick ≈ 960; 2000 bol pay bırakır.
+# ~0.84 m/s × 0.5 s / 1.745 mm/tick ≈ 240; 2000 bol pay bırakır.
 # Bunun üstü UART çöpü veya tek-kare bozulma sayılır.
 _DEFAULT_MAX_TICK_DELTA = 2000
 _DEFAULT_MAX_CONSECUTIVE_REJECTS = 3
@@ -72,7 +72,7 @@ class DifferentialOdometry:
     Parametreler:
         wheel_radius:       tekerlek yaricapi [m]
         wheel_separation:   tahrik tekerlerinin mil eksenleri arasi mesafe [m]
-        ticks_per_rev:      tekerlegin tam bir turunda sayilan tick (dordul dahil)
+        ticks_per_rev:      firmware'in tekerin tam turunda bildirdigi yonlu tick
         max_tick_delta:     tek orneklemede kabul edilen max |Δtick|; üstü atılır
         max_consecutive_rejects:
             ardışık red sayısı; aşılınca referans yeniden alınır (STM32 reset vb.)

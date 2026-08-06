@@ -18,7 +18,7 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         DeclareLaunchArgument('task_source', default_value='plc',
                               description='plc (production) or mock_plc (simulation)'),
-        DeclareLaunchArgument('manual_task_enabled', default_value='false'),
+        DeclareLaunchArgument('manual_task_enabled', default_value='true'),
         DeclareLaunchArgument('simulate_steps', default_value='false'),
         DeclareLaunchArgument('graph_file', default_value=graph),
         DeclareLaunchArgument('test_only_lift', default_value='false'),
