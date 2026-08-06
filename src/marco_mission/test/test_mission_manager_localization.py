@@ -3,6 +3,8 @@
 import rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
 from nav_msgs.msg import Odometry
+from rclpy.qos import (DurabilityPolicy, QoSCompatibility, QoSProfile,
+                       ReliabilityPolicy, qos_check_compatible)
 from sensor_msgs.msg import LaserScan
 
 from marco_mission.mission_manager import MissionManager
@@ -31,6 +33,29 @@ def test_mock_node_accepts_stationary_robot_health_inputs():
         _transform(node, 'odom', 'base_footprint')
 
         assert node._localization_health().valid
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_scan_subscription_is_compatible_with_real_ydlidar_qos():
+    """The real YDLidar publishes volatile scans with best-effort delivery."""
+    rclpy.init()
+    node = MissionManager()
+    try:
+        scan_subscription = next(
+            subscription for subscription in node.subscriptions
+            if subscription.topic_name == '/scan')
+        ydlidar_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+
+        compatibility, reason = qos_check_compatible(
+            ydlidar_qos, scan_subscription.qos_profile)
+
+        assert compatibility != QoSCompatibility.ERROR, reason
     finally:
         node.destroy_node()
         rclpy.shutdown()

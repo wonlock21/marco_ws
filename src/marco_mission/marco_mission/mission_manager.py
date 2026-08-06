@@ -22,6 +22,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, Float32, String
@@ -129,7 +130,8 @@ class MissionManager(Node):
                                  callback_group=self._cb)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose',
                                  self._on_pose, 10, callback_group=self._cb)
-        self.create_subscription(LaserScan, '/scan', self._on_scan, 10,
+        self.create_subscription(LaserScan, '/scan', self._on_scan,
+                                 qos_profile_sensor_data,
                                  callback_group=self._cb)
         self.create_subscription(Odometry, '/odom', self._on_odom, 10,
                                  callback_group=self._cb)
