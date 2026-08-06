@@ -14,8 +14,8 @@ from marco_base.fake_stm32 import WATCHDOG_TIMEOUT, FakeStm32
 from marco_base.odometry import DifferentialOdometry
 
 WHEEL_RADIUS = 0.100
-WHEEL_SEPARATION = 0.520
-TICKS_PER_REV = 1440
+WHEEL_SEPARATION = 0.460
+TICKS_PER_REV = 360
 MAX_WHEEL_SPEED = 0.838
 
 COMMAND_PERIOD = 0.02

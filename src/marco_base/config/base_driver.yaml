@@ -27,7 +27,8 @@ marco_base_driver:
     # dogrulanmali.
     wheel_radius: 0.100
     wheel_separation: 0.460
-    ticks_per_revolution: 1440
+    # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
+    ticks_per_revolution: 360
     max_wheel_speed: 0.838
     # Encoder sayaci 0..65535 (2^16) sarar. Iki okuma arasi |Δtick| bundan
     # buyukse cerceve atilir (UART copu / tek-kare bozulma). 3 ardısık redde

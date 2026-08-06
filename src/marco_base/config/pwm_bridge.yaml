@@ -24,7 +24,8 @@ marco_pwm_bridge:
     # base_driver.yaml / properties.xacro ile ayni olmali.
     wheel_radius: 0.100
     wheel_separation: 0.460
-    ticks_per_revolution: 1440
+    # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
+    ticks_per_revolution: 360
     max_wheel_speed: 0.838
     # Tam gaza karsilik gelen PWM (firmware timer ARR). Taklit bu olcekle
     # PWM'i hiza cevirir; gercek donanimda kullanilmaz.

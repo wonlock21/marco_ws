@@ -137,30 +137,23 @@
   <!-- ==================== SENSOR YERLESIMI ==================== -->
 
   <!--
-    KRITIK / TAHMINI: YDLidar Tmini Pro'nun base_link'e gore konumu.
+    Orange Pi gercek donanim dogrulamasi: YDLidar Tmini Pro'nun base_link'e
+    gore konumu.
     (RPLIDAR A3 DEGIL; eldeki birim Tmini Pro, bkz. AGENT_REFERANS.md)
 
     laser_link dogru degilse SLAM haritasi ve AMCL lokalizasyonu kayar.
-    CAD'de LiDAR tutucusu YOK (ihrac edilmemis), bu yuzden hala tahmin.
-    Olculecek: aksa gore ileri/geri mesafe + zeminden yukseklik.
 
     KABUL (29.07, kullanici karari): LiDAR ust kapaga montajli ve taramasi
     engelsiz 360 derece. Boylece SLAM, AMCL ve costmap standart bir 2D
     tarayici varsayimiyla kurulabiliyor; sektor maskeleme (ignore_array)
     gerekmiyor.
 
-    Ust kapagin duz ust yuzeyi OLCULDU: zeminden 544.5 mm (ÜstKapak-2 ve
-    DM_Üst-1 ust yuzleri ayni duzlemde). Tmini Pro govde yuksekligi 33 mm,
-    tarama duzlemi govdenin ortasina yakin -> yuzeyin ~20 mm uzerinde.
-      lidar_z = 0.5645 - 0.100 (aks yuksekligi) = 0.4645
-
-    x ve y hala TAHMINI: tutucu CAD'e islenmedi. x=0.400 ust kapagin on
-    bolgesine denk geliyor (ÜstKapak-2 boylamsal olarak 0.275..0.475
-    arasini kapliyor).
+    base_link, base_footprint'in 0.100 m ustundedir. lidar_z=0.180 ile tarama
+    duzlemi base_footprint'e gore zeminden 0.280 m olur.
   -->
-  <xacro:property name="lidar_x"           value="0.400"/>
+  <xacro:property name="lidar_x"           value="-0.300"/>
   <xacro:property name="lidar_y"           value="0.000"/>
-  <xacro:property name="lidar_z"           value="0.4645"/>
+  <xacro:property name="lidar_z"           value="0.180"/>
 
   <!--
     On ve arka IMX219 kameralari, zemindeki seridi gormek icin asagi egimli.

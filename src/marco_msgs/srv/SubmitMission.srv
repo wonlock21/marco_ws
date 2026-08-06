@@ -1,0 +1,9 @@
+# GUI tarafindan sirali, cok durakli gorev onerisi.
+# route_nodes alma/birakma dugumlerini secim sirasinda tasir.
+string task_id
+string[] route_nodes
+bool return_home
+---
+bool accepted
+string message
+

@@ -21,6 +21,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/TaskComplete.srv"
   "srv/StartMission.srv"
   "srv/SubmitManualTask.srv"
+  "srv/SubmitMission.srv"
   "srv/CancelMission.srv"
   "srv/ResetMissionSafety.srv"
   DEPENDENCIES std_msgs geometry_msgs

@@ -2,7 +2,8 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!--
-    Sensor cerceveleri. Buradaki konumlar TAHMINIDIR (properties.xacro).
+    Sensor cerceveleri properties.xacro'da tanimlidir. LiDAR konumu gercek
+    donanimda dogrulanmistir; kamera konumlari kendi notlarindaki durumdadir.
 
     laser_link ozellikle kritiktir: SLAM haritasi ve AMCL lokalizasyonu
     dogrudan bu donusum uzerinden hesaplanir. base_link'e gore birkac

@@ -121,8 +121,8 @@ class BaseDriver(Node):
         # properties.xacro ile ayni degerler. Ikisi ayrisirsa odometri ile
         # TF agaci celisir; degistirirken her ikisi birlikte guncellenmeli.
         self.declare_parameter("wheel_radius", 0.100)
-        self.declare_parameter("wheel_separation", 0.520)
-        self.declare_parameter("ticks_per_revolution", 1440)
+        self.declare_parameter("wheel_separation", 0.460)
+        self.declare_parameter("ticks_per_revolution", 360)
         self.declare_parameter("max_wheel_speed", 0.838)
         # Encoder 2^16'da sarar. Tek orneklemede bundan buyuk |Δtick| islenmez.
         self.declare_parameter("max_tick_delta", 2000)

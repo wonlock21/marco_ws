@@ -130,7 +130,7 @@ class PwmBridge(Node):
         # dort deger taklidin fizik modeli icindir, gercek donanimda kullanilmaz.
         self.declare_parameter("wheel_radius", 0.100)
         self.declare_parameter("wheel_separation", 0.460)
-        self.declare_parameter("ticks_per_revolution", 1440)
+        self.declare_parameter("ticks_per_revolution", 360)
         self.declare_parameter("max_wheel_speed", 0.838)
         # Tam gaza karsilik gelen PWM. Firmware'in timer ARR degeri ile ayni
         # olmalidir; taklit PWM'i hiza cevirirken bunu olcek olarak kullanir.
