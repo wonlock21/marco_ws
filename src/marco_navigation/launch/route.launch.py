@@ -29,13 +29,14 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     IncludeLaunchDescription,
     LogInfo,
     OpaqueFunction,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetRemap
 
 
 def _kur(context, *args, **kwargs):
@@ -87,25 +88,38 @@ def _kur(context, *args, **kwargs):
             "sahte": LaunchConfiguration("sahte"),
             "lidar": LaunchConfiguration("lidar"),
             "imu": LaunchConfiguration("imu"),
+            "serial_port": LaunchConfiguration("serial_port"),
+            "lidar_port": LaunchConfiguration("lidar_port"),
             "harita": LaunchConfiguration("harita"),
             "baslangic": LaunchConfiguration("baslangic"),
             "x": LaunchConfiguration("x"),
             "y": LaunchConfiguration("y"),
             "yaw": LaunchConfiguration("yaw"),
-            "rviz": "false",
+            "rviz": LaunchConfiguration("rviz"),
         }.items(),
     )
 
-    nav2 = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(bringup_share, "launch", "navigation_launch.py")
-        ),
-        launch_arguments={
-            "use_sim_time": "false",
-            "params_file": params_file,
-            "autostart": "true",
-            "use_composition": "False",
-        }.items(),
+    # Nav2 controller/behavior cikislari once cmd_vel_nav'da toplanir. Yalniz
+    # velocity_smoother cikisi nav_cmd_vel'e gider. Boylece base driver /cmd_vel'de
+    # kalir ve hicbir Nav2 dugumu guvenlik zincirinin son topigine yazmaz.
+    nav2 = GroupAction(
+        actions=[
+            SetRemap(src="cmd_vel", dst="cmd_vel_nav"),
+            SetRemap(
+                src="cmd_vel_smoothed", dst=LaunchConfiguration("nav_cmd_vel")
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(bringup_share, "launch", "navigation_launch.py")
+                ),
+                launch_arguments={
+                    "use_sim_time": "false",
+                    "params_file": params_file,
+                    "autostart": "true",
+                    "use_composition": "False",
+                }.items(),
+            ),
+        ]
     )
 
     route_server = Node(
@@ -155,6 +169,10 @@ def generate_launch_description() -> LaunchDescription:
                     "Donanim yoksa once fake_imu yayinla."
                 ),
             ),
+            DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
+            DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+            DeclareLaunchArgument("rviz", default_value="false"),
+            DeclareLaunchArgument("nav_cmd_vel", default_value="/cmd_vel"),
             DeclareLaunchArgument("harita", default_value="nav_test"),
             DeclareLaunchArgument("baslangic", default_value="true"),
             DeclareLaunchArgument("x", default_value="0.0"),

@@ -4,6 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -17,7 +18,7 @@ def generate_launch_description() -> LaunchDescription:
             output='screen',
             parameters=[{
                 'address': LaunchConfiguration('address'),
-                'port': LaunchConfiguration('port'),
+                'port': ParameterValue(LaunchConfiguration('port'), value_type=int),
                 'use_compression': False,
                 'call_services_in_new_thread': True,
                 'send_action_goals_in_new_thread': True,

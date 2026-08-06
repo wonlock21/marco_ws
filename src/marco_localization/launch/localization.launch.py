@@ -58,6 +58,8 @@ def launch_setup(context, *args, **kwargs):
             "tf": "false",
             "rviz": LaunchConfiguration("rviz"),
             "lidar": LaunchConfiguration("lidar"),
+            "serial_port": LaunchConfiguration("serial_port"),
+            "lidar_port": LaunchConfiguration("lidar_port"),
             "fake_slip_factor": LaunchConfiguration("fake_slip_factor"),
             "fake_wheel_scale_error_left": LaunchConfiguration(
                 "fake_wheel_scale_error_left"
@@ -146,6 +148,8 @@ def generate_launch_description() -> LaunchDescription:
             default_value="false",
             description="RViz2 gorsellestirici",
         ),
+        DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),

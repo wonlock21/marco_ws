@@ -78,6 +78,8 @@ def _kur(context, *args, **kwargs):
             "sahte": LaunchConfiguration("sahte"),
             "lidar": LaunchConfiguration("lidar"),
             "imu": LaunchConfiguration("imu"),
+            "serial_port": LaunchConfiguration("serial_port"),
+            "lidar_port": LaunchConfiguration("lidar_port"),
             "rviz": "false",
         }.items(),
     )
@@ -155,6 +157,8 @@ def generate_launch_description() -> LaunchDescription:
             description="YDLidar Tmini Pro (AMCL icin varsayilan acik)",
         ),
         DeclareLaunchArgument("imu", default_value="false"),
+        DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument(
             "rviz",
             default_value="false",

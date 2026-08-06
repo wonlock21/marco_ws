@@ -13,41 +13,36 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
-    GroupAction,
     IncludeLaunchDescription,
     LogInfo,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import SetRemap
 
 
 def generate_launch_description() -> LaunchDescription:
     nav_share = get_package_share_directory("marco_navigation")
     safety_share = get_package_share_directory("marco_safety")
 
-    # Nav2 velocity_smoother'in yayinladigi cmd_vel → cmd_vel_raw
-    # (navigation_launch icindeki hedef remap uzerine ek katman).
-    route_with_raw = GroupAction(
-        actions=[
-            SetRemap(src="cmd_vel", dst="cmd_vel_raw"),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(nav_share, "launch", "route.launch.py")
-                ),
-                launch_arguments={
-                    "sahte": LaunchConfiguration("sahte"),
-                    "lidar": LaunchConfiguration("lidar"),
-                    "imu": LaunchConfiguration("imu"),
-                    "harita": LaunchConfiguration("harita"),
-                    "baslangic": LaunchConfiguration("baslangic"),
-                    "x": LaunchConfiguration("x"),
-                    "y": LaunchConfiguration("y"),
-                    "yaw": LaunchConfiguration("yaw"),
-                    "graf": LaunchConfiguration("graf"),
-                }.items(),
-            ),
-        ]
+    route_with_raw = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(nav_share, "launch", "route.launch.py")
+        ),
+        launch_arguments={
+            "sahte": LaunchConfiguration("sahte"),
+            "lidar": LaunchConfiguration("lidar"),
+            "imu": LaunchConfiguration("imu"),
+            "serial_port": LaunchConfiguration("serial_port"),
+            "lidar_port": LaunchConfiguration("lidar_port"),
+            "harita": LaunchConfiguration("harita"),
+            "baslangic": LaunchConfiguration("baslangic"),
+            "x": LaunchConfiguration("x"),
+            "y": LaunchConfiguration("y"),
+            "yaw": LaunchConfiguration("yaw"),
+            "graf": LaunchConfiguration("graf"),
+            "rviz": LaunchConfiguration("rviz"),
+            "nav_cmd_vel": "/cmd_vel_raw",
+        }.items(),
     )
 
     safety = IncludeLaunchDescription(
@@ -62,6 +57,9 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("sahte", default_value="true"),
             DeclareLaunchArgument("lidar", default_value="true"),
             DeclareLaunchArgument("imu", default_value="false"),
+            DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
+            DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+            DeclareLaunchArgument("rviz", default_value="false"),
             DeclareLaunchArgument("harita", default_value="nav_test"),
             DeclareLaunchArgument("baslangic", default_value="true"),
             DeclareLaunchArgument("x", default_value="0.0"),
