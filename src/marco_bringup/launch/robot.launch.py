@@ -88,6 +88,16 @@ def generate_launch_description() -> LaunchDescription:
                 "EKF devreye girdiginde false yapilmali."
             ),
         ),
+        DeclareLaunchArgument(
+            "serial_port",
+            default_value="/dev/marco_stm32",
+            description="STM32 seri port yolu",
+        ),
+        DeclareLaunchArgument(
+            "lidar_port",
+            default_value="/dev/ttyUSB0",
+            description="YDLidar seri port yolu",
+        ),
         DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),
@@ -118,6 +128,7 @@ def generate_launch_description() -> LaunchDescription:
         launch_arguments={
             "sahte": LaunchConfiguration("sahte"),
             "tf": LaunchConfiguration("tf"),
+            "port": LaunchConfiguration("serial_port"),
             "fake_slip_factor": LaunchConfiguration("fake_slip_factor"),
             "fake_wheel_scale_error_left": LaunchConfiguration(
                 "fake_wheel_scale_error_left"
@@ -141,7 +152,7 @@ def generate_launch_description() -> LaunchDescription:
         executable="ydlidar_ros2_driver_node",
         name="ydlidar_ros2_driver_node",
         output="screen",
-        parameters=[lidar_config],
+        parameters=[lidar_config, {"port": LaunchConfiguration("lidar_port")}],
         condition=IfCondition(LaunchConfiguration("lidar")),
     )
 

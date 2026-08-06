@@ -771,6 +771,22 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
   PLC tamamlandı akışı; ret/zaman aşımı/e-stop/engel/haberleşme kaybı testleriyle gerçek sistemde çalışmalı
 
 ### Faz 11 — Gerçek donanım entegrasyonu ⬜
+- 🟡 06.08.2026: `marco_bringup/launch/real_system.launch.py` ile base driver,
+  robot description, YDLidar (yalnız gerçek mod), EKF+AMCL, güvenli Nav2 route,
+  docking, mission ve rosbridge tek girişte birleştirildi. Varsayılan `sahte:=false`;
+  mock perception/PLC/lift düğümleri yalnız `sahte:=true` koşulunda başlıyor.
+- 🟡 Statik/derleme doğrulaması: launch dosyalarında `py_compile`, `git diff --check`,
+  `ros2 launch marco_bringup real_system.launch.py --show-args` ve 12 paketlik
+  `colcon build --symlink-install` geçti (06.08.2026).
+- 🟡 Sahte smoke (06.08.2026, ROS domain 211): 26 süreç başladı; map/route server,
+  collision monitor ve rosbridge (19090) açıldı. Canlı grafikte yalnız
+  `velocity_smoother` `/cmd_vel_raw`, yalnız collision monitor `/cmd_vel_safe`
+  yayınladı; `/cmd_vel` zincirinin son sahibi twist_mux olarak doğrulandı.
+  Base driver `publish_tf=false`, EKF `publish_tf=true`, AMCL `tf_broadcast=true` idi.
+- 🟡 Erken hata yolları doğrulandı: kurulu olmayan `rosbridge_server`, eksik harita ve
+  eksik STM32 cihazı düğüm başlatılmadan anlaşılır hata verdi. Smoke için rosbridge yalnız geçici `/tmp`
+  overlay'inden kullanıldı; kalıcı sistem paketi ve YDLidar sürücü overlay'i bu makinede
+  kurulu değil. Gerçek seri/LiDAR cihaz testi ve motor çalıştırma yapılmadı.
 - İki gerçek STM32'nin port/topolojisi, firmware protokolü, motor PID, encoder ve lift kabulü
 - YDLidar'ın mm cinsinden montaj TF'i; gerçek encoder ile SLAM ve AMCL saha kalibrasyonu
 - IMX219 veya USB yedek kamera, GM67 ve gerçek `LaneOffset`/`QrDetection` düğümleri
