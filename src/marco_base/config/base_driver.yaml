@@ -1,7 +1,7 @@
 marco_base_driver:
   ros__parameters:
     # --- Donanim baglantisi ---
-    serial_port: /dev/marco_stm32
+    serial_port: /dev/ttyACM0
     baudrate: 115200
     use_fake_hardware: false
 
