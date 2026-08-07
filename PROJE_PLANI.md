@@ -499,6 +499,9 @@ Detaylı durum özeti: `AGENT_REFERANS.md`.
 
 - ⬜ `sahte:=false` ile gerçek seri port ve iki STM32 firmware uyumu kabul edilecek
 - ⬜ Gerçek encoder ile 10 m/360° saha testi ve wheel radius/separation kalibrasyonu
+- ⬜ **Ertelendi:** Anlık hıza bağlı pose kovaryansı, gerçek saha tekrarlarından
+  ölçülecek hata/metre ve hata/radyan değerleriyle kümülatif modele çevrilecek.
+  Mapping öncesinde değil, gerçek odometri kalibrasyon verisi alındıktan sonra yapılacak.
 - ⬜ Gerçek, bağımsız IMU ile füzyon doğruluğu kabulü
 - ⬜ Lift komut action/service'i ve fork/limit/hata geri bildirimi `base_driver`a bağlanacak
 - ⬜ Seri kopma/yeniden bağlanma, topic freshness ve ayrıntılı fault/diagnostic yayını eklenecek
@@ -511,6 +514,8 @@ sınırlıyor. Elektronik ekibiyle görüşülüp watchdog'un 100 ms'e indirilme
 Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
 
 ### Faz 4 — Haritalama 🟡 simülasyon kabulü (03.08.2026)
+- **Güncel öncelik:** Gerçek araçta wheel radius, wheel separation ve sol/sağ
+  ölçek kalibrasyonu; ardından LiDAR x/y/yaw montaj doğrulaması ve yeniden mapping.
 - `slam_toolbox` async mode, YDLidar Tmini Pro (0.03–12 m) parametreleri
 - `ros2 launch marco_localization mapping.launch.py` → EKF + LiDAR + slam
 - `ros2 run marco_localization harita_kaydet.sh <isim>` → `marco_navigation/maps/`

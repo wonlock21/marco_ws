@@ -39,8 +39,9 @@ if ! ros2 service list 2>/dev/null | grep -qx "/slam_toolbox/save_map"; then
     exit 1
 fi
 
-# /map topigi en az bir kez yayinlanmis mi?
-if ! timeout 5 ros2 topic echo /map --once > /dev/null 2>&1; then
+# /map en az bir kez yayinlanmis mi? Yalnizca kucuk metadata alanini oku;
+# OccupancyGrid.data dizisini metne cevirip sonra /dev/null'a atma.
+if ! timeout 5 ros2 topic echo /map --once --field info > /dev/null 2>&1; then
     echo
     echo "HATA: /map topigi 5 saniyede gelmedi. slam_toolbox baslamamis"
     echo "veya /scan / odom gelmiyor olabilir."

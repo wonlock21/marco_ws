@@ -1,0 +1,35 @@
+imgprocess_node:
+  ros__parameters:
+    camera_device: /dev/video0
+    frame_width: 320
+    frame_height: 240
+    frame_rate: 30.0
+    show_debug_window: true
+    # RK3588 Mali-G610 OpenCL. /dev/mali0 erisilemezse dugum guvenli bicimde
+    # CPU'ya duser; OpenCL sorgusu surucu yokken yapilmaz.
+    use_gpu: true
+    gpu_device: /dev/mali0
+
+    # IDLE durumunda topic susturulur; boylece twist_mux Nav2 komutunu secer.
+    # /task_command uzerinden START_LANE veya START_APPROACH ile etkinlesir.
+    startup_mode: IDLE
+    output_topic: /cmd_vel_lane
+
+    kp_qr: 0.005
+    # Geriye uyumluluk icin tutuluyor. Serit donusu artik kamera merkezinden
+    # kenarlara -1..+1 normalize edilerek max_angular_speed'e olceklenir.
+    kp_lane: 0.00030
+    qr_linear_speed: 0.10
+    # Duzlukte ilk 0.20 m/s degerinin ucte biri. Donus keskinlestikce
+    # lane_min_linear_speed seviyesine dogrusal olarak iner.
+    lane_linear_speed: 0.060
+    lane_min_linear_speed: 0.016
+    # Dusuk geciren filtre: kucuk deger daha yumusak, fakat daha gec tepki verir.
+    lane_steering_alpha: 0.20
+    # Onceki sert donusu merkezde tasimamak icin azaltma/yon degisiminde hizli
+    # sondurme. Yalniz hedef acisal hiz kuculurken devreye girer.
+    lane_steering_release_alpha: 0.60
+    # Merkezde sakin, kenarlara yaklastikca guclenen tam-kare kontrol egrisi.
+    lane_steering_exponent: 2.0
+    lane_center_deadband_ratio: 0.03
+    max_angular_speed: 0.050

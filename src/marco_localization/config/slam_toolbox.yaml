@@ -51,8 +51,9 @@ slam_toolbox:
     # ve bos hucreleri "bilinmeyen" diye sifirlar.
     min_laser_range: 0.05
     max_laser_range: 12.0
-    # Forklift yavas: 0.5 m / 0.5 rad yeni dugum icin fazla seyrek.
-    # Daha sik dugum = daha iyi loop-closure, biraz daha fazla CPU.
+    # Senkron modda islenen taramalar arasindaki asgari sure. Hareketsizken
+    # dugum eklemeyi zorlamaz; dugum esikleri asagidaki travel ayarlaridir.
+    # Async dugum resmi varsayilanla uyum icin bu parametreyi tasir.
     minimum_time_interval: 0.5
     transform_timeout: 0.2
     tf_buffer_duration: 30.0
@@ -67,6 +68,8 @@ slam_toolbox:
     minimum_travel_distance: 0.25
     minimum_travel_heading: 0.35
     scan_buffer_size: 10
+    # Isin menzili degil, buffer'daki tarama POZLARI arasindaki mesafe siniri.
+    # Bu nedenle max_laser_range ile ayni olmak zorunda degildir.
     scan_buffer_maximum_scan_distance: 10.0
     link_match_minimum_response_fine: 0.1
     link_scan_maximum_distance: 1.5

@@ -79,10 +79,6 @@ def launch_setup(context, *args, **kwargs):
         name="ekf_filter_node",
         output="screen",
         parameters=[ekf_config],
-        remappings=[
-            # Girdi: base_driver'in yayinladigi /odom ile eslesti
-            ("/odometry/filtered", "/odometry/filtered"),  # cikti; Nav2 bunu kullanacak
-        ],
     )
 
     nodes = [robot_launch, ekf_node]
