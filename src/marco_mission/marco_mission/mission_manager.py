@@ -17,6 +17,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from nav2_msgs.action import ComputeRoute, FollowPath
 from nav2_msgs.msg import SpeedLimit
+from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
@@ -24,7 +25,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import BatteryState, LaserScan
 from std_msgs.msg import Bool, Float32, String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -109,6 +110,10 @@ class MissionManager(Node):
         self._scan_seen = 0.0
         self._odom_seen = 0.0
         self._cross_track = math.nan
+        self._linear_speed = 0.0
+        self._battery_voltage = math.nan
+        self._battery_current = math.nan
+        self._battery_temperature = math.nan
 
         self._tf_buffer = Buffer(cache_time=Duration(seconds=10.0))
         self._tf_listener = TransformListener(
@@ -145,6 +150,8 @@ class MissionManager(Node):
                                  callback_group=self._cb)
         self.create_subscription(QrDetection, '/qr/detection', self._on_qr, 10,
                                  callback_group=self._cb)
+        self.create_subscription(BatteryState, '/base/battery', self._on_battery,
+                                 10, callback_group=self._cb)
 
         self._assign = self.create_client(AssignTask, '/plc/assign_task',
                                           callback_group=self._cb)
@@ -206,8 +213,9 @@ class MissionManager(Node):
     def _on_scan(self, _msg: LaserScan) -> None:
         self._scan_seen = time.monotonic()
 
-    def _on_odom(self, _msg: Odometry) -> None:
+    def _on_odom(self, msg: Odometry) -> None:
         self._odom_seen = time.monotonic()
+        self._linear_speed = float(msg.twist.twist.linear.x)
 
     def _on_qr(self, msg: QrDetection) -> None:
         if msg.detected:
@@ -222,6 +230,11 @@ class MissionManager(Node):
 
     def _on_manual(self, msg: Bool) -> None:
         self._manual = bool(msg.data)
+
+    def _on_battery(self, msg: BatteryState) -> None:
+        self._battery_voltage = float(msg.voltage)
+        self._battery_current = float(msg.current)
+        self._battery_temperature = float(msg.temperature)
 
     def _on_estop(self, msg: Bool) -> None:
         self._estop = bool(msg.data)
@@ -652,6 +665,10 @@ class MissionManager(Node):
         msg.current_route_edge, msg.next_node = self._edge, self._next_node
         msg.cross_track_error = float(self._cross_track)
         msg.obstacle_detected = self._obstacle
+        msg.linear_speed = float(self._linear_speed)
+        msg.battery_voltage = float(self._battery_voltage)
+        msg.battery_current = float(self._battery_current)
+        msg.battery_temperature = float(self._battery_temperature)
         msg.task_id, msg.task_source = self._task_id, self._source
         msg.pickup_node, msg.dropoff_node = self._pickup, self._dropoff
         msg.route_nodes = list(self._route_nodes)

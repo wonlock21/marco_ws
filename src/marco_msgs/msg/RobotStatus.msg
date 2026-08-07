@@ -31,6 +31,12 @@ string next_node
 float32 cross_track_error     # rotadan anlik sapma [m], limit 0.10
 bool obstacle_detected
 
+# --- Arac telemetrisi ---
+float32 linear_speed          # odom ileri/geri hiz [m/s]
+float32 battery_voltage       # STM32 batarya gerilimi [V]
+float32 battery_current       # sarj pozitif, tuketim negatif [A]
+float32 battery_temperature   # batarya/elektronik sicakligi [C]
+
 # --- Gorev ayrintilari ---
 string task_id
 string task_source             # plc | mock_plc | gui
