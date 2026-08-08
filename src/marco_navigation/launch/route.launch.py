@@ -5,24 +5,29 @@ Zincir:
   + route_server        (GeoJSON rota agi)
   + lifecycle_manager_route
 
-BT: navigate_route_wait.xml — ComputeRoute + FollowPath + Wait
+BT: navigate_route_wait.xml — ComputeRoute ile ilk path, ardindan
+    Parallel(ComputeAndTrackRoute, FollowPath). AdjustSpeedLimit
+    abs_speed_limit → /speed_limit.
     (serbest NavFn yok; engelde Wait).
 
 Ornekler:
+  # Sahte/test: bos graf → demo_rota.geojson
   ros2 launch marco_navigation route.launch.py \\
       sahte:=true lidar:=true harita:=nav_test baslangic:=true
+
+  # Gercek mod: graf zorunlu (demo fallback YOK)
+  ros2 launch marco_navigation route.launch.py \\
+      sahte:=false lidar:=true harita:=nav_test \\
+      graf:=gercek_saha.geojson baslangic:=true
 
   # Dugum ID ile rota (smoke):
   ros2 run marco_navigation rota_hesapla.py --start 0 --goal 8
 
-  # Pose ile NavigateToPose (graf uzerinde en yakin dugumler):
-  ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \\
-    "{pose: {header: {frame_id: map}, pose: {position: {x: 2.0, y: 2.0},
-     orientation: {w: 1.0}}}}"
-
 Orange Pi'de rviz:=true VERME.
 """
 
+import importlib.util
+import json
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -38,6 +43,81 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, SetRemap
 
+_DEMO_GRAPH = "demo_rota.geojson"
+
+
+def _rpp_compose():
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "rpp_compose.py")
+    spec = importlib.util.spec_from_file_location("marco_rpp_compose", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _sahte_mi(context) -> bool:
+    return LaunchConfiguration("sahte").perform(context).lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+
+
+def _list_graphs(graphs_dir: str) -> list[str]:
+    if not os.path.isdir(graphs_dir):
+        return []
+    return sorted(name for name in os.listdir(graphs_dir) if name.endswith(".geojson"))
+
+
+def _check_graph(graph_file: str) -> None:
+    try:
+        with open(graph_file, encoding="utf-8") as stream:
+            graph = json.load(stream)
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            f"Rota grafi okunamadi: {graph_file}: {error}"
+        ) from error
+    if graph.get("type") != "FeatureCollection" or not graph.get("features"):
+        raise RuntimeError(
+            f"Rota grafi bos veya GeoJSON FeatureCollection degil: {graph_file}"
+        )
+
+
+def _resolve_graph(context, nav_share: str) -> str:
+    """Gercek modda bos/eksik graf → net hata. Demo fallback yalniz sahte:=true."""
+    graphs_dir = os.path.join(nav_share, "graphs")
+    raw = LaunchConfiguration("graf").perform(context).strip()
+    fake = _sahte_mi(context)
+
+    if not raw:
+        if not fake:
+            available = ", ".join(_list_graphs(graphs_dir)) or "(yok)"
+            raise RuntimeError(
+                "Gercek modda rota grafi zorunlu (graf:=...). "
+                "Bos graf ile demo_rota.geojson sessizce acilmaz; "
+                "hareket baslamadan duruldu. "
+                f"Ornek: graf:=gercek_saha.geojson | mevcut: {available}. "
+                "Demo fallback yalniz sahte:=true / test modunda."
+            )
+        raw = _DEMO_GRAPH
+
+    graph_file = raw
+    if not graph_file.endswith(".geojson"):
+        graph_file += ".geojson"
+    if not os.path.isabs(graph_file):
+        graph_file = os.path.join(graphs_dir, graph_file)
+    graph_file = os.path.abspath(graph_file)
+
+    if not os.path.isfile(graph_file):
+        available = ", ".join(_list_graphs(graphs_dir)) or "(yok)"
+        raise RuntimeError(
+            f"Rota grafi bulunamadi: {graph_file}. "
+            f"share/graphs altindakiler: {available}. "
+            "Hareket baslamadan duruldu."
+        )
+    _check_graph(graph_file)
+    return graph_file
+
 
 def _kur(context, *args, **kwargs):
     nav_share = get_package_share_directory("marco_navigation")
@@ -49,25 +129,21 @@ def _kur(context, *args, **kwargs):
     bt_xml = os.path.join(
         nav_share, "behavior_trees", "navigate_route_wait.xml"
     )
-    graph_file = LaunchConfiguration("graf").perform(context)
-    if not graph_file:
-        graph_file = os.path.join(nav_share, "graphs", "demo_rota.geojson")
-    elif not os.path.isabs(graph_file):
-        graph_file = os.path.join(nav_share, "graphs", graph_file)
+    graph_file = _resolve_graph(context, nav_share)
 
-    with open(params_src, encoding="utf-8") as f:
-        metin = f.read()
-    if 'default_nav_to_pose_bt_xml: ""' not in metin:
-        raise RuntimeError(
-            "nav2_params.yaml icinde default_nav_to_pose_bt_xml: \"\" yok"
-        )
-    metin = metin.replace(
-        'default_nav_to_pose_bt_xml: ""',
-        f'default_nav_to_pose_bt_xml: "{bt_xml}"',
-    )
     params_file = "/tmp/marco_nav2_route_params.yaml"
-    with open(params_file, "w", encoding="utf-8") as f:
-        f.write(metin)
+    _rpp_compose().compose_nav2_params_file(
+        nav_share=nav_share,
+        profile="real",
+        params_src=params_src,
+        params_dst=params_file,
+        text_replacements=[
+            (
+                'default_nav_to_pose_bt_xml: ""',
+                f'default_nav_to_pose_bt_xml: "{bt_xml}"',
+            )
+        ],
+    )
 
     # graph_filepath'i mutlak yaz
     with open(route_params_src, encoding="utf-8") as f:
@@ -182,8 +258,9 @@ def generate_launch_description() -> LaunchDescription:
                 "graf",
                 default_value="",
                 description=(
-                    "GeoJSON yolu (bos = graphs/demo_rota.geojson). "
-                    "Goreli ise share/graphs/ altinda aranir."
+                    "GeoJSON yolu; goreli ise share/graphs/ altinda aranir. "
+                    "Bos: yalniz sahte:=true iken demo_rota.geojson. "
+                    "sahte:=false iken zorunlu — eksik/bos graf hata ile durur."
                 ),
             ),
             OpaqueFunction(function=_kur),

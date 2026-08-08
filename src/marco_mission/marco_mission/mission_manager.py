@@ -13,11 +13,10 @@ from typing import Any, Dict, Optional
 import rclpy
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
-from nav2_msgs.action import ComputeRoute, FollowPath
+from nav2_msgs.action import NavigateToPose
 from nav2_msgs.msg import SpeedLimit
-from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
@@ -159,10 +158,10 @@ class MissionManager(Node):
                                         callback_group=self._cb)
         self._complete = self.create_client(TaskComplete, '/plc/task_complete',
                                             callback_group=self._cb)
-        self._route = ActionClient(self, ComputeRoute, '/compute_route',
-                                   callback_group=self._cb)
-        self._follow = ActionClient(self, FollowPath, '/follow_path',
-                                    callback_group=self._cb)
+        # NavigateToPose → navigate_route_wait.xml:
+        # Parallel(ComputeAndTrackRoute, FollowPath) + AdjustSpeedLimit.
+        self._nav = ActionClient(self, NavigateToPose, 'navigate_to_pose',
+                                 callback_group=self._cb)
         self._dock = ActionClient(self, DockToStation, '/dock_to_station',
                                   callback_group=self._cb)
         self._lift = ActionClient(self, LiftLoad, '/lift_load',
@@ -553,18 +552,17 @@ class MissionManager(Node):
     def _navigate(self, target: str, loaded: bool) -> None:
         self._set_state(RobotStatus.STATE_MOVING_LOADED if loaded else
                         RobotStatus.STATE_MOVING_UNLOADED, target)
-        route_goal = ComputeRoute.Goal()
-        route_goal.start_id = self._nodes[self._current_node]['id']
-        route_goal.goal_id = self._nodes[target]['id']
-        route_goal.use_start = True
-        route_goal.use_poses = False
-        route_result = self._action(self._route, route_goal,
-                                    f'route:{self._current_node}->{target}')
-        follow_goal = FollowPath.Goal()
-        follow_goal.path = route_result.path
-        follow_goal.controller_id = 'FollowPath'
+        xy = self._nodes[target]['xy']
+        pose = PoseStamped()
+        pose.header.frame_id = 'map'
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.pose.position.x = float(xy[0])
+        pose.pose.position.y = float(xy[1])
+        pose.pose.orientation.w = 1.0
+        nav_goal = NavigateToPose.Goal()
+        nav_goal.pose = pose
         self._edge = f'{self._current_node}->{target}'
-        self._action(self._follow, follow_goal, f'navigation:{target}')
+        self._action(self._nav, nav_goal, f'navigation:{target}')
         self._current_node, self._edge = target, ''
 
     def _do_dock(self, station: str, pickup: bool) -> None:

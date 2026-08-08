@@ -1,0 +1,31 @@
+# Gerçek araç RPP farkları.
+#
+# 08.08.2026 geçici saha kalibrasyonu (rota sapması ≤10 cm hedefi):
+# - Sim kabulü cross-track p95/max ~1.3 cm (faz 8) → algoritma tabanı sağlam
+# - Fiziksel durma mesafesi ~23 cm (watchdog + motor gecikmesi) → ivme düşürüldü
+# - Gerçek encoder/harita odom kayması → hız ve lookahead kısılıdı
+# - Çarpışma ufku 1.0 s: costmap gecikmesine karşı daha erken yavaşlama
+#
+# Sahada ölçüm + güncelleme:
+#   ros2 run marco_navigation rpp_calibrate.py --sure 60 --limit-m 0.10 \
+#     --cikti /tmp/marco_rpp_calib.json --yaz-override
+
+FollowPath:
+  desired_linear_vel: 0.35
+  lookahead_dist: 0.50
+  min_lookahead_dist: 0.25
+  max_lookahead_dist: 0.75
+  approach_velocity_scaling_dist: 0.55
+  max_allowed_time_to_collision_up_to_carrot: 1.0
+  transform_tolerance: 0.30
+  rotate_to_heading_angular_vel: 0.30
+  max_angular_accel: 1.00
+  simulate_ahead_time: 1.0
+  regulated_linear_scaling_min_speed: 0.10
+  cost_scaling_dist: 0.30
+
+velocity_smoother:
+  max_velocity: [0.35, 0.0, 0.50]
+  min_velocity: [-0.25, 0.0, -0.50]
+  max_accel: [0.40, 0.0, 0.80]
+  max_decel: [-1.20, 0.0, -1.50]

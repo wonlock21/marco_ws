@@ -1,39 +1,38 @@
 <!--
-  MarCO Faz 7 — nav2_route ile tanimli rota aginda gezin.
+  MarCO Faz 7/12 — nav2_route ile tanimli rota aginda gezin.
 
-  Serbest GridBased (NavFn) YOK. ComputeRoute GeoJSON graf uzerinden
-  en iyi yolu bulur; FollowPath takip eder.
+  ComputeRoute ilk path'i senkron olarak uretir. Ardindan ComputeAndTrackRoute
+  kenar takibi yapar ve AdjustSpeedLimit abs_speed_limit metadata'sini
+  /speed_limit'e yazar; FollowPath ayni path'i RPP ile izler.
 
   Sartname: engelden kacinma YOK → recovery yalnizca Wait.
-  First/last mile freespace YOK → arac yalnizca tanimli kenarlarda.
-
-  AdjustSpeedLimit icin ComputeAndTrackRoute gerekir; bu agac simdilik
-  ComputeRoute + FollowPath (hiz limiti kenar metadata'sinda; takip
-  sirasinda uygula = sonraki iyileştirme / ComputeAndTrackRoute).
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <RecoveryNode number_of_retries="1000" name="NavigateRecovery">
-      <PipelineSequence name="NavigateWithReplanning">
-        <RateController hz="1.0">
-          <Fallback>
-            <ReactiveSequence>
-              <Inverter>
-                <GlobalUpdatedGoal/>
-              </Inverter>
-              <IsPathValid path="{path}"/>
-            </ReactiveSequence>
-            <ComputeRoute goal="{goal}" path="{path}" route="{route}" use_poses="true"/>
-          </Fallback>
-        </RateController>
-        <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
-          <Sequence name="ClearAndWait">
-            <ClearEntireCostmap name="ClearLocal" service_name="local_costmap/clear_entirely_local_costmap"/>
-            <Wait wait_duration="2"/>
-          </Sequence>
-        </RecoveryNode>
-      </PipelineSequence>
+      <Sequence name="RouteThenTrackAndFollow">
+        <!-- FollowPath bos path ile baslamasin; zamanlamaya dayali Wait kullanma. -->
+        <ComputeRoute
+            goal="{goal}"
+            path="{path}"
+            route="{route}"
+            use_poses="true"/>
+        <Parallel success_threshold="2" failure_threshold="1" name="TrackAndFollow">
+          <ComputeAndTrackRoute
+              goal="{goal}"
+              path="{path}"
+              route="{route}"
+              use_poses="true"
+              current_edge_id="{current_edge_id}"/>
+          <RecoveryNode number_of_retries="1" name="FollowPath">
+            <FollowPath path="{path}" controller_id="FollowPath"/>
+            <Sequence name="ClearAndWait">
+              <ClearEntireCostmap name="ClearLocal" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <Wait wait_duration="2"/>
+            </Sequence>
+          </RecoveryNode>
+        </Parallel>
+      </Sequence>
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
         <Sequence name="WaitForClearance">

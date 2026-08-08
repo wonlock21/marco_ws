@@ -1,0 +1,22 @@
+# Simülasyon RPP farkları (WSL/Gazebo faz 6–8 kabulünden).
+# Ortak alanlar rpp_base.yaml'dedir; burada yalnız sapmalar var.
+
+FollowPath:
+  desired_linear_vel: 0.50
+  lookahead_dist: 0.65
+  min_lookahead_dist: 0.30
+  max_lookahead_dist: 0.90
+  approach_velocity_scaling_dist: 0.70
+  max_allowed_time_to_collision_up_to_carrot: 1.5
+  transform_tolerance: 0.25
+  rotate_to_heading_angular_vel: 0.60
+  max_angular_accel: 1.00
+  simulate_ahead_time: 1.50
+  regulated_linear_scaling_min_speed: 0.05
+  cost_scaling_dist: 0.40
+
+velocity_smoother:
+  max_velocity: [0.50, 0.0, 0.60]
+  min_velocity: [-0.30, 0.0, -0.60]
+  max_accel: [0.60, 0.0, 1.00]
+  max_decel: [-0.80, 0.0, -1.20]

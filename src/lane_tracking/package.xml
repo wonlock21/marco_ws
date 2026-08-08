@@ -4,24 +4,21 @@
   <name>lane_tracking</name>
   <version>0.0.0</version>
   <description>
-    Kameradan serit takibi. Goruntu isleme ekibinin paketi.
-
-    tracker    : /dev/video0'dan goruntu alir, seridin goruntu merkezinden
-                 piksel cinsinden sapmasini /lane_error_otsu ve
-                 /lane_error_hsv uzerinden yayinlar.
-    controller : /lane_error_hsv'i alip PD ile /pwm_left ve /pwm_right uretir.
-
-    NOT: paket, baska bir makinedeki forklift_ws'ten yalnizca derleme ciktisi
-    olarak kopyalanmisti (build/lane_tracking). Kaynaklar oradan kurtarildi;
-    package.xml, setup.py ve setup.cfg yeniden yazildi.
+    OpenCL destekli adaptif maskeleme, geometrik serit algilama ve
+    cmd_vel tabanli arac kontrolu.
   </description>
   <maintainer email="marco@teknofest.local">MarCO goruntu isleme ekibi</maintainer>
   <license>TODO</license>
 
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pyopencl</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

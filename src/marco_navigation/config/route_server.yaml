@@ -9,11 +9,12 @@ route_server:
     use_sim_time: false
     base_frame: "base_footprint"
     route_frame: "map"
+    # path_density korunur. smooth_corners kapali: Route Server kose kesmez;
+    # operatör yay/polyline'i GeoJSON'da kendisi çizer.
     path_density: 0.05
     max_iterations: 0
     max_planning_time: 2.0
-    smooth_corners: true
-    smoothing_radius: 0.40
+    smooth_corners: false
     costmap_topic: "global_costmap/costmap_raw"
     tracker_update_rate: 20.0
     aggregate_blocked_ids: false
@@ -46,8 +47,9 @@ route_server:
     DynamicEdgesScorer:
       plugin: "nav2_route::DynamicEdgesScorer"
 
-    # AdjustSpeedLimit: kenar metadata abs_speed_limit / speed_limit uygular.
-    # ReroutingService yok: engelde yeniden rota YOK (Wait BT ile uyumlu).
+    # AdjustSpeedLimit: ComputeAndTrackRoute kenar gecislerinde
+    # abs_speed_limit → /speed_limit (controller_server). RPP/smoother
+    # cikisi route_safe'de /cmd_vel_raw. ReroutingService yok.
     operations: ["AdjustSpeedLimit"]
     AdjustSpeedLimit:
       plugin: "nav2_route::AdjustSpeedLimit"

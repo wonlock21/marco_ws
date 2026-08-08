@@ -22,7 +22,7 @@ class ProcessState(Enum):
 
 def scale_lane_error(
         error, half_frame_width, max_angular_speed,
-        steering_exponent=2.0, center_deadband_ratio=0.03):
+        center_deadband_ratio=0.01):
     """Kamera merkez/kenar araligini tam donus komutuna olcekle."""
     if half_frame_width <= 0 or max_angular_speed <= 0.0:
         return 0.0, 0.0, 0.0
@@ -31,15 +31,35 @@ def scale_lane_error(
     deadband = max(0.0, min(0.95, float(center_deadband_ratio)))
     magnitude = abs(normalized_error)
     if magnitude <= deadband:
-        curved_error = 0.0
+        scaled_error = 0.0
     else:
         scaled_magnitude = (magnitude - deadband) / (1.0 - deadband)
-        exponent = max(1.0, float(steering_exponent))
-        curved_error = scaled_magnitude ** exponent
+        scaled_error = scaled_magnitude
         if normalized_error < 0.0:
-            curved_error = -curved_error
-    target_angular = -curved_error * float(max_angular_speed)
-    return normalized_error, curved_error, target_angular
+            scaled_error = -scaled_error
+    target_angular = -scaled_error * float(max_angular_speed)
+    return normalized_error, scaled_error, target_angular
+
+
+def enforce_minimum_wheel_speed(
+        linear_speed, angular_speed, wheel_separation,
+        minimum_wheel_speed):
+    """Iki tekeri de motorun fiziksel kalkis esiginin ustunde tut."""
+    if linear_speed <= 0.0 or minimum_wheel_speed <= 0.0:
+        return max(0.0, float(linear_speed))
+    required_linear = float(minimum_wheel_speed) + (
+        abs(float(angular_speed)) * float(wheel_separation) * 0.5)
+    return max(float(linear_speed), required_linear)
+
+
+def combine_lane_errors(
+        position_error, heading_error, heading_gain, max_angular_speed):
+    """Yanal konum ve ilerideki serit yonunu lineer olarak birlestir."""
+    combined_error = max(-1.0, min(
+        1.0,
+        float(position_error) + float(heading_gain) * float(heading_error),
+    ))
+    return combined_error, -combined_error * float(max_angular_speed)
 
 
 class ImgProcessNode(Node):
@@ -60,13 +80,21 @@ class ImgProcessNode(Node):
             self.get_parameter('lane_steering_alpha').value)
         self.lane_steering_release_alpha = float(
             self.get_parameter('lane_steering_release_alpha').value)
-        self.lane_steering_exponent = float(
-            self.get_parameter('lane_steering_exponent').value)
         self.lane_center_deadband_ratio = float(
             self.get_parameter('lane_center_deadband_ratio').value)
+        self.lane_heading_gain = float(
+            self.get_parameter('lane_heading_gain').value)
+        self.lane_loss_hold_frames = int(
+            self.get_parameter('lane_loss_hold_frames').value)
+        self.lane_min_wheel_speed = float(
+            self.get_parameter('lane_min_wheel_speed').value)
+        self.wheel_separation = float(
+            self.get_parameter('wheel_separation').value)
         self.max_angular_speed = float(
             self.get_parameter('max_angular_speed').value)
         self.filtered_lane_angular = 0.0
+        self.lane_missed_frames = 0
+        self.last_lane_command = None
         self.show_debug_window = bool(
             self.get_parameter('show_debug_window').value)
         self.use_gpu = self._configure_gpu()
@@ -82,12 +110,28 @@ class ImgProcessNode(Node):
 
         self.qr_tracker = QRDetector()
         try:
-            self.lane_tracker = LaneDetector(use_opencl=self.use_gpu)
+            self.lane_tracker = LaneDetector(
+                use_opencl=self.use_gpu,
+                value_max=int(self.get_parameter(
+                    'lane_adaptive_value_max').value),
+                block_size=int(self.get_parameter(
+                    'lane_adaptive_block_size').value),
+                adaptive_offset=int(self.get_parameter(
+                    'lane_adaptive_offset').value),
+            )
         except Exception as exc:
             self.use_gpu = False
             self.get_logger().error(
                 f'OpenCL baslatilamadi: {exc}; CPU kullaniliyor')
-            self.lane_tracker = LaneDetector(use_opencl=False)
+            self.lane_tracker = LaneDetector(
+                use_opencl=False,
+                value_max=int(self.get_parameter(
+                    'lane_adaptive_value_max').value),
+                block_size=int(self.get_parameter(
+                    'lane_adaptive_block_size').value),
+                adaptive_offset=int(self.get_parameter(
+                    'lane_adaptive_offset').value),
+            )
         self.cap = self._open_camera()
 
         frame_rate = float(self.get_parameter('frame_rate').value)
@@ -115,9 +159,15 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_min_linear_speed', 0.016)
         self.declare_parameter('lane_steering_alpha', 0.25)
         self.declare_parameter('lane_steering_release_alpha', 0.60)
-        self.declare_parameter('lane_steering_exponent', 2.0)
-        self.declare_parameter('lane_center_deadband_ratio', 0.03)
-        self.declare_parameter('max_angular_speed', 0.050)
+        self.declare_parameter('lane_center_deadband_ratio', 0.01)
+        self.declare_parameter('lane_heading_gain', 0.35)
+        self.declare_parameter('lane_loss_hold_frames', 3)
+        self.declare_parameter('lane_adaptive_value_max', 140)
+        self.declare_parameter('lane_adaptive_block_size', 81)
+        self.declare_parameter('lane_adaptive_offset', 18)
+        self.declare_parameter('lane_min_wheel_speed', 0.055)
+        self.declare_parameter('wheel_separation', 0.460)
+        self.declare_parameter('max_angular_speed', 0.075)
 
     def _configure_gpu(self):
         if not bool(self.get_parameter('use_gpu').value):
@@ -165,14 +215,15 @@ class ImgProcessNode(Node):
     def command_callback(self, msg):
         command = msg.data.strip().upper()
         if command == 'START_APPROACH':
+            self._reset_lane_control()
             self.current_state = ProcessState.QR_ALIGNMENT
             self.get_logger().info('Durum: QR_ALIGNMENT')
         elif command in ('START_LANE', 'LANE_TRACKING'):
-            self.filtered_lane_angular = 0.0
+            self._reset_lane_control()
             self.current_state = ProcessState.LANE_TRACKING
             self.get_logger().info('Durum: LANE_TRACKING')
         elif command == 'STOP':
-            self.filtered_lane_angular = 0.0
+            self._reset_lane_control()
             self.current_state = ProcessState.IDLE
             self.stop_robot()
             self._publish_active()
@@ -201,7 +252,7 @@ class ImgProcessNode(Node):
                 self.stop_robot()
             elif abs(error) < 15.0:
                 self.stop_robot()
-                self.filtered_lane_angular = 0.0
+                self._reset_lane_control()
                 self.current_state = ProcessState.LANE_TRACKING
                 self.get_logger().info(
                     'QR ortalandi; LANE_TRACKING durumuna gecildi')
@@ -214,16 +265,13 @@ class ImgProcessNode(Node):
             if found:
                 self.publish_lane_movement(error, center_x)
             else:
-                self.filtered_lane_angular = 0.0
-                self.stop_robot()
-                self.get_logger().warning(
-                    '[SERIT] bulunamadi | cmd_vel: v=0.000 m/s w=0.000 rad/s',
-                    throttle_duration_sec=0.5)
+                self._handle_lane_loss()
 
+        debug_frame = self._compose_debug_frame(frame)
         if self.show_debug_window:
-            cv2.imshow('Orange Pi Kamera Arayuzu', frame)
+            cv2.imshow('Orange Pi Kamera Arayuzu', debug_frame)
             cv2.waitKey(1)
-        self._publish_debug_image(frame)
+        self._publish_debug_image(debug_frame)
 
     @staticmethod
     def _draw_state(frame, text, color):
@@ -239,9 +287,13 @@ class ImgProcessNode(Node):
         self.pub_cmd_vel.publish(twist_msg)
 
     def publish_lane_movement(self, error, half_frame_width):
-        normalized_error, curved_error, target_angular = scale_lane_error(
+        normalized_error, scaled_error, _ = scale_lane_error(
             error, half_frame_width, self.max_angular_speed,
-            self.lane_steering_exponent, self.lane_center_deadband_ratio)
+            self.lane_center_deadband_ratio)
+        heading_error = self.lane_tracker.last_heading_error
+        combined_error, target_angular = combine_lane_errors(
+            scaled_error, heading_error, self.lane_heading_gain,
+            self.max_angular_speed)
         alpha = max(0.0, min(1.0, self.lane_steering_alpha))
         releasing = (
             abs(target_angular) < abs(self.filtered_lane_angular)
@@ -263,16 +315,72 @@ class ImgProcessNode(Node):
             0.0, min(self.lane_linear_speed, self.lane_min_linear_speed))
         linear_speed = self.lane_linear_speed - (
             self.lane_linear_speed - min_speed) * turn_ratio
+        linear_speed = enforce_minimum_wheel_speed(
+            linear_speed, self.filtered_lane_angular,
+            self.wheel_separation, self.lane_min_wheel_speed)
+        half_track = self.wheel_separation * 0.5
+        left_target = linear_speed - (
+            self.filtered_lane_angular * half_track)
+        right_target = linear_speed + (
+            self.filtered_lane_angular * half_track)
         self.publish_movement(linear_speed, self.filtered_lane_angular)
+        self.lane_missed_frames = 0
+        self.last_lane_command = (
+            float(linear_speed), float(self.filtered_lane_angular))
         self.get_logger().info(
             f'[SERIT] hata={error:+.1f} px ({normalized_error:+.1%}) | '
-            f'egri={curved_error:+.1%} | '
+            f'merkez={scaled_error:+.1%} | '
+            f'yon={heading_error:+.1%} | '
+            f'birlesik={combined_error:+.1%} | '
             f'hedef_w={target_angular:+.3f} rad/s | '
             f'filtre_w={self.filtered_lane_angular:+.3f} rad/s '
             f'(alpha={alpha:.2f}) | '
             f'cmd_vel: v={linear_speed:.3f} m/s '
-            f'w={self.filtered_lane_angular:+.3f} rad/s',
+            f'w={self.filtered_lane_angular:+.3f} rad/s | '
+            f'teker hedef sol={left_target * 1000.0:+.0f} '
+            f'sag={right_target * 1000.0:+.0f} mm/s',
             throttle_duration_sec=0.5)
+
+    def _handle_lane_loss(self):
+        self.lane_missed_frames += 1
+        hold_frames = max(0, self.lane_loss_hold_frames)
+        if (self.last_lane_command is not None
+                and self.lane_missed_frames <= hold_frames):
+            linear_speed, angular_speed = self.last_lane_command
+            self.publish_movement(linear_speed, angular_speed)
+            self.get_logger().warning(
+                f'[SERIT] gecici kayip {self.lane_missed_frames}/'
+                f'{hold_frames} | son komut korunuyor: '
+                f'v={linear_speed:.3f} m/s w={angular_speed:+.3f} rad/s')
+            return
+
+        self._reset_lane_control()
+        self.stop_robot()
+        self.get_logger().warning(
+            '[SERIT] bulunamadi | cmd_vel: v=0.000 m/s w=0.000 rad/s',
+            throttle_duration_sec=0.5)
+
+    def _reset_lane_control(self):
+        self.filtered_lane_angular = 0.0
+        self.lane_missed_frames = 0
+        self.last_lane_command = None
+        if hasattr(self, 'lane_tracker'):
+            self.lane_tracker.reset_tracking()
+
+    def _compose_debug_frame(self, frame):
+        if (not self.show_debug_window
+                and self.pub_debug_image.get_subscription_count() == 0):
+            return frame
+        if (self.current_state is not ProcessState.LANE_TRACKING
+                or self.lane_tracker.last_mask is None):
+            return frame
+        mask_bgr = cv2.cvtColor(
+            self.lane_tracker.last_mask, cv2.COLOR_GRAY2BGR)
+        cv2.putText(frame, 'ALGILAMA', (10, frame.shape[0] - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
+        cv2.putText(mask_bgr, 'ADAPTIF MASKE', (10, 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+        return cv2.hconcat([frame, mask_bgr])
 
     def stop_robot(self):
         self.publish_movement(0.0, 0.0)
