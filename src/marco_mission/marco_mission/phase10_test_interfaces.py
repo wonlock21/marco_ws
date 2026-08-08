@@ -4,8 +4,7 @@
 import time
 
 import rclpy
-from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import ComputeRoute, FollowPath
+from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -25,16 +24,15 @@ class TestInterfaces(Node):
         self.create_subscription(String, '/phase10/test_fault', self._set_fault, 10,
                                  callback_group=self._cb)
         self._servers = [
-            ActionServer(self, ComputeRoute, '/compute_route', self._route,
-                         cancel_callback=self._cancel, callback_group=self._cb),
-            ActionServer(self, FollowPath, '/follow_path', self._navigation,
+            ActionServer(self, NavigateToPose, 'navigate_to_pose', self._navigation,
                          cancel_callback=self._cancel, callback_group=self._cb),
             ActionServer(self, DockToStation, '/dock_to_station', self._dock,
                          cancel_callback=self._cancel, callback_group=self._cb),
             ActionServer(self, LiftLoad, '/lift_load', self._lift,
                          cancel_callback=self._cancel, callback_group=self._cb),
         ]
-        self.get_logger().warning('PHASE10 TEST-ONLY Nav2/dock/lift action doubles active')
+        self.get_logger().warning(
+            'PHASE10 TEST-ONLY NavigateToPose/dock/lift action doubles active')
 
     def _set_fault(self, msg: String) -> None:
         self._fault = msg.data
@@ -52,26 +50,12 @@ class TestInterfaces(Node):
             time.sleep(0.01)
         return True
 
-    def _route(self, handle):
-        result = ComputeRoute.Result()
-        result.path.header.frame_id = 'map'
-        for x in (float(handle.request.start_id), float(handle.request.goal_id)):
-            pose = PoseStamped()
-            pose.header.frame_id = 'map'
-            pose.pose.position.x = x
-            pose.pose.orientation.w = 1.0
-            result.path.poses.append(pose)
-        if self._fault == 'route':
-            handle.abort()
-        else:
-            handle.succeed()
-        return result
-
     def _navigation(self, handle):
-        result = FollowPath.Result()
+        result = NavigateToPose.Result()
         if not self._wait(handle, 'navigation'):
             return result
-        if self._fault == 'navigation':
+        # Eski 'route' arizasi da navigasyon zincirini bozar.
+        if self._fault in ('navigation', 'route'):
             handle.abort()
         else:
             handle.succeed()

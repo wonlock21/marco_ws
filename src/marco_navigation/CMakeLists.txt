@@ -17,6 +17,8 @@ install(PROGRAMS
   scripts/route_acceptance.py
   scripts/route_test_mission.py
   scripts/phase7_final_acceptance.py
+  scripts/rpp_calibrate.py
+  scripts/abs_speed_limit_proof.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

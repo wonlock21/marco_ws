@@ -19,6 +19,7 @@ Ornekler:
 Orange Pi'de rviz:=true VERME — CPU LiDAR'i acliga sokar.
 """
 
+import importlib.util
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -35,6 +36,14 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _rpp_compose():
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "rpp_compose.py")
+    spec = importlib.util.spec_from_file_location("marco_rpp_compose", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _kur(context, *args, **kwargs):
     nav_share = get_package_share_directory("marco_navigation")
     loc_share = get_package_share_directory("marco_localization")
@@ -46,22 +55,20 @@ def _kur(context, *args, **kwargs):
     )
     rviz_config = os.path.join(loc_share, "config", "amcl.rviz")
 
-    # BT yolunu yaml'e yaz. navigation_launch params_file olarak string yol
-    # bekliyor; RewrittenYaml Substitution'i IncludeLaunchDescription'a
-    # vermek guvenilir degil.
-    with open(params_src, encoding="utf-8") as f:
-        metin = f.read()
-    if 'default_nav_to_pose_bt_xml: ""' not in metin:
-        raise RuntimeError(
-            "nav2_params.yaml icinde default_nav_to_pose_bt_xml: \"\" yok"
-        )
-    metin = metin.replace(
-        'default_nav_to_pose_bt_xml: ""',
-        f'default_nav_to_pose_bt_xml: "{bt_xml}"',
-    )
+    # BT yolu + ortak RPP tabanı (rpp_base + rpp_override_real).
     params_file = "/tmp/marco_nav2_params.yaml"
-    with open(params_file, "w", encoding="utf-8") as f:
-        f.write(metin)
+    _rpp_compose().compose_nav2_params_file(
+        nav_share=nav_share,
+        profile="real",
+        params_src=params_src,
+        params_dst=params_file,
+        text_replacements=[
+            (
+                'default_nav_to_pose_bt_xml: ""',
+                f'default_nav_to_pose_bt_xml: "{bt_xml}"',
+            )
+        ],
+    )
 
     amcl = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(

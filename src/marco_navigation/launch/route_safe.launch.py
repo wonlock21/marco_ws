@@ -65,7 +65,14 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("x", default_value="0.0"),
             DeclareLaunchArgument("y", default_value="0.0"),
             DeclareLaunchArgument("yaw", default_value="0.0"),
-            DeclareLaunchArgument("graf", default_value=""),
+            DeclareLaunchArgument(
+                "graf",
+                default_value="",
+                description=(
+                    "route.launch graf:= ile ayni. "
+                    "sahte:=false iken zorunlu; bos/eksik graf hata ile durur."
+                ),
+            ),
             LogInfo(
                 msg="route_safe: cmd_vel_raw → collision_monitor → twist_mux → cmd_vel"
             ),

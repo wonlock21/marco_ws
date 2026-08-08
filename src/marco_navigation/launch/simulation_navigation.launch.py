@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Phase 6 Nav2 on the validated Phase 5 WSL/Fortress localization stack."""
 
+import importlib.util
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -14,6 +15,14 @@ from launch.actions import GroupAction
 from launch_ros.parameter_descriptions import ParameterValue
 
 
+def _rpp_compose():
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'rpp_compose.py')
+    spec = importlib.util.spec_from_file_location('marco_rpp_compose', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def setup(context):
     nav = get_package_share_directory('marco_navigation')
     loc = get_package_share_directory('marco_localization')
@@ -25,24 +34,31 @@ def setup(context):
     through_bt = os.path.join(nav, 'behavior_trees', 'navigate_through_poses_sim_wait.xml')
     with open(params_source, encoding='utf-8') as stream:
         params_text = stream.read()
+    replacements = [
+        ('default_nav_to_pose_bt_xml: ""', 'default_nav_to_pose_bt_xml: "%s"' % bt),
+        ('default_nav_through_poses_bt_xml: ""',
+         'default_nav_through_poses_bt_xml: "%s"' % through_bt),
+    ]
     if LaunchConfiguration('goal_scenario').perform(context) == 'scan_loss':
-        params_text = params_text.replace('topic: /scan\n', 'topic: /scan_nav2\n')
+        replacements.append(('topic: /scan\n', 'topic: /scan_nav2\n'))
     if LaunchConfiguration('goal_scenario').perform(context) == 'planner_timeout':
-        params_text = params_text.replace('max_planning_time: 5.0\n',
-                                          'max_planning_time: 0.000001\n')
-    if LaunchConfiguration('goal_scenario').perform(context) == 'route':
-        # Route paths contain deliberate 90-degree node transitions. Keep the
-        # Phase 6 default intact, but let the shim align at graph nodes here.
-        params_text = params_text.replace('angular_dist_threshold: 3.14\n',
-                                          'angular_dist_threshold: 0.60\n')
-    marker = 'default_nav_to_pose_bt_xml: ""'
-    through_marker = 'default_nav_through_poses_bt_xml: ""'
-    if marker not in params_text or through_marker not in params_text:
-        raise RuntimeError('BT path marker missing from nav2_sim_params.yaml')
+        replacements.append(('max_planning_time: 5.0\n', 'max_planning_time: 0.000001\n'))
     params_path = '/tmp/marco_nav2_sim_params_%s.yaml' % os.getpid()
-    with open(params_path, 'w', encoding='utf-8') as stream:
-        stream.write(params_text.replace(marker, 'default_nav_to_pose_bt_xml: "%s"' % bt)
-                     .replace(through_marker, 'default_nav_through_poses_bt_xml: "%s"' % through_bt))
+    _rpp_compose().compose_nav2_params_file(
+        nav_share=nav,
+        profile='sim',
+        params_src=params_source,
+        params_dst=params_path,
+        text_replacements=replacements,
+    )
+    # Route senaryosu: 90° dugum gecislerinde shim hizalamasi (RPP yazildiktan sonra).
+    if LaunchConfiguration('goal_scenario').perform(context) == 'route':
+        with open(params_path, encoding='utf-8') as stream:
+            composed = stream.read()
+        composed = composed.replace('angular_dist_threshold: 3.14\n',
+                                    'angular_dist_threshold: 0.6\n')
+        with open(params_path, 'w', encoding='utf-8') as stream:
+            stream.write(composed)
 
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(loc, 'launch', 'simulation_localization.launch.py')),

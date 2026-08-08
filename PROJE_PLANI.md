@@ -227,7 +227,7 @@ arayüz, mock veya masa borusu var · ⬜ = gerçek uygulama/entegrasyon yok.
 | Rota tanımlama ve optimizasyon | 🟡 `nav2_route`, demo GeoJSON ve rota hesaplama var | Gerçek parkur grafı ile GUI/RViz rota-nokta editörü yapılmalı; alma/bırakma/bekleme/QR/q5/şarj düğümleri saklanmalı ve PLC kimlikleriyle eşlenmeli. |
 | Tanımlı rotayı takip | 🟡 Yol hesaplanıyor, fiziksel takip yok | Gerçek araçta çapraz rota hatası ölçülüp ≤10 cm tutulmalı. `/robot_status.cross_track_error` gerçek değerden beslenmeli ve limit aşımı güvenli davranış üretmeli. |
 | Yüklü/yüksüz ve ters yönde sürüş | ⬜ DWB yapılandırması yalnız ileri sürüyor; yük durumu rota kontrolüne bağlı değil | Yüklü hız profili, geri sürüşe uygun kontrolcü (`RPP allow_reversing` veya doğrulanmış eşdeğer), ön/arka algı seçimi ve graf yön metadata'sı uygulanmalı. |
-| Kenar hız limiti ve rota olayları | 🟡 GeoJSON'da hız metadata'sı var, `TriggerEvent` yok | Mevcut BT `ComputeRoute + FollowPath` olduğu için `AdjustSpeedLimit` takip sırasında uygulanmıyor. `ComputeAndTrackRoute`/eşdeğer akışa geçilmeli; QR, docking ve q5 PLC olayları gerçek callback/action'lara bağlanmalı. |
+| Kenar hız limiti ve rota olayları | 🟡 `AdjustSpeedLimit` + `ComputeAndTrackRoute` BT bağlandı | QR, docking ve q5 PLC olay `TriggerEvent` callback'leri hâlâ açık; saha dinamik `--sure` kanıtı alınacak. |
 | Engel algılama, durma ve devam | 🟡 Collision Monitor masa testi var | Hareketli araçta durma mesafesi ve aynı rotadan devam kanıtlanmalı. Geri sürüş için arka stop alanı eklenmeli; mevcut stop poligonu aracın -x tarafının tamamını kapsamıyor. Engel durumu görev/GUI'ye bağlanmalı. |
 | Gerçek şerit algılama | ⬜ Görüntü işleme ekibi kapsamında, Faz 9 docking kabulüne dahil değil | Gerçek kamera kalibrasyonu, şerit/ışık koşulları ve fiziksel kabul açık. |
 | QR okuma ve QR pozu | ⬜ Görüntü işleme ekibi kapsamında, Faz 9 docking kabulüne dahil değil | Gerçek kamera QR/PnP ve gerçek GM67 geliştirme/donanım kabulü açık. |
@@ -640,9 +640,9 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
 - `nav2_route` entegrasyonu, GeoJSON graf formatının projeye uyarlanması
   (`graphs/demo_rota.geojson`, `route_server.yaml`, `route.launch.py`)
 - Rota grafı üretme: CLI `rota_hesapla.py` (düğüm ID / pose); RViz/Flutter editör sonra
-- Kenar hız metadata'sı (`abs_speed_limit`) ve scorer'lar tanımlı; takipte uygulanması eksik
-  (`ComputeRoute + FollowPath`, `ComputeAndTrackRoute` değil)
-- BT: `navigate_route_wait.xml` — ComputeRoute + FollowPath + Wait
+- Kenar hız metadata'sı (`abs_speed_limit`) + `AdjustSpeedLimit`; takip
+  `ComputeAndTrackRoute` ile (Faz 12)
+- BT: `navigate_route_wait.xml` — Parallel(ComputeAndTrackRoute, FollowPath) + Wait
 - `TriggerEvent` QR/PLC/dock bağlantıları ve gerçek düğüm rolleri henüz yok
 - 🟡 İki nokta arası rota hesabı doğru (`0→8` SUCCEEDED, ~7.5 m)
 - ⬜ Gerçek parkur grafı ve GUI/RViz düğüm-kenar editörü yapılacak
@@ -808,6 +808,164 @@ Değer bir testle kilitli (`test_haberlesme_kesintisi_durma_mesafesi_butcesi`).
   rota sapması ≤10 cm; docking 20 denemede ≥18 kez ±7.5 cm/±5°; engelde dur/devam
 - **Kanıt:** tarihli rosbag, test komutu/çıktısı, metrik özeti ve fiziksel video
 - **Video önceliği:** 11.08.2026 için önce gerçek STM32 + encoder + Tmini Pro haritalama
+
+### Faz 12 — Gerçek Nav2 rota takip kontrolcüsü ve fail-safe graf yükleme ⬜
+
+**Amaç:** Simülasyon ile gerçek robotun aynı rota takip algoritmasını kullanması ve
+robotun yalnız operatörün tanımladığı hattı izlemesi.
+
+- ✅ `nav2_params.yaml` içindeki gerçek `dwb_core::DWBLocalPlanner`, simülasyonda
+  doğrulanmış `nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController`
+  ile değiştirildi; `RotationShimController → RPP`, `allow_reversing: true`,
+  `use_rotate_to_heading: false` ve final yaw hizalaması yapılandırıldı.
+- 🟡 RPP hız/ivme/lookahead/çarpışma için geçici gerçek override var
+  (`rpp_override_real.yaml`: 0.35 m/s, lookahead 0.50 m, collision 1.0 s,
+  smoother accel 0.40 m/s²; sim/durma mesafesi gerekçeli, fiziksel ölçüm değil).
+  Saha ölçümü: `ros2 run marco_navigation rpp_calibrate.py --sure 60
+  --limit-m 0.10 --cikti /tmp/marco_rpp_calib.json --yaz-override
+  --override-yol <rpp_override_real.yaml>`. Araç en az 50 geçerli pose +
+  finite p95/max olmadan FAIL eder ve dosyaya dokunmaz. Fiziksel test +
+  tarihli kanıt olmadan ✅ yapılmayacak.
+- ✅ Ortak RPP tabanı: `config/rpp_base.yaml`; farklar
+  `rpp_override_real.yaml` / `rpp_override_sim.yaml`. Launch birleştirici
+  `launch/rpp_compose.py` — `navigation.launch.py`, `route.launch.py` ve
+  `simulation_navigation.launch.py` FollowPath + velocity_smoother hız/ivme
+  alanlarını bu dosyalardan yazar.
+- ✅ `route_server.yaml`: `smooth_corners: false`; `path_density: 0.05` korundu.
+  Route Server tanımlı hattı otomatik kesmiyor; köşe yay/polyline GeoJSON'da
+  operatör tarafından çizilecek. (Sim route_server*_sim.yaml zaten false idi.)
+- ✅ `route.launch.py` gerçek modda (`sahte:=false`) boş/eksik grafte
+  `demo_rota.geojson` açmıyor; launch `RuntimeError` ile hareket öncesi duruyor.
+  Demo fallback yalnız `sahte:=true` iken. Dosya varsa GeoJSON
+  FeatureCollection + features denetimi de yapılıyor (`route_safe` aynı yolu
+  kullanır).
+- 🟡 `ComputeRoute + FollowPath` takipte `AdjustSpeedLimit` uygulamıyordu;
+  `navigate_route_wait.xml` önce ilk path'i `ComputeRoute` ile üretiyor, sonra
+  `Parallel(ComputeAndTrackRoute, FollowPath)` ile kenar takibi ve sürüşü birlikte
+  yürütüyor. Sabit süreli ilk-path beklemesi kaldırıldı.
+  `route_server` `AdjustSpeedLimit` / `speed_tag: abs_speed_limit` → `/speed_limit`
+  (controller); `route_safe` zincirinde çıkış `/cmd_vel_raw`. Mission navigasyonu
+  tek action olarak `NavigateToPose` (aynı BT). Statik yapı doğrulandı; ancak ✅
+  için dinamik `ros2 run marco_navigation abs_speed_limit_proof.py --sure N
+  --graf ...` koşusunda gerçek metadata değerlerinin `/speed_limit` ve
+  `/cmd_vel_raw` üzerinde sınır olarak ölçülmesi bekleniyor.
+- **Kabul:** Aynı GeoJSON yolunda WSL ve gerçek robot RPP kullanacak; otomatik
+  köşe kesme olmayacak; ileri/geri kenarlar, hız limitleri ve son sıfır Twist
+  doğrulanacak. Gerçek graf yokken hareket action'ları kabul edilmeyecek.
+
+### Faz 13 — Saha rota editörü, manuel rota kaydedici ve canlı graf yönetimi ⬜
+
+**Amaç:** Yarışmadaki 60 dakikalık hazırlıkta haritadan sonra operatörün
+düğümleri ve robotun izleyeceği rota çizgilerini kendisinin tanımlayabilmesi.
+
+- ⬜ Flutter/GCS haritasında node ekle/sil/taşı, ara noktalı polyline çiz,
+  yönlü/çift yönlü edge oluştur ve edge düzelt işlemleri eklenecek.
+- ⬜ Node rolleri: `baslangic/bekleme`, `D1..D6`, `A1..A3`, `B1..B3`,
+  `q1..q9`, `kapi_q5`, `approach` ve `dock`; edge metadata'sı: hız,
+  `travel_direction`, yük durumu ve PLC/QR olayı tanımlanabilecek.
+- ⬜ İkinci girdi yolu olarak manuel sürüş kaydedici eklenecek: lokalizasyon
+  geçerliyken `map → base_footprint` pozu örneklenip sadeleştirilerek GeoJSON
+  edge polyline'ına dönüştürülecek. Kayıt başlat/durdur GUI'den yapılacak.
+- ⬜ ROS tarafında bir `route_graph_manager` yazılacak. GUI'den gelen grafı
+  şema, koordinat, ID/uç, yönlü erişilebilirlik, metadata ve CAD footprint
+  açısından `route_graph_validator` ile doğrulayacak.
+- ⬜ Graf harita adı/kimliğiyle yazılabilir saha veri dizinine atomik ve
+  yedekli kaydedilecek; kurulu paketteki test grafının üzerine yazılmayacak.
+- ⬜ Başarılı kayıttan sonra Nav2 `SetRouteGraph` servisiyle grafı yeniden
+  yükleyecek; Mission Manager node/rol önbelleği ve RViz/GUI graf görünümü de
+  aynı sürüme geçecek. Aktif görev varken graf değişikliği reddedilecek.
+- ⬜ OccupancyGrid `resolution`, `origin`, boyut ve yaw dönüşümü tek yerde
+  kullanılacak; GUI piksel/grid koordinatı doğrudan ROS koordinatı sanılmayacak.
+- **Kabul:** Temiz haritadan başlayarak node/edge/rol tanımla → validate →
+  `field.geojson` kaydet → canlı yükle → iki node arasında yalnız çizilen
+  polyline'ı takip et akışı 60 dakikalık provada tamamlanacak.
+
+### Faz 14 — Gerçek zamanlı rota sapma koruyucusu (`route_guard`) ⬜
+
+**Amaç:** Şartnamedeki azami 10 cm rota sapmasını tahminle değil canlı
+ölçüm ve tarihli kanıtla denetlemek.
+
+- ⬜ Mission/Route Server aktif `nav_msgs/Path` yolunu tek sahipli bir topic'te
+  yayınlayacak. `route_guard`, `map → base_footprint` pozunun polyline'a en kısa
+  uzaklığını 20–50 Hz hesaplayacak.
+- ⬜ `/route/cross_track_error`, warning/critical/violation durumu, en yakın
+  edge ve metrikler `/robot_status` ile GUI'ye aktarılacak.
+- ⬜ Başlangıç eşikleri: `0–5 cm normal`, `5–7 cm warning`, `7–10 cm`
+  kritik/yavaşlatma, `>10 cm` ihlal. Ani tek örnek yerine süre/histerezis
+  uygulanacak; TF/path stale ve NaN/Inf güvenli hata olacak.
+- ⬜ Her rota turunda RMS, p95, maksimum sapma, ihlal süresi ve edge bazlı
+  istatistik JSON/rosbag'e yazılacak.
+- **Kabul:** Düz, 90° köşe, yay ve geri edge testlerinde sayaçlar bağımsız
+  yer gerçeğiyle doğrulanacak; `>10 cm` kontrollü sapma algılanacak; nominal
+  fiziksel turlarda p95 ve maksimum değer raporlanacak.
+
+### Faz 15 — 1.5 m approach, tek-sefer QR ve görüntü kontrollü docking ⬜
+
+**Amaç:** Nav2'nin istasyonun kendisine kadar gitmesi yerine yaklaşık 1.5 m
+önce kontrolü QR/şerit sistemine devretmesi.
+
+- ⬜ Her istasyon için `*_APPROACH` ve `*_DOCK` rolleri tanımlanacak. Nav2
+  yalnız approach node'una gidecek; son yaklaşık 1.5 m `DockToStation` tarafından
+  `/cmd_vel_dock` üzerinden kontrol edilecek.
+- ⬜ Nav2 → docking geçişinde aynı anda iki hareket action'ı ve iki hız
+  sahibi olmayacak; Nav2 goal bitmeden docking başlamayacak ve mux sahipliği
+  doğrulanacak.
+- ⬜ QR, approach başında bir kez okunup beklenen istasyon kimliğiyle
+  eşleştirilecek ve latched tutulacak. Robot QR'ı geçtikten sonra QR freshness
+  kaybı docking'i iptal etmeyecek; yanlış QR ise hareket başlamadan reddedilecek.
+- ⬜ Docking boyunca şerit freshness/confidence zorunlu olacak. Son mesafe;
+  şerit bitişi, approach başından odometri/lokalizasyon veya doğrulanmış
+  istasyon geometrisiyle ölçülecek; sahte süre tabanlı başarı olmayacak.
+- ⬜ QR kaybı, şerit kaybı, yanlış istasyon, kamera kaybı, e-stop,
+  engel, cancel ve timeout durumlarında son `/cmd_vel_dock` ve `/cmd_vel` sıfır olacak.
+- **Kabul:** Gerçek kamera/şeritle 20 denemenin en az 18'inde son konum
+  `±7.5 cm`, yaw `±5°`; QR yalnız başta görüldüğü halde nominal docking
+  tamamlanacak.
+
+### Faz 16 — Kapı olayı, yüklü geri seyir ve gerçek görev sıralaması ⬜
+
+**Amaç:** Mission Manager'ı şartnamedeki tek alma/tek bırakma, iki kapı
+el sıkışması ve yükün hareket yönünün tersinde kalması kuralına uydurmak.
+
+- ⬜ PLC'nin varsayılan yarışma görevi tam olarak bir `A1..A3` ve bir
+  `B1..B3` olacak. Çok duraklı GUI görevi ek özellik olarak korunacak fakat
+  yarışma PLC akışını değiştirmeyecek.
+- ⬜ Kapı mantığı "pickup sonrası bir kere" kodundan çıkarılacak. Aktif
+  rota `q5/gate` node veya edge olayından **her geçtiğinde** robot duracak,
+  PLC'ye varış bildirecek, izin bekleyecek ve ancak olumlu izinle devam edecek.
+- ⬜ Bırakma sonrası dönüş `B → q5 → PLC WAIT → bekleme` olarak açık
+  adımlara ayrılacak; doğrudan `_navigate(home)` kullanılmayacak.
+- ⬜ `loaded=True` yalnız durum mesajı olmayacak. Yüklü edge'lerde
+  `travel_direction`, path orientation/cusp ve RPP geri sürüşü birlikte
+  doğrulanacak; yük/çatallar hareket yönünün tersinde kalacak.
+- ⬜ Yüklü/yüksüz hız profilleri ile ileri/geri edge limitleri GeoJSON
+  metadata'sından uygulanacak ve son/cancel/hata durumunda sıfırlanacak.
+- ⬜ Kapı ret/timeout/PLC kopması, yanlış QR, lift/docking/Nav2 hatası,
+  e-stop ve engelde action sahipliği ile son sıfır Twist doğrulanacak.
+- **Kabul akışı:** `bekleme → Ax approach/dock → yük al → yük arkada
+  q5 → PLC izin → Bx approach/dock → bırak → q5 → ikinci PLC izin →
+  bekleme → PLC tamamlandı` gerçek action/servis sonuçlarıyla geçecek.
+
+### Faz 17 — 60 dakikalık saha kurulumu ve uçtan uca yarışma kabulü ⬜
+
+**Amaç:** Ayrı ayrı geçen modülleri yarışma süresi ve gerçek donanımla
+tek tekrarlanabilir prosedürde birleştirmek.
+
+- ⬜ Tek saha prosedürü: SLAM → harita kaydet → AMCL → rota editörü/
+  recorder → A/B/D/q/kapı/approach rolleri → graf validate → canlı yükle
+  → kısa rota smoke. Toplam süre `≤60 dakika` olacak.
+- ⬜ Gerçek encoder, YDLidar, kamera/şerit/QR, lift limitleri, fiziksel e-stop,
+  Collision Monitor, PLC Wi-Fi ve GCS aynı `real_system.launch.py` oturumunda
+  doğrulanacak; test-only/mock sunucu aktif olmayacak.
+- ⬜ PLC'nin dokuz A/B kombinasyonu rota erişilebilirliği açısından önceden
+  kontrol edilecek; en az üç rastgele tam fiziksel görev arka arkaya yapılacak.
+- ⬜ Sayısal kabul: rota sapması `≤10 cm`; istasyon `±7.5 cm/±5°`;
+  engelde çarpışmasız dur/devam; iki q5 izni; yük arkada; son Twist sıfır;
+  görev hedefi `≤30 dakika`, zorunlu üst sınır `<45 dakika`.
+- ⬜ Her kabulde commit kimliği, parametre snapshot'ı, tarihli rosbag,
+  olay logu, route_guard JSON'u, GCS ekran kaydı ve fiziksel video saklanacak.
+- **Tamamlanma kuralı:** Mock/simülasyon sonucu bu fazı yeşile çevirmez;
+  aynı prosedür iki ayrı günde fiziksel araçla geçmeden Faz 17 ✅ olmayacak.
 
 ---
 
