@@ -1,0 +1,6 @@
+# Yeni saha haritalama oturumunu baslat.
+# Ad ileride ~/marco_data/fields/<field_name>/ dizininde kullanilacak.
+string field_name
+---
+bool accepted
+string message

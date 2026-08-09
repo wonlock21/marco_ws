@@ -131,6 +131,13 @@ def _kur(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration("rviz")),
     )
 
+    map_preview = Node(
+        package="marco_localization",
+        executable="map_preview.py",
+        name="map_preview",
+        output="screen",
+    )
+
     mesajlar = [
         LogInfo(msg=f"Harita: {harita_yaml}"),
         LogInfo(
@@ -145,7 +152,7 @@ def _kur(context, *args, **kwargs):
         ),
     ]
 
-    return mesajlar + [robot, map_server, amcl, lifecycle, rviz]
+    return mesajlar + [robot, map_server, amcl, lifecycle, map_preview, rviz]
 
 
 def generate_launch_description() -> LaunchDescription:

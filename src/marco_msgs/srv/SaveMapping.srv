@@ -1,0 +1,5 @@
+---
+bool success
+string message
+string field_directory
+string map_yaml

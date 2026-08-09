@@ -1,0 +1,54 @@
+"""Arayuz icin rosbridge ve uzun omurlu mapping_manager giris noktasi."""
+
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+def generate_launch_description() -> LaunchDescription:
+    bringup_share = get_package_share_directory("marco_bringup")
+    bridge = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(bringup_share, "launch", "gui_bridge.launch.py")
+        ),
+        launch_arguments={"port": LaunchConfiguration("rosbridge_port")}.items(),
+    )
+    manager = Node(
+        package="marco_localization",
+        executable="mapping_manager.py",
+        name="mapping_manager",
+        output="screen",
+        parameters=[{
+            "fake_hardware": ParameterValue(
+                LaunchConfiguration("sahte"), value_type=bool
+            ),
+            "use_imu": ParameterValue(
+                LaunchConfiguration("imu"), value_type=bool
+            ),
+            "serial_port": LaunchConfiguration("serial_port"),
+            "lidar_port": LaunchConfiguration("lidar_port"),
+            "data_root": LaunchConfiguration("data_root"),
+            "save_timeout": ParameterValue(
+                LaunchConfiguration("save_timeout"), value_type=float
+            ),
+        }],
+    )
+    return LaunchDescription([
+        DeclareLaunchArgument("sahte", default_value="false"),
+        DeclareLaunchArgument("imu", default_value="false"),
+        DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+        DeclareLaunchArgument(
+            "data_root", default_value="~/marco_data/fields"
+        ),
+        DeclareLaunchArgument("save_timeout", default_value="30.0"),
+        DeclareLaunchArgument("rosbridge_port", default_value="9090"),
+        bridge,
+        manager,
+    ])
