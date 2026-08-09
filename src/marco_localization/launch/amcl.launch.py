@@ -38,8 +38,10 @@ from launch_ros.actions import Node
 def _harita_yolu(context) -> str:
     """harita argumanini mutlak yaml yoluna cevirir."""
     ad = LaunchConfiguration("harita").perform(context)
-    if ad.endswith(".yaml") and (os.path.isabs(ad) or os.path.isfile(ad)):
+    if ad.endswith(".yaml") and os.path.isfile(ad):
         return os.path.abspath(ad)
+    if os.path.isabs(ad):
+        raise FileNotFoundError(f"Harita bulunamadi: {ad}")
 
     maps_dir = os.path.join(
         get_package_share_directory("marco_navigation"), "maps"
@@ -56,7 +58,7 @@ def _harita_yolu(context) -> str:
             return yol
     raise FileNotFoundError(
         f"Harita bulunamadi: {ad!r}. Aranan: {adaylar}. "
-        "Once mapping yapip harita_kaydet.sh ile kaydedin."
+        "Once /mapping/save servisiyle saha haritasini kaydedin."
     )
 
 
@@ -173,7 +175,7 @@ def generate_launch_description() -> LaunchDescription:
         ),
         DeclareLaunchArgument(
             "harita",
-            default_value="oda_test",
+            default_value="",
             description="maps/ altindaki isim (uzantisiz) veya mutlak .yaml yolu",
         ),
         DeclareLaunchArgument(

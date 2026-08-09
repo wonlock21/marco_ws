@@ -1,0 +1,4 @@
+---
+bool success
+string message
+marco_msgs/FieldInfo[] fields

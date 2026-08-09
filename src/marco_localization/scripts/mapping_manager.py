@@ -20,7 +20,7 @@ from pathlib import Path
 import rclpy
 import yaml
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
-from marco_msgs.msg import MappingStatus
+from marco_msgs.msg import LocalizationStatus, MappingStatus
 from marco_msgs.srv import SaveMapping, StartMapping
 from nav_msgs.msg import OccupancyGrid
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
@@ -119,6 +119,13 @@ class MappingManager(Node):
             10,
             callback_group=self._worker_group,
         )
+        self.create_subscription(
+            LocalizationStatus,
+            "/localization/status",
+            self._on_localization_status,
+            status_qos,
+            callback_group=self._worker_group,
+        )
         self.create_service(
             StartMapping,
             "/mapping/start",
@@ -158,11 +165,18 @@ class MappingManager(Node):
         self._started_at = 0.0
         self._latest_map = None
         self._latest_pose = None
+        self._localization_state = LocalizationStatus.STATE_IDLE
         self._publish_status("Haritalama hazir")
 
     def _data_root(self) -> Path:
         configured = str(self.get_parameter("data_root").value)
         return Path(os.path.expanduser(configured)).resolve()
+
+    def _amcl_is_running(self) -> bool:
+        return any(
+            name.startswith("/amcl/")
+            for name, _types in self.get_service_names_and_types()
+        )
 
     def _publish_status(self, message: str) -> None:
         status = MappingStatus()
@@ -185,6 +199,18 @@ class MappingManager(Node):
         if self._process is not None and self._process.poll() is None:
             response.accepted = False
             response.message = f"Haritalama zaten calisiyor: {self._field_name}"
+            return response
+
+        localization_active = self._localization_state in (
+            LocalizationStatus.STATE_STARTING,
+            LocalizationStatus.STATE_WAITING_INITIAL_POSE,
+            LocalizationStatus.STATE_INITIALIZING,
+            LocalizationStatus.STATE_LOCALIZING,
+            LocalizationStatus.STATE_STOPPING,
+        )
+        if localization_active or self._amcl_is_running():
+            response.accepted = False
+            response.message = "Lokalizasyon calisirken haritalama baslatilamaz"
             return response
 
         target = self._data_root() / field_name
@@ -274,6 +300,9 @@ class MappingManager(Node):
             MappingStatus.STATE_SAVING,
         ):
             self._latest_pose = msg
+
+    def _on_localization_status(self, msg: LocalizationStatus) -> None:
+        self._localization_state = msg.state
 
     def _call_service(self, client, request, label: str):
         timeout = float(self.get_parameter("save_timeout").value)

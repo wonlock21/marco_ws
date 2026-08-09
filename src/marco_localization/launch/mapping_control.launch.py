@@ -1,4 +1,4 @@
-"""Arayuz icin rosbridge ve uzun omurlu mapping_manager giris noktasi."""
+"""Arayuz icin rosbridge, haritalama ve lokalizasyon kontrol dugumleri."""
 
 import os
 
@@ -39,6 +39,35 @@ def generate_launch_description() -> LaunchDescription:
             ),
         }],
     )
+    localization_manager = Node(
+        package="marco_localization",
+        executable="localization_manager.py",
+        name="localization_manager",
+        output="screen",
+        parameters=[{
+            "fake_hardware": ParameterValue(
+                LaunchConfiguration("sahte"), value_type=bool
+            ),
+            "use_imu": ParameterValue(
+                LaunchConfiguration("imu"), value_type=bool
+            ),
+            "serial_port": LaunchConfiguration("serial_port"),
+            "lidar_port": LaunchConfiguration("lidar_port"),
+            "data_root": LaunchConfiguration("data_root"),
+            "startup_timeout": ParameterValue(
+                LaunchConfiguration("localization_timeout"), value_type=float
+            ),
+            "initial_pose_timeout": ParameterValue(
+                LaunchConfiguration("initial_pose_timeout"), value_type=float
+            ),
+            "initial_pose_xy_std": ParameterValue(
+                LaunchConfiguration("initial_pose_xy_std"), value_type=float
+            ),
+            "initial_pose_yaw_std": ParameterValue(
+                LaunchConfiguration("initial_pose_yaw_std"), value_type=float
+            ),
+        }],
+    )
     return LaunchDescription([
         DeclareLaunchArgument("sahte", default_value="false"),
         DeclareLaunchArgument("imu", default_value="false"),
@@ -48,7 +77,14 @@ def generate_launch_description() -> LaunchDescription:
             "data_root", default_value="~/marco_data/fields"
         ),
         DeclareLaunchArgument("save_timeout", default_value="30.0"),
+        DeclareLaunchArgument("localization_timeout", default_value="30.0"),
+        DeclareLaunchArgument("initial_pose_timeout", default_value="35.0"),
+        DeclareLaunchArgument("initial_pose_xy_std", default_value="0.25"),
+        DeclareLaunchArgument(
+            "initial_pose_yaw_std", default_value="0.174532925"
+        ),
         DeclareLaunchArgument("rosbridge_port", default_value="9090"),
         bridge,
         manager,
+        localization_manager,
     ])

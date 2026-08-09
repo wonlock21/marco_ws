@@ -1,0 +1,6 @@
+# Kaydedilmis saha haritasi ile AMCL lokalizasyonunu baslat.
+string field_name
+---
+bool accepted
+string message
+string map_yaml
