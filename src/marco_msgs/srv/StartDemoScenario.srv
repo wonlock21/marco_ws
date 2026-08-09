@@ -1,0 +1,6 @@
+# A ve B, map cercevesinde metre/radyan cinsinden hedef pozlardir.
+geometry_msgs/Pose2D point_a
+geometry_msgs/Pose2D point_b
+---
+bool accepted
+string message

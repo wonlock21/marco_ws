@@ -11,6 +11,7 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/DemoStatus.msg"
   "msg/FieldInfo.msg"
   "msg/LaneOffset.msg"
   "msg/LocalizationStatus.msg"
@@ -31,6 +32,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ResetMissionSafety.srv"
   "srv/SaveMapping.srv"
   "srv/StartLocalization.srv"
+  "srv/StartDemoScenario.srv"
   "srv/StartMapping.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )

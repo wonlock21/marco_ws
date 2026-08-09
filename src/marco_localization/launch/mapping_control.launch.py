@@ -68,6 +68,19 @@ def generate_launch_description() -> LaunchDescription:
             ),
         }],
     )
+    demo_manager = Node(
+        package="marco_demo",
+        executable="demo_scenario_manager",
+        name="demo_scenario_manager",
+        output="screen",
+        parameters=[{
+            "camera": LaunchConfiguration("camera"),
+            "odom_topic": LaunchConfiguration("demo_odom_topic"),
+            "turn_direction": ParameterValue(
+                LaunchConfiguration("turn_direction"), value_type=int
+            ),
+        }],
+    )
     return LaunchDescription([
         DeclareLaunchArgument("sahte", default_value="false"),
         DeclareLaunchArgument("imu", default_value="false"),
@@ -83,8 +96,14 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "initial_pose_yaw_std", default_value="0.174532925"
         ),
+        DeclareLaunchArgument("camera", default_value="/dev/video0"),
+        DeclareLaunchArgument(
+            "demo_odom_topic", default_value="/odometry/filtered"
+        ),
+        DeclareLaunchArgument("turn_direction", default_value="1"),
         DeclareLaunchArgument("rosbridge_port", default_value="9090"),
         bridge,
         manager,
         localization_manager,
+        demo_manager,
     ])
