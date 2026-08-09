@@ -11,7 +11,9 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/FieldInfo.msg"
   "msg/LaneOffset.msg"
+  "msg/LocalizationStatus.msg"
   "msg/MapPixelPose.msg"
   "msg/MappingStatus.msg"
   "msg/QrDetection.msg"
@@ -20,6 +22,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/LiftLoad.action"
   "srv/AssignTask.srv"
   "srv/GatePermission.srv"
+  "srv/ListFields.srv"
   "srv/TaskComplete.srv"
   "srv/StartMission.srv"
   "srv/SubmitManualTask.srv"
@@ -27,6 +30,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/CancelMission.srv"
   "srv/ResetMissionSafety.srv"
   "srv/SaveMapping.srv"
+  "srv/StartLocalization.srv"
   "srv/StartMapping.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )

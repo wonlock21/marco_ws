@@ -22,6 +22,7 @@ install(PROGRAMS
   scripts/amcl_test_drive.py
   scripts/amcl_acceptance.py
   scripts/map_preview.py
+  scripts/localization_manager.py
   scripts/mapping_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )

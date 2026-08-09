@@ -1,0 +1,9 @@
+string field_name
+string field_directory
+string map_yaml
+string preview_png
+string created_at
+bool map_ready
+bool initial_pose_ready
+bool localization_ready
+string message
