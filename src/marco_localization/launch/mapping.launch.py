@@ -63,6 +63,8 @@ def generate_launch_description() -> LaunchDescription:
             description="YDLidar Tmini Pro (haritalama icin varsayilan acik)",
         ),
         DeclareLaunchArgument("imu", default_value="false"),
+        DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument(
             "rviz",
             default_value="false",
@@ -78,6 +80,8 @@ def generate_launch_description() -> LaunchDescription:
             "sahte": LaunchConfiguration("sahte"),
             "lidar": LaunchConfiguration("lidar"),
             "imu": LaunchConfiguration("imu"),
+            "serial_port": LaunchConfiguration("serial_port"),
+            "lidar_port": LaunchConfiguration("lidar_port"),
             "rviz": "false",
         }.items(),
     )
@@ -89,6 +93,13 @@ def generate_launch_description() -> LaunchDescription:
         name="slam_toolbox",
         output="screen",
         parameters=[slam_config],
+    )
+
+    map_preview = Node(
+        package="marco_localization",
+        executable="map_preview.py",
+        name="map_preview",
+        output="screen",
     )
 
     rviz = Node(
@@ -104,6 +115,7 @@ def generate_launch_description() -> LaunchDescription:
             OpaqueFunction(function=_uyari),
             localization,
             slam,
+            map_preview,
             rviz,
             LogInfo(msg="Surmek: ros2 run teleop_twist_keyboard teleop_twist_keyboard"),
             LogInfo(msg="Kaydet: ros2 run marco_localization harita_kaydet.sh <isim>"),

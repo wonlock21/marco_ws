@@ -12,6 +12,8 @@ find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/LaneOffset.msg"
+  "msg/MapPixelPose.msg"
+  "msg/MappingStatus.msg"
   "msg/QrDetection.msg"
   "msg/RobotStatus.msg"
   "action/DockToStation.action"
@@ -24,6 +26,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SubmitMission.srv"
   "srv/CancelMission.srv"
   "srv/ResetMissionSafety.srv"
+  "srv/SaveMapping.srv"
+  "srv/StartMapping.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )
 
