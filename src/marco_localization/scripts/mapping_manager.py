@@ -33,7 +33,7 @@ from rclpy.qos import (
     QoSReliabilityPolicy,
 )
 from std_srvs.srv import Trigger
-from slam_toolbox.srv import SaveMap, SerializePoseGraph
+from slam_toolbox.srv import SerializePoseGraph
 
 
 FIELD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -70,6 +70,51 @@ def _occupancy_grid_png(msg: OccupancyGrid) -> bytes:
         + _png_chunk(b"IDAT", zlib.compress(bytes(rows), level=3))
         + _png_chunk(b"IEND", b"")
     )
+
+
+def _occupancy_grid_pgm(msg: OccupancyGrid) -> bytes:
+    """OccupancyGrid'i Nav2 map_server ile uyumlu trinary PGM'e cevir."""
+    width = msg.info.width
+    height = msg.info.height
+    if width <= 0 or height <= 0 or len(msg.data) != width * height:
+        raise ValueError("gecersiz OccupancyGrid")
+
+    pixels = bytearray()
+    for source_y in range(height - 1, -1, -1):
+        offset = source_y * width
+        for value in msg.data[offset:offset + width]:
+            if value < 0:
+                pixels.append(205)
+            elif value >= 65:
+                pixels.append(0)
+            elif value <= 25:
+                pixels.append(254)
+            else:
+                pixels.append(205)
+
+    header = (
+        f"P5\n# CREATOR: marco_mapping_manager "
+        f"{msg.info.resolution:.6f} m/pix\n{width} {height}\n255\n"
+    ).encode("ascii")
+    return header + bytes(pixels)
+
+
+def _map_yaml(msg: OccupancyGrid) -> dict:
+    """Kayitli PGM icin Nav2 map_server YAML icerigini olustur."""
+    origin = msg.info.origin
+    return {
+        "image": "map.pgm",
+        "mode": "trinary",
+        "resolution": float(msg.info.resolution),
+        "origin": [
+            float(origin.position.x),
+            float(origin.position.y),
+            float(_yaw_of(origin.orientation)),
+        ],
+        "negate": 0,
+        "occupied_thresh": 0.65,
+        "free_thresh": 0.25,
+    }
 
 
 def _yaw_of(orientation) -> float:
@@ -144,11 +189,6 @@ class MappingManager(Node):
             self._on_stop,
             callback_group=self._service_group,
         )
-        self._save_map_client = self.create_client(
-            SaveMap,
-            "/slam_toolbox/save_map",
-            callback_group=self._worker_group,
-        )
         self._serialize_client = self.create_client(
             SerializePoseGraph,
             "/slam_toolbox/serialize_map",
@@ -173,9 +213,12 @@ class MappingManager(Node):
         return Path(os.path.expanduser(configured)).resolve()
 
     def _amcl_is_running(self) -> bool:
+        # Kapanan lifecycle dugumlerinin servisleri DDS discovery onbelleginde
+        # kisa sure kalabilir. Gercek cakismayi servis kalintisindan degil,
+        # calisan AMCL dugumunden belirle.
         return any(
-            name.startswith("/amcl/")
-            for name, _types in self.get_service_names_and_types()
+            name == "amcl"
+            for name, _namespace in self.get_node_names_and_namespaces()
         )
 
     def _publish_status(self, message: str) -> None:
@@ -327,12 +370,6 @@ class MappingManager(Node):
             yaml.safe_dump(content, stream, sort_keys=False, allow_unicode=True)
 
     def _write_metadata(self, staging: Path, map_msg, pose_msg) -> None:
-        map_yaml_path = staging / "map.yaml"
-        with map_yaml_path.open("r", encoding="utf-8") as stream:
-            map_yaml = yaml.safe_load(stream) or {}
-        map_yaml["image"] = "map.pgm"
-        self._write_yaml(map_yaml_path, map_yaml)
-
         pose = pose_msg.pose.pose
         pose_data = {
             "frame_id": pose_msg.header.frame_id or "map",
@@ -418,15 +455,14 @@ class MappingManager(Node):
             ))
             stem = staging / "map"
 
-            save_request = SaveMap.Request()
-            save_request.name.data = str(stem)
-            save_result = self._call_service(
-                self._save_map_client, save_request, "Harita kaydetme"
-            )
-            if save_result.result != SaveMap.Response.RESULT_SUCCESS:
-                raise RuntimeError(
-                    f"Harita kaydetme sonuc kodu: {save_result.result}"
-                )
+            # slam_toolbox/save_map gecici bir map_saver sureci acip /map'i
+            # yalnizca 2 saniye bekliyor. Orange Pi yuk altindayken veya
+            # map_update_interval=2.0 iken bu pencere kacabiliyor ve gecerli
+            # bir harita varken 255 donuyor. Yonetici zaten son, dogrulanmis
+            # OccupancyGrid'i bellekte tuttugu icin raster dosyalarini
+            # dogrudan ve deterministik olarak buradan olusturuyoruz.
+            (staging / "map.pgm").write_bytes(_occupancy_grid_pgm(map_msg))
+            self._write_yaml(staging / "map.yaml", _map_yaml(map_msg))
 
             graph_request = SerializePoseGraph.Request()
             graph_request.filename = str(stem)

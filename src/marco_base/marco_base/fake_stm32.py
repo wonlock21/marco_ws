@@ -200,6 +200,9 @@ class FakeStm32:
                     right_ticks=self._wrap_uint16(self.right_ticks),
                     left_mm_s=int(round(self._actual_left * 1000.0)),
                     right_mm_s=int(round(self._actual_right * 1000.0)),
+                    # Gercek firmware paketindeki angle_x, arac duzlemindeki
+                    # donus acisi olarak kullaniliyor.
+                    angle_x_deg=math.degrees(self.true_theta),
                 )
             )
 

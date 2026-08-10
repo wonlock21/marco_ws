@@ -143,16 +143,15 @@
 
     laser_link dogru degilse SLAM haritasi ve AMCL lokalizasyonu kayar.
 
-    KABUL (29.07, kullanici karari): LiDAR ust kapaga montajli ve taramasi
-    engelsiz 360 derece. Boylece SLAM, AMCL ve costmap standart bir 2D
-    tarayici varsayimiyla kurulabiliyor; sektor maskeleme (ignore_array)
-    gerekmiyor.
+    KABUL (10.08, kullanici olcumu): base_footprint'e gore LiDAR tarama
+    merkezi x=0.000, y=+0.240, z=0.280 m.
 
-    base_link, base_footprint'in 0.100 m ustundedir. lidar_z=0.180 ile tarama
-    duzlemi base_footprint'e gore zeminden 0.280 m olur.
+    base_link, base_footprint'in 0.100 m ustundedir. Bu nedenle asagidaki
+    base_link'e gore z degeri 0.180 m'dir; TF zincirinde zemine gore
+    laser_link z=0.280 m olur.
   -->
-  <xacro:property name="lidar_x"           value="-0.300"/>
-  <xacro:property name="lidar_y"           value="0.000"/>
+  <xacro:property name="lidar_x"           value="0.000"/>
+  <xacro:property name="lidar_y"           value="0.240"/>
   <xacro:property name="lidar_z"           value="0.180"/>
 
   <!--

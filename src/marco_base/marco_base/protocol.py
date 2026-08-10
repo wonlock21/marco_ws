@@ -61,10 +61,12 @@ _FMT_WHEEL_VELOCITY = "<hhB"   # left_mm_s, right_mm_s, flags
 _FMT_MOTOR_PWM = "<hhB"        # left_pwm, right_pwm, flags
 _FMT_FORK = "<BH"              # action, timeout_ms
 _FMT_SAFETY = "<B"             # command
-_FMT_ODOMETRY = "<Iiihh"       # timestamp_us, left_ticks, right_ticks, left_mm_s, right_mm_s
+_FMT_ODOMETRY_LEGACY = "<Iiihh"  # IMU eklenmeden onceki 16 baytlik paket
+_FMT_ODOMETRY = "<Iiihhf"      # onceki alanlar + angle_x_deg (float32)
 _FMT_STATUS = "<IHHhhbB"       # timestamp_us, flags, battery_mv, cur_l, cur_r, temp_c, fork_state
 
-ODOMETRY_PAYLOAD_LEN = struct.calcsize(_FMT_ODOMETRY)  # 16
+ODOMETRY_LEGACY_PAYLOAD_LEN = struct.calcsize(_FMT_ODOMETRY_LEGACY)  # 16
+ODOMETRY_PAYLOAD_LEN = struct.calcsize(_FMT_ODOMETRY)  # 20
 STATUS_PAYLOAD_LEN = struct.calcsize(_FMT_STATUS)      # 14
 
 
@@ -137,6 +139,7 @@ class OdometryFrame:
     right_ticks: int
     left_mm_s: int
     right_mm_s: int
+    angle_x_deg: float | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +168,7 @@ def encode_odometry(f: OdometryFrame) -> bytes:
             f.right_ticks & 0xFFFF,
             f.left_mm_s,
             f.right_mm_s,
+            0.0 if f.angle_x_deg is None else float(f.angle_x_deg),
         ),
     )
 
@@ -210,23 +214,32 @@ def decode_safety(payload: bytes) -> SafetyCommand:
 def decode_odometry(payload: bytes) -> OdometryFrame:
     """STATE_ODOMETRY cozer.
 
-    Kanonik boyut 16 bayttir. Sahadaki firmware bazen 24 bayt gonderiyor
-    (ilk 16 protokolle ayni, sondaki 8 sifir/padding); bu durumda ilk 16
-    bayt kullanilir. 16'dan kisa paket reddedilir.
+    Yeni kanonik boyut 20 bayttir: eski 16 baytlik odometri alanlarinin
+    sonuna derece cinsinden float32 ``angle_x`` eklenmistir. Gecis sirasinda
+    eski 16 baytlik ve padding'li 24 baytlik firmware de kabul edilir fakat
+    IMU alani ``None`` olur.
     """
-    if len(payload) < ODOMETRY_PAYLOAD_LEN:
+    if len(payload) < ODOMETRY_LEGACY_PAYLOAD_LEN:
         raise ValueError(
-            f"odometry payload {len(payload)} bayt, en az {ODOMETRY_PAYLOAD_LEN} gerekli"
+            f"odometry payload {len(payload)} bayt, en az "
+            f"{ODOMETRY_LEGACY_PAYLOAD_LEN} gerekli"
         )
-    ts, left, right, left_mm_s, right_mm_s = struct.unpack_from(
-        _FMT_ODOMETRY, payload
-    )
+    if len(payload) == ODOMETRY_PAYLOAD_LEN:
+        ts, left, right, left_mm_s, right_mm_s, angle_x_deg = (
+            struct.unpack_from(_FMT_ODOMETRY, payload)
+        )
+    else:
+        ts, left, right, left_mm_s, right_mm_s = struct.unpack_from(
+            _FMT_ODOMETRY_LEGACY, payload
+        )
+        angle_x_deg = None
     return OdometryFrame(
         ts,
         left & 0xFFFF,
         right & 0xFFFF,
         left_mm_s,
         right_mm_s,
+        angle_x_deg,
     )
 
 
