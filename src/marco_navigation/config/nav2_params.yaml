@@ -135,14 +135,19 @@ local_costmap:
         observation_sources: scan
         scan:
           topic: /scan
+          # LaserScan noktasi TF ile costmap cercevesinde 5 cm'den alcaksa
+          # zemin gurultusu olarak isaretleme. LiDAR tarama duzlemi 0.28 m.
+          min_obstacle_height: 0.05
           max_obstacle_height: 2.0
           clearing: True
           marking: True
           data_type: "LaserScan"
-          raytrace_max_range: 8.0
+          # Tmini Pro range_max ile ayni. +inf isinlari bu sinira kadar clear eder.
+          raytrace_max_range: 12.0
           raytrace_min_range: 0.05
           obstacle_max_range: 6.0
           obstacle_min_range: 0.05
+          inf_is_valid: True
       always_send_full_costmap: True
 
 global_costmap:

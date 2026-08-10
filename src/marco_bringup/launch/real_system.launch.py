@@ -173,6 +173,7 @@ def _setup(context, *args, **kwargs):
             "y": LaunchConfiguration("y"),
             "yaw": LaunchConfiguration("yaw"),
             "rviz": "true" if rviz_enabled else "false",
+            "safety_scan_topic": "/scan" if fake else "/scan_raw",
         }.items(),
     )
     docking = IncludeLaunchDescription(

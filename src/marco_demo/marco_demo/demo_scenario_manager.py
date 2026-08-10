@@ -14,6 +14,8 @@ import rclpy
 import yaml
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import Pose2D
+from lifecycle_msgs.msg import State
+from lifecycle_msgs.srv import GetState
 from marco_msgs.msg import DemoStatus, LocalizationStatus
 from marco_msgs.srv import StartDemoScenario
 from nav2_msgs.action import DriveOnHeading, Spin
@@ -85,6 +87,7 @@ class DemoScenarioManager(Node):
         self.declare_parameter("position_tolerance", 0.10)
         self.declare_parameter("yaw_tolerance", math.radians(5.0))
         self.declare_parameter("obstacle_clear_delay", 0.5)
+        self.declare_parameter("obstacle_detection_enabled", True)
 
         self._callbacks = ReentrantCallbackGroup()
         latched = QoSProfile(
@@ -176,6 +179,14 @@ class DemoScenarioManager(Node):
             "/spin",
             callback_group=self._callbacks,
         )
+        # Action endpoint'i lifecycle CONFIGURING asamasinda gorunebilir ve bu
+        # durumda hedefi reddeder. Navigation launch'indaki son yonetilen dugum
+        # aktif oldugunda tum Nav2 zinciri kullanima hazirdir.
+        self._nav_ready = self.create_client(
+            GetState,
+            "/velocity_smoother/get_state",
+            callback_group=self._callbacks,
+        )
         self._tf = Buffer()
         self._tf_listener = TransformListener(self._tf, self)
 
@@ -197,6 +208,17 @@ class DemoScenarioManager(Node):
         self._turn_finishing = False
         self._phase_started = 0.0
         self._publish_status()
+
+        if not self._obstacles_enabled():
+            self.get_logger().warning(
+                "DEMO ENGEL ALGILAMA BYPASS AKTIF; yalniz kontrollu test icin"
+            )
+
+    def _obstacles_enabled(self) -> bool:
+        return bool(self.get_parameter("obstacle_detection_enabled").value)
+
+    def _obstacle_active(self) -> bool:
+        return self._obstacles_enabled() and self._obstacle_detected
 
     def _publish_status(self) -> None:
         status = DemoStatus()
@@ -240,12 +262,30 @@ class DemoScenarioManager(Node):
 
     def _on_obstacle(self, msg: Bool) -> None:
         detected = bool(msg.data)
-        if detected and not self._obstacle_detected:
+        moving_states = (
+            DemoStatus.STATE_STARTING,
+            DemoStatus.STATE_NAVIGATING_A,
+            DemoStatus.STATE_LANE_A,
+            DemoStatus.STATE_TURNING_A,
+            DemoStatus.STATE_NAVIGATING_B,
+            DemoStatus.STATE_LANE_B,
+            DemoStatus.STATE_TURNING_B,
+        )
+        state_changed = detected != self._obstacle_detected
+        if state_changed:
             self._last_obstacle_at = time.monotonic()
-            self.get_logger().warning("Engel algilandi; demo hareketi bekliyor")
-        elif not detected and self._obstacle_detected:
-            self._last_obstacle_at = time.monotonic()
-            self.get_logger().info("Engel kalkti; demo hareketi devam edecek")
+        # Guvenlik durumunu demo bosken de takip et; boylece engel varken demo
+        # baslatilamaz. Ancak haritalama/manuel surus sirasinda demo hareket
+        # ediyormus gibi yaniltici olay mesaji uretme.
+        if state_changed and self._state in moving_states:
+            if detected:
+                self.get_logger().warning(
+                    "Engel algilandi; demo hareketi bekliyor"
+                )
+            else:
+                self.get_logger().info(
+                    "Engel kalkti; demo hareketi devam edecek"
+                )
         self._obstacle_detected = detected
 
     def _on_navigation_abort(self, msg: Bool) -> None:
@@ -258,7 +298,11 @@ class DemoScenarioManager(Node):
             DemoStatus.STATE_LANE_B,
             DemoStatus.STATE_TURNING_B,
         )
-        if not msg.data or self._state not in moving_states:
+        if (
+            not self._obstacles_enabled()
+            or not msg.data
+            or self._state not in moving_states
+        ):
             return
         threading.Thread(
             target=self._fail,
@@ -355,7 +399,7 @@ class DemoScenarioManager(Node):
                 )
             if self._manual_mode:
                 raise DemoAbort("Demo baslamadan once manuel modu kapatin")
-            if self._obstacle_detected:
+            if self._obstacle_active():
                 raise DemoAbort("Demo baslamadan once engel alanini temizleyin")
             if not self._valid_point(point_a) or not self._valid_point(point_b):
                 raise DemoAbort("A/B koordinatlari sonlu sayilar olmali")
@@ -419,7 +463,7 @@ class DemoScenarioManager(Node):
                 response.success = False
                 response.message = "Lokalizasyon aktif degil"
                 return response
-            if self._obstacle_detected:
+            if self._obstacle_active():
                 response.success = False
                 response.message = "Devam etmeden once engel alanini temizleyin"
                 return response
@@ -504,6 +548,27 @@ class DemoScenarioManager(Node):
             raise DemoAbort(f"{label} hatasi: {error}")
         return future.result()
 
+    def _wait_nav2_active(self, timeout: float) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._cancel_requested:
+                raise DemoAbort("Demo iptal edildi")
+            remaining = deadline - time.monotonic()
+            if not self._nav_ready.wait_for_service(
+                timeout_sec=min(0.5, max(0.0, remaining))
+            ):
+                continue
+            future = self._nav_ready.call_async(GetState.Request())
+            response = self._wait_future(
+                future,
+                min(deadline, time.monotonic() + 2.0),
+                "Nav2 lifecycle durumu",
+            )
+            if response.current_state.id == State.PRIMARY_STATE_ACTIVE:
+                return
+            time.sleep(0.1)
+        raise DemoAbort("Nav2 dugumleri ACTIVE durumuna gecemedi")
+
     def _lookup_map_pose(self, timeout: float = 3.0) -> tuple[float, float, float]:
         deadline = time.monotonic() + timeout
         last_error = ""
@@ -542,11 +607,13 @@ class DemoScenarioManager(Node):
         goal.time_allowance.nanosec = 0
 
     def _wait_obstacle_clear(self) -> None:
+        if not self._obstacles_enabled():
+            return
         delay = max(0.0, float(
             self.get_parameter("obstacle_clear_delay").value
         ))
         while True:
-            while self._obstacle_detected:
+            while self._obstacle_active():
                 if self._cancel_requested:
                     raise DemoAbort("Demo iptal edildi")
                 time.sleep(0.05)
@@ -554,7 +621,7 @@ class DemoScenarioManager(Node):
             while time.monotonic() - clear_since < delay:
                 if self._cancel_requested:
                     raise DemoAbort("Demo iptal edildi")
-                if self._obstacle_detected:
+                if self._obstacle_active():
                     break
                 time.sleep(0.05)
             else:
@@ -594,7 +661,7 @@ class DemoScenarioManager(Node):
             if status == GoalStatus.STATUS_SUCCEEDED:
                 continue
             recent_obstacle = (
-                self._obstacle_detected
+                self._obstacle_active()
                 or time.monotonic() - self._last_obstacle_at < 2.0
             )
             if not recent_obstacle:
@@ -646,7 +713,7 @@ class DemoScenarioManager(Node):
             if status == GoalStatus.STATUS_SUCCEEDED:
                 continue
             recent_obstacle = (
-                self._obstacle_detected
+                self._obstacle_active()
                 or time.monotonic() - self._last_obstacle_at < 2.0
             )
             if not recent_obstacle:
@@ -704,6 +771,7 @@ class DemoScenarioManager(Node):
             startup_timeout = float(
                 self.get_parameter("nav_startup_timeout").value
             )
+            self._wait_nav2_active(startup_timeout)
             if not self._drive.wait_for_server(timeout_sec=startup_timeout):
                 raise DemoAbort("drive_on_heading action sunucusu hazir olmadi")
             if not self._spin.wait_for_server(timeout_sec=startup_timeout):

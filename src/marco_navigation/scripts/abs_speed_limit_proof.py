@@ -6,7 +6,7 @@ Statik (hazirlik kontrolu; tek basina kabul kaniti degildir):
   - route_server.yaml AdjustSpeedLimit + speed_tag=abs_speed_limit
 
 Dinamik (--sure > 0, stack ayaktayken):
-  - /speed_limit üzerinde percentage=false ve graf metadata aralığında mesaj
+  - /route_speed_limit ve /speed_limit üzerinde aynı mutlak graf limiti
   - /cmd_vel_raw (yoksa /cmd_vel) |linear.x| o anki limitin üstüne çıkmaz
 
 Örnek:
@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
-import sys
 import time
 from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
@@ -57,7 +55,7 @@ def static_checks(nav_share: str) -> dict:
     if adj.get("speed_tag") != "abs_speed_limit":
         errors.append(f"speed_tag abs_speed_limit degil: {adj.get('speed_tag')}")
     topic = adj.get("speed_limit_topic", "")
-    if topic not in ("speed_limit", "/speed_limit"):
+    if topic not in ("route_speed_limit", "/route_speed_limit"):
         errors.append(f"speed_limit_topic beklenen degil: {topic}")
 
     return {
@@ -95,8 +93,11 @@ def runtime_checks(duration_s: float, cmd_topics: list[str], limits: list[float]
         def __init__(self):
             super().__init__("abs_speed_limit_proof")
             self.speeds = []
+            self.route_speeds = []
             self.cmds = []
             self.create_subscription(SpeedLimit, "/speed_limit", self._on_speed, 20)
+            self.create_subscription(
+                SpeedLimit, "/route_speed_limit", self._on_route_speed, 20)
             for topic in cmd_topics:
                 self.create_subscription(
                     Twist, topic, lambda m, t=topic: self._on_cmd(m, t), 50
@@ -104,6 +105,15 @@ def runtime_checks(duration_s: float, cmd_topics: list[str], limits: list[float]
 
         def _on_speed(self, msg: SpeedLimit):
             self.speeds.append(
+                {
+                    "t": time.monotonic(),
+                    "speed_limit": float(msg.speed_limit),
+                    "percentage": bool(msg.percentage),
+                }
+            )
+
+        def _on_route_speed(self, msg: SpeedLimit):
+            self.route_speeds.append(
                 {
                     "t": time.monotonic(),
                     "speed_limit": float(msg.speed_limit),
@@ -129,6 +139,7 @@ def runtime_checks(duration_s: float, cmd_topics: list[str], limits: list[float]
             rclpy.spin_once(node, timeout_sec=0.05)
     finally:
         speeds = list(node.speeds)
+        route_speeds = list(node.route_speeds)
         cmds = list(node.cmds)
         node.destroy_node()
         rclpy.shutdown()
@@ -163,6 +174,16 @@ def runtime_checks(duration_s: float, cmd_topics: list[str], limits: list[float]
     errors = []
     if duration_s > 0 and not abs_msgs:
         errors.append("/speed_limit üzerinde abs (percentage=false, >0) mesaj yok")
+    route_abs = [
+        s for s in route_speeds
+        if not s["percentage"] and s["speed_limit"] > 0.0
+    ]
+    if duration_s > 0 and not route_abs:
+        errors.append("/route_speed_limit üzerinde Route Server mesaji yok")
+    output_values = {round(s["speed_limit"], 3) for s in abs_msgs}
+    raw_values = {round(s["speed_limit"], 3) for s in route_abs}
+    if route_abs and not raw_values.issubset(output_values):
+        errors.append("speed_limit_manager ham route limitlerini aktarmadi")
     if limits and abs_msgs and len(in_meta) != len(abs_msgs):
         errors.append("gelen speed_limit graf abs_speed_limit değerlerinden biri değil")
     cmd_topic_used = sorted({c["topic"] for c in cmds})
@@ -174,6 +195,7 @@ def runtime_checks(duration_s: float, cmd_topics: list[str], limits: list[float]
     return {
         "duration_s": duration_s,
         "speed_limit_messages": len(speeds),
+        "route_speed_limit_messages": len(route_speeds),
         "abs_speed_limit_messages": len(abs_msgs),
         "abs_in_graph_metadata": len(in_meta),
         "graph_limit_min": meta_min,

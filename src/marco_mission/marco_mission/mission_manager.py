@@ -16,7 +16,6 @@ from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from nav2_msgs.action import NavigateToPose
-from nav2_msgs.msg import SpeedLimit
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
@@ -25,7 +24,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
 from sensor_msgs.msg import BatteryState, LaserScan
-from std_msgs.msg import Bool, Float32, String
+from std_msgs.msg import Bool, Empty, Float32, String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 
@@ -120,7 +119,8 @@ class MissionManager(Node):
 
         self._status_pub = self.create_publisher(RobotStatus, '/robot_status', 10)
         self._event_pub = self.create_publisher(String, '/mission/events', 50)
-        self._speed_pub = self.create_publisher(SpeedLimit, '/speed_limit', 10)
+        self._speed_reset_pub = self.create_publisher(
+            Empty, '/route/speed_limit_reset', 10)
         self.create_subscription(Bool, '/base/estop', self._on_estop, 10,
                                  callback_group=self._cb)
         self.create_subscription(Bool, '/base/manual_mode', self._on_manual, 10,
@@ -158,8 +158,8 @@ class MissionManager(Node):
                                         callback_group=self._cb)
         self._complete = self.create_client(TaskComplete, '/plc/task_complete',
                                             callback_group=self._cb)
-        # NavigateToPose → navigate_route_wait.xml:
-        # Parallel(ComputeAndTrackRoute, FollowPath) + AdjustSpeedLimit.
+        # Tek dis action sahibi: NavigateToPose. Ozel BT once ComputeRoute,
+        # ardindan Parallel(ComputeAndTrackRoute, FollowPath) calistirir.
         self._nav = ActionClient(self, NavigateToPose, 'navigate_to_pose',
                                  callback_group=self._cb)
         self._dock = ActionClient(self, DockToStation, '/dock_to_station',
@@ -273,10 +273,7 @@ class MissionManager(Node):
         self._safe_stop()
 
     def _safe_stop(self) -> None:
-        reset = SpeedLimit()
-        reset.percentage = False
-        reset.speed_limit = 0.0
-        self._speed_pub.publish(reset)
+        self._speed_reset_pub.publish(Empty())
 
     def _validate_route(self, route_nodes) -> Optional[str]:
         if not route_nodes:

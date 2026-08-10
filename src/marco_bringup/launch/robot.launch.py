@@ -71,6 +71,9 @@ def generate_launch_description() -> LaunchDescription:
     xacro_file = os.path.join(description_share, "urdf", "marco.urdf.xacro")
     rviz_config = os.path.join(bringup_share, "config", "robot.rviz")
     lidar_config = os.path.join(localization_share, "config", "lidar_tmini_pro.yaml")
+    lidar_filter_config = os.path.join(
+        localization_share, "config", "lidar_speckle_filter.yaml"
+    )
 
     arguments = [
         DeclareLaunchArgument("sahte", default_value="false"),
@@ -153,6 +156,19 @@ def generate_launch_description() -> LaunchDescription:
         name="ydlidar_ros2_driver_node",
         output="screen",
         parameters=[lidar_config, {"port": LaunchConfiguration("lidar_port")}],
+        remappings=[("scan", "/scan_raw")],
+        condition=IfCondition(LaunchConfiguration("lidar")),
+    )
+
+    # Hafif speckle filtresi: SLAM/AMCL/Nav2 /scan'i kullanir. Guvenlik
+    # katmani gercek sistemde /scan_raw'i dinleyerek ince engelleri korur.
+    lidar_filter = Node(
+        package="laser_filters",
+        executable="scan_to_scan_filter_chain",
+        name="scan_to_scan_filter_chain",
+        output="screen",
+        parameters=[lidar_filter_config],
+        remappings=[("scan", "/scan_raw"), ("scan_filtered", "/scan")],
         condition=IfCondition(LaunchConfiguration("lidar")),
     )
 
@@ -170,6 +186,7 @@ def generate_launch_description() -> LaunchDescription:
             robot_state_publisher,
             base_driver,
             lidar_node,
+            lidar_filter,
             rviz,
         ]
     )

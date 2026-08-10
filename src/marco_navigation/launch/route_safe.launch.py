@@ -49,7 +49,10 @@ def generate_launch_description() -> LaunchDescription:
         PythonLaunchDescriptionSource(
             os.path.join(safety_share, "launch", "safety.launch.py")
         ),
-        launch_arguments={"use_sim_time": "false"}.items(),
+        launch_arguments={
+            "use_sim_time": "false",
+            "scan_topic": LaunchConfiguration("safety_scan_topic"),
+        }.items(),
     )
 
     return LaunchDescription(
@@ -60,6 +63,14 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
             DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
             DeclareLaunchArgument("rviz", default_value="false"),
+            DeclareLaunchArgument(
+                "safety_scan_topic",
+                default_value="/scan_raw",
+                description=(
+                    "Collision Monitor ham taramayi kullanir; SLAM/Nav2 /scan "
+                    "speckle-filtreli veridir."
+                ),
+            ),
             DeclareLaunchArgument("harita", default_value="nav_test"),
             DeclareLaunchArgument("baslangic", default_value="true"),
             DeclareLaunchArgument("x", default_value="0.0"),

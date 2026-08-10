@@ -1,0 +1,47 @@
+turn_then_rear_lane_node:
+  ros__parameters:
+    output_topic: /cmd_vel
+    odom_topic: /odom
+    control_rate: 30.0
+
+    # Ilk hareket: kamera kapaliyken yavas 180 derece yerinde donus.
+    turn_angle_degrees: 180.0
+    turn_direction: 1
+    turn_max_angular_speed: 0.20
+    turn_min_angular_speed: 0.16
+    turn_angular_gain: 0.18
+    turn_angular_acceleration: 0.10
+    turn_angular_deceleration: 0.16
+    turn_tolerance_degrees: 2.5
+    turn_settle_duration: 0.80
+    turn_timeout: 30.0
+    odom_timeout: 0.50
+
+    # Lift/catal tarafina bakan arka kamera donus bitince acilir.
+    camera_device: /dev/video0
+    frame_width: 320
+    frame_height: 240
+    frame_rate: 30.0
+    lane_adaptive_value_max: 140
+    lane_adaptive_block_size: 81
+    lane_adaptive_offset: 18
+
+    # Arac ilerlemeden once yerinde donerek seridi ortalar.
+    alignment_max_angular_speed: 0.14
+    alignment_min_angular_speed: 0.08
+    alignment_gain: 0.30
+    alignment_error_tolerance: 0.05
+    alignment_heading_tolerance: 0.10
+    alignment_min_confidence: 0.35
+    alignment_confirm_frames: 12
+    alignment_timeout: 20.0
+
+    # Arac +x yonunde ilerler; lift ve arka kamera hareket yonunun tersinde
+    # kalir. Bu nedenle lineer hiz pozitif, kamera direksiyon isareti terstir.
+    tracking_linear_speed: 0.060
+    tracking_min_linear_speed: 0.020
+    tracking_max_angular_speed: 0.075
+    tracking_heading_gain: 0.35
+    tracking_steering_alpha: 0.20
+    tracking_loss_stop_frames: 4
+    steering_sign: -1.0

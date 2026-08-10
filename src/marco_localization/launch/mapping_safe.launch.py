@@ -32,7 +32,9 @@ def generate_launch_description() -> LaunchDescription:
         ),
         launch_arguments={
             "use_sim_time": "false",
-            "scan_topic": "/scan",
+            # Speckle filtresi SLAM icindir; guvenlik tek isinlik ince engeli
+            # kaybetmemek icin dogrudan YDLidar /scan_raw verisini kullanir.
+            "scan_topic": "/scan_raw",
         }.items(),
     )
 

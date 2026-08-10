@@ -19,6 +19,7 @@ install(PROGRAMS
   scripts/phase7_final_acceptance.py
   scripts/rpp_calibrate.py
   scripts/abs_speed_limit_proof.py
+  scripts/speed_limit_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

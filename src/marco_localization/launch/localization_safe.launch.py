@@ -32,13 +32,18 @@ def generate_launch_description() -> LaunchDescription:
         PythonLaunchDescriptionSource(
             os.path.join(safety_share, "launch", "safety.launch.py")
         ),
-        launch_arguments={"use_sim_time": "false", "scan_topic": "/scan"}.items(),
+        launch_arguments={
+            "use_sim_time": "false",
+            "scan_topic": "/scan_raw",
+            "obstacle_detection": LaunchConfiguration("obstacle_detection"),
+        }.items(),
     )
 
     return LaunchDescription([
         DeclareLaunchArgument("sahte", default_value="false"),
         DeclareLaunchArgument("lidar", default_value="true"),
         DeclareLaunchArgument("imu", default_value="false"),
+        DeclareLaunchArgument("obstacle_detection", default_value="true"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
         DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument("harita"),

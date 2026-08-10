@@ -10,6 +10,7 @@ install(DIRECTORY launch config
 # ros2 run ile cagrilabilmesi icin share/ degil lib/ altina kurulmali.
 install(PROGRAMS
   scripts/kayit_al.sh
+  scripts/check_vehicle_contract.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

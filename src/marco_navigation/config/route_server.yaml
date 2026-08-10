@@ -48,10 +48,10 @@ route_server:
       plugin: "nav2_route::DynamicEdgesScorer"
 
     # AdjustSpeedLimit: ComputeAndTrackRoute kenar gecislerinde
-    # abs_speed_limit → /speed_limit (controller_server). RPP/smoother
-    # cikisi route_safe'de /cmd_vel_raw. ReroutingService yok.
+    # abs_speed_limit → /route_speed_limit. speed_limit_manager bu ham olayi
+    # tek sahip olarak /speed_limit'e aktarir. ReroutingService yok.
     operations: ["AdjustSpeedLimit"]
     AdjustSpeedLimit:
       plugin: "nav2_route::AdjustSpeedLimit"
-      speed_limit_topic: "speed_limit"
+      speed_limit_topic: "route_speed_limit"
       speed_tag: "abs_speed_limit"
