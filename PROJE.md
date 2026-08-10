@@ -236,18 +236,14 @@ PLC veya Flutter görevi
 Mission Manager
          │
          ▼
-Nav2 Route Server
-         │
-    kayıtlı graph
+NavigateToPose (tek dış action sahibi)
          │
          ▼
-ComputeRoute
+Özel Route BT: ComputeRoute → Parallel(
+  ComputeAndTrackRoute + FollowPath)
          │
-         ▼
-nav_msgs/Path
-         │
-         ▼
-FollowPath
+         ├── kayıtlı Route Server graph/kenar olayları
+         └── nav_msgs/Path → FollowPath
          │
          ▼
 Regulated Pure Pursuit (RPP)
@@ -1166,19 +1162,21 @@ Mevcut:
 src/marco_mission/marco_mission/mission_manager.py
 ```
 
-zaten:
+tek bir dış action sahibiyle:
 
 ```text
-ComputeRoute
+NavigateToPose
     ↓
-route_result.path
+navigate_route_wait.xml
     ↓
-FollowPath
+ComputeRoute → Parallel(ComputeAndTrackRoute, FollowPath)
 ```
 
 akışını kullanmaktadır.
 
-Bu korunacaktır.
+Bu kanonik akış korunacaktır. Mission Manager ayrıca ComputeRoute veya
+FollowPath action'ı açmayacaktır; böylece action sahipliği yarışmaz. Route Server
+kenar olaylarını canlı tutarken aynı path yalnız bir FollowPath tarafından yürütülür.
 
 Ana değişiklikler:
 
@@ -1989,10 +1987,11 @@ START
 Route görevlerinde:
 
 ```text
-ComputeRoute + FollowPath
+NavigateToPose içindeki özel Route BT
 ```
 
-ana yöntemdir.
+ana yöntemdir. BT içinde ilk `ComputeRoute`, ardından eşzamanlı
+`ComputeAndTrackRoute + FollowPath` kullanılır.
 
 Planner Server:
 

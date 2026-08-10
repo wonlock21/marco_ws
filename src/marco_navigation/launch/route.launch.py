@@ -7,7 +7,7 @@ Zincir:
 
 BT: navigate_route_wait.xml — ComputeRoute ile ilk path, ardindan
     Parallel(ComputeAndTrackRoute, FollowPath). AdjustSpeedLimit
-    abs_speed_limit → /speed_limit.
+    abs_speed_limit → /route_speed_limit → speed_limit_manager → /speed_limit.
     (serbest NavFn yok; engelde Wait).
 
 Ornekler:
@@ -221,6 +221,13 @@ def _kur(context, *args, **kwargs):
         ],
     )
 
+    speed_limit_manager = Node(
+        package="marco_navigation",
+        executable="speed_limit_manager.py",
+        name="speed_limit_manager",
+        output="screen",
+    )
+
     return [
         LogInfo(msg=f"Route BT: {bt_xml}"),
         LogInfo(msg=f"Route graf: {graph_file}"),
@@ -229,6 +236,7 @@ def _kur(context, *args, **kwargs):
         nav2,
         route_server,
         lifecycle_route,
+        speed_limit_manager,
     ]
 
 

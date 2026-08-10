@@ -417,7 +417,9 @@ ros2 launch marco_docking docking.launch.py \
 
 ```bash
 ros2 launch marco_mission mission.launch.py \
-  simulate_steps:=true
+  simulate_steps:=false \
+  task_source:=mock_plc \
+  test_only_lift:=true
 ```
 
 ### Terminal 2

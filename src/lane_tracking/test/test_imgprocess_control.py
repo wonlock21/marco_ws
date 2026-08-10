@@ -5,6 +5,7 @@ import pytest
 from lane_tracking.imgprocess_node import (
     combine_lane_errors,
     enforce_minimum_wheel_speed,
+    lane_end_confirmed,
     scale_lane_error,
 )
 
@@ -104,3 +105,27 @@ def test_birlesik_hata_kamera_kenarinda_sinirlanir():
 
     assert combined == 1.0
     assert angular == pytest.approx(-0.075)
+
+
+def test_kamera_acilisindaki_serit_yoklugu_son_sayilmaz():
+    assert not lane_end_confirmed(
+        seen_frames=0, missed_frames=30, minimum_seen_frames=15,
+        missing_frames=6, loss_hold_frames=3)
+
+
+def test_gecici_serit_kaybi_son_sayilmaz():
+    assert not lane_end_confirmed(
+        seen_frames=60, missed_frames=3, minimum_seen_frames=15,
+        missing_frames=6, loss_hold_frames=3)
+
+
+def test_yeterince_izlenen_seridin_kalici_kaybi_son_sayilir():
+    assert lane_end_confirmed(
+        seen_frames=60, missed_frames=9, minimum_seen_frames=15,
+        missing_frames=9, loss_hold_frames=3)
+
+
+def test_yalniz_serit_modunda_serit_sonu_devre_disidir():
+    assert not lane_end_confirmed(
+        seen_frames=200, missed_frames=200, minimum_seen_frames=15,
+        missing_frames=9, loss_hold_frames=3, enabled=False)

@@ -1,0 +1,12 @@
+scan_to_scan_filter_chain:
+  ros__parameters:
+    filter1:
+      name: light_speckle_filter
+      type: laser_filters/LaserScanSpeckleFilter
+      params:
+        # Distance: art arda gelen iki olcum birbirine 0.15 m'den yakinsa koru.
+        # Tek isinlik, komsusuz sicrama NaN yapilir. Median filtre uygulanmaz.
+        filter_type: 0
+        max_range: 12.0
+        max_range_difference: 0.15
+        filter_window: 2

@@ -28,6 +28,9 @@ setup(
     entry_points={
         'console_scripts': [
             'imgprocess = lane_tracking.imgprocess_node:main',
+            'turnaround = lane_tracking.turnaround_node:main',
+            'turn_then_rear_lane = '
+            'lane_tracking.turn_then_rear_lane_node:main',
         ],
     },
 )

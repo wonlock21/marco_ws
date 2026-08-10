@@ -59,12 +59,23 @@ if [ -f "${HEDEF}.yaml" ] && [ -f "${HEDEF}.pgm" ]; then
     echo
     echo "================ KAYDEDILDI ================"
     ls -lh "${HEDEF}.yaml" "${HEDEF}.pgm"
+    # PNG onizleme (GUI / goz kontrolu); navigasyon yaml+pgm kullanir.
+    if python3 - <<PY
+from PIL import Image
+Image.open("${HEDEF}.pgm").save("${HEDEF}.png")
+print("PNG: ${HEDEF}.png")
+PY
+    then
+        ls -lh "${HEDEF}.png"
+    else
+        echo "UYARI: PNG olusturulamadi (Pillow/PIL eksik olabilir)."
+    fi
     echo
     echo "YAML ozeti:"
     cat "${HEDEF}.yaml"
     echo
-    echo "Yukle (Faz 5 AMCL):"
-    echo "  map_server --ros-args -p yaml_filename:=${HEDEF}.yaml"
+    echo "Yukle (AMCL):"
+    echo "  ros2 launch marco_localization amcl.launch.py sahte:=false lidar:=true harita:=$(basename "$HEDEF")"
 else
     echo
     echo "UYARI: servis cagrildi ama ${HEDEF}.{yaml,pgm} bulunamadi."

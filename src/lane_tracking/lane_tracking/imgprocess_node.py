@@ -18,6 +18,7 @@ class ProcessState(Enum):
     IDLE = 1
     QR_ALIGNMENT = 2
     LANE_TRACKING = 3
+    TURNAROUND = 4
 
 
 def scale_lane_error(
@@ -62,6 +63,20 @@ def combine_lane_errors(
     return combined_error, -combined_error * float(max_angular_speed)
 
 
+def lane_end_confirmed(
+        seen_frames, missed_frames, minimum_seen_frames,
+        missing_frames, loss_hold_frames, enabled=True):
+    """Baslangic/gecici kayiplari ele, kalici serit sonunu dogrula."""
+    if not enabled:
+        return False
+    required_missing = max(
+        int(loss_hold_frames) + 1, int(missing_frames))
+    return (
+        int(seen_frames) >= max(1, int(minimum_seen_frames))
+        and int(missed_frames) >= required_missing
+    )
+
+
 class ImgProcessNode(Node):
     def __init__(self):
         super().__init__('imgprocess_node')
@@ -86,6 +101,12 @@ class ImgProcessNode(Node):
             self.get_parameter('lane_heading_gain').value)
         self.lane_loss_hold_frames = int(
             self.get_parameter('lane_loss_hold_frames').value)
+        self.lane_end_min_seen_frames = int(
+            self.get_parameter('lane_end_min_seen_frames').value)
+        self.lane_end_missing_frames = int(
+            self.get_parameter('lane_end_missing_frames').value)
+        self.lane_end_detection_enabled = bool(
+            self.get_parameter('lane_end_detection_enabled').value)
         self.lane_min_wheel_speed = float(
             self.get_parameter('lane_min_wheel_speed').value)
         self.wheel_separation = float(
@@ -94,6 +115,8 @@ class ImgProcessNode(Node):
             self.get_parameter('max_angular_speed').value)
         self.filtered_lane_angular = 0.0
         self.lane_missed_frames = 0
+        self.lane_seen_frames = 0
+        self.lane_end_reported = False
         self.last_lane_command = None
         self.show_debug_window = bool(
             self.get_parameter('show_debug_window').value)
@@ -103,10 +126,15 @@ class ImgProcessNode(Node):
         self.pub_cmd_vel = self.create_publisher(Twist, output_topic, 10)
         self.pub_active = self.create_publisher(
             Bool, '/lane_tracking/active', 10)
+        self.pub_lane_end = self.create_publisher(
+            Bool, '/lane_tracking/end_detected', 10)
         self.pub_debug_image = self.create_publisher(
             CompressedImage, '/lane_tracking/debug/compressed', 1)
         self.sub_command = self.create_subscription(
             String, '/task_command', self.command_callback, 10)
+        self.sub_turn_complete = self.create_subscription(
+            Bool, '/lane_tracking/turn_complete',
+            self.turn_complete_callback, 10)
 
         self.qr_tracker = QRDetector()
         try:
@@ -139,7 +167,8 @@ class ImgProcessNode(Node):
 
         self.get_logger().info(
             f'Goruntu isleme hazir | durum={self.current_state.name} | '
-            f'cikis={output_topic} | isleme={"OpenCL GPU" if self.use_gpu else "CPU"}')
+            f'cikis={output_topic} | '
+            f'isleme={"OpenCL GPU" if self.use_gpu else "CPU"}')
         self._log_parameters()
 
     def _declare_parameters(self):
@@ -162,6 +191,11 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_center_deadband_ratio', 0.01)
         self.declare_parameter('lane_heading_gain', 0.35)
         self.declare_parameter('lane_loss_hold_frames', 3)
+        # Serit, yeni bir takip oturumunda yeterince gorulmeden "son" karari
+        # verilmez. Boylece kamera acilisindaki bos kareler donusu tetiklemez.
+        self.declare_parameter('lane_end_min_seen_frames', 15)
+        self.declare_parameter('lane_end_missing_frames', 9)
+        self.declare_parameter('lane_end_detection_enabled', True)
         self.declare_parameter('lane_adaptive_value_max', 140)
         self.declare_parameter('lane_adaptive_block_size', 81)
         self.declare_parameter('lane_adaptive_offset', 18)
@@ -229,6 +263,15 @@ class ImgProcessNode(Node):
             self._publish_active()
             self.get_logger().info('Durum: IDLE')
 
+    def turn_complete_callback(self, msg):
+        """180 derece manevra bittiginde serit takibini yeniden devral."""
+        if (msg.data
+                and self.current_state is ProcessState.TURNAROUND):
+            self._reset_lane_control(new_session=True)
+            self.current_state = ProcessState.LANE_TRACKING
+            self.get_logger().info(
+                '180 derece donus tamamlandi; LANE_TRACKING devam ediyor')
+
     def timer_callback(self):
         self._publish_active()
         ret, frame = self.cap.read()
@@ -263,9 +306,15 @@ class ImgProcessNode(Node):
             self._draw_state(frame, 'SERIT TAKIBI', (0, 255, 0))
             found, error = self.lane_tracker.process(frame, center_x)
             if found:
+                self.lane_seen_frames += 1
                 self.publish_lane_movement(error, center_x)
             else:
                 self._handle_lane_loss()
+        elif self.current_state == ProcessState.TURNAROUND:
+            self._draw_state(frame, '180 DERECE DONUS', (255, 0, 255))
+            # Donus dugumu /cmd_vel cikisinin tek sahibidir. Bu sifir komutu,
+            # eski bir serit komutunun yeniden kullanilmasini da engeller.
+            self.stop_robot()
 
         debug_frame = self._compose_debug_frame(frame)
         if self.show_debug_window:
@@ -354,16 +403,38 @@ class ImgProcessNode(Node):
                 f'v={linear_speed:.3f} m/s w={angular_speed:+.3f} rad/s')
             return
 
-        self._reset_lane_control()
+        if (not self.lane_end_reported and lane_end_confirmed(
+                self.lane_seen_frames, self.lane_missed_frames,
+                self.lane_end_min_seen_frames, self.lane_end_missing_frames,
+                hold_frames, self.lane_end_detection_enabled)):
+            self.lane_end_reported = True
+            self.last_lane_command = None
+            self.filtered_lane_angular = 0.0
+            self.stop_robot()
+            self.current_state = ProcessState.TURNAROUND
+            self.pub_lane_end.publish(Bool(data=True))
+            self.get_logger().info(
+                f'[SERIT SONU] {self.lane_seen_frames} gorulen ve '
+                f'{self.lane_missed_frames} kayip kare sonrasi 180 derece '
+                'donus istendi')
+            return
+
+        # Gecici kayip sayaci burada korunur; aksi halde art arda kayip kareler
+        # hicbir zaman serit sonu esigine ulasamaz.
+        self.filtered_lane_angular = 0.0
+        self.last_lane_command = None
         self.stop_robot()
         self.get_logger().warning(
             '[SERIT] bulunamadi | cmd_vel: v=0.000 m/s w=0.000 rad/s',
             throttle_duration_sec=0.5)
 
-    def _reset_lane_control(self):
+    def _reset_lane_control(self, new_session=True):
         self.filtered_lane_angular = 0.0
         self.lane_missed_frames = 0
         self.last_lane_command = None
+        if new_session:
+            self.lane_seen_frames = 0
+            self.lane_end_reported = False
         if hasattr(self, 'lane_tracker'):
             self.lane_tracker.reset_tracking()
 
@@ -410,9 +481,12 @@ class ImgProcessNode(Node):
         self.pub_debug_image.publish(msg)
 
     def destroy_node(self):
-        self.stop_robot()
+        # launch SIGINT sirasinda ROS baglami dugumden once kapanmis olabilir.
+        if rclpy.ok():
+            self.stop_robot()
         self.current_state = ProcessState.IDLE
-        self._publish_active()
+        if rclpy.ok():
+            self._publish_active()
         self.cap.release()
         if self.show_debug_window:
             cv2.destroyAllWindows()
@@ -428,7 +502,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

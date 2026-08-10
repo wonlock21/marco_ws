@@ -60,7 +60,7 @@ Videoda bize düşen tek madde: **haritalama gösterimi**.
 | Tekerlek | çap 200mm, r=0.1m, çevre 0.6283m |
 | Motor | Linix 112ZY24, 12V'ta 80 RPM |
 | **Gerçek max hız** | **0.838 m/s** (rapordaki 1.46 m/s YANLIŞ, o 24V değeri) |
-| Encoder | 360 PPR ×4 = 1440 tick/tur = **0.436 mm/tick** |
+| Encoder | firmware çıktısı **360 tick/tur**, tekrar ×4 YOK = **1.745 mm/tick** |
 | Ayak izi yarıçapı | çevrel 0.834 m, iç teğet 0.325 m → POLİGON kullan, daire DEĞİL |
 | Maks. yük | 5 kg palet |
 | Sürüş | diferansiyel, 2 tahrik + 4 sarhoş, sıfır dönüş yarıçapı |
@@ -135,7 +135,8 @@ teker açısal limit 8.38 rad/s · toplam uzunluk 1.536 ✓
 NOT: 30mm yerden yükseklik + 200mm teker → tahrik tekerleri şasi içine gömülü, normal.
 
 **properties.xacro'da `TAHMINI` etiketli her değer mekanik ekibinden doğrulanmalı.**
-En kritik üçü: `wheel_separation` (0.520), `lidar_x/y/z` (0.4/0/0.3), `body_length` (0.756)
+Güncel kilitli değerler: URDF geometrik `wheel_separation=0.460`, odometri etkin
+`wheel_separation=0.421`, `lidar_x/y/z=-0.300/0/0.180`, `body_length=0.950`.
 
 ## FAZ 3 İLERLEMESİ (marco_base) — sürücü katmanı BİTTİ, EKF kaldı
 **BİTTİ:**
@@ -204,6 +205,15 @@ ros2 launch marco_bringup robot.launch.py sahte:=true lidar:=true
 ```
 
 Yapılandırma: `marco_localization/config/lidar_tmini_pro.yaml`
+
+Gerçek veri hattı: YDLidar `/scan_raw` yayınlar; `LaserScanSpeckleFilter`
+(`filter_window=2`, `max_range_difference=0.15 m`) SLAM/AMCL/Nav2 için `/scan`
+üretir. Collision Monitor ve safety supervisor gerçek sistemde güvenlik amacıyla
+filtresiz `/scan_raw` kullanır. Gövde/açı maskesi bu hatta dahil değildir.
+
+Not: kullanılan YDLidar ROS 2 sürümü `invalid_range_is_inf` parametresini okuyup
+uygulamıyordu. Yerel sürücü düzeltmesi `patches/ydlidar_invalid_range_is_inf.patch`
+olarak saklanır; temiz sürücü klonuna bu patch uygulanıp overlay yeniden derlenmelidir.
 `frame_id: laser_link` (sürücünün kendi varsayılanı `laser_frame`; URDF ile
 eşleşmesi için değiştirildi, ekstra static TF gerekmiyor).
 
@@ -215,7 +225,7 @@ eşleşmesi için değiştirildi, ekstra static TF gerekmiyor).
 | Tarama | 360° tam, `angle_increment` 0.0146 rad → **430 nokta** |
 | Menzil | 0.03 – 12.0 m |
 | Geçerli ölçüm oranı (kapalı oda) | %74 |
-| TF `odom → laser_link` | çözülüyor (0.400, 0, 0.400 — URDF tahmini) |
+| TF `odom → laser_link` | çözülüyor; sabit `base_link→laser_link=(-0.300,0,0.180)` |
 
 **SIRADA:** Faz 11 (gerçek donanım) veya saha/araç gelince rota takibi + docking kalibrasyonu.  
 ¹ AMCL boru hattı doğrulandı (map_server + lifecycle + initial pose).  
@@ -258,7 +268,8 @@ ros2 run marco_navigation rota_hesapla.py --start 0 --goal 8
 - Params: `config/route_server.yaml` — DistanceScorer+TimeScorer+DynamicEdgesScorer
   (CostmapScorer YOK → engelden kaçınma yok)
 - Operations: yalnız `AdjustSpeedLimit` (ReroutingService yok)
-- BT: `behavior_trees/navigate_route_wait.xml` — ComputeRoute + FollowPath + Wait
+- BT: `navigate_route_wait.xml` — ilk ComputeRoute, ardından eşzamanlı
+  ComputeAndTrackRoute + tek FollowPath; engelde Wait
 - Launch: `route.launch.py` (navigation + `route_server` + lifecycle)
 - Serbest `navigation.launch.py` hâlâ GridBased (NavFn) — yarışma yolu `route.launch.py`
 
@@ -299,7 +310,8 @@ ros2 topic echo /robot_status
 - `mock_plc`: `/plc/assign_task`, `/plc/gate_permission`, `/plc/task_complete`
 - `mission_manager`: durum makinesi + `/mission/start` + `/robot_status` (GUI)
 - Akış: IDLE → TASK_RECEIVED → MOVING_UNLOADED → MOVING_LOADED → WAITING_PLC
-  → MOVING_LOADED → RETURNING → IDLE (`simulate_steps:=true` ile Nav2/dock stub)
+  → MOVING_LOADED → RETURNING → IDLE. Eski `simulate_steps:=true` stub kaldırıldı;
+  testte `task_source:=mock_plc test_only_lift:=true` kullanılır.
 - Gerçek PLC protokolü gelince aynı servis imzaları korunur; `mock_plc` değişir
 
 ### IMU (30.07 — ekip ekledi, Orange Pi'de henüz görünmüyor)
@@ -458,8 +470,8 @@ körlüğü konuları GÜNDEMDEN ÇIKARILDI — tekrar açma.
 `DM_Üst-1` üst yüzleri aynı düzlemde). Tmini Pro gövdesi 33 mm → tarama
 düzlemi yüzeyin ~20 mm üzerinde.
 
-URDF: `lidar_x=0.400` `lidar_y=0` `lidar_z=0.4645` (zeminden 0.5645).
-x/y hâlâ tahmin, tutucu CAD'e işlenmedi; z ölçülen yüzeye dayanıyor.
+Güncel montaj: `lidar_x=-0.300` `lidar_y=0` `lidar_z=0.180` (`base_link`e göre),
+tarama düzlemi zeminden `0.280 m`. Fiziksel montaj değişirse yeniden ölçülmelidir.
 
 ### İLERİ YÖN KARARI (28.07, kullanıcı onayladı)
 **+x = GÖVDE tarafı. Çatallar ARKADA.**
@@ -509,11 +521,12 @@ ama ayak izi bu çıkıntıyı içermek zorunda.
 ## AÇIK SORULAR (cevap gelince buraya yaz)
 - [x] ~~Simülatör kararı~~ → WSL2 Ubuntu 22.04 + Gazebo Fortress/ros_gz; Faz 2 doğrulandı 02.08
 - [ ] Encoder redüktör öncesi mi sonrası mı? → tick katsayısı
-- [x] ~~Wheel separation~~ → **0.460 m**, CAD'den ölçüldü 28.07 (tahmin 0.520 hatalıydı)
+- [x] Geometrik wheel separation **0.460 m**; saha kalibreli odometri etkin değeri
+      **0.421 m** (`base_driver.yaml`).
 - [x] ~~`base_link` orijini~~ → tahrik aksı ortası, CAD z=1171.95 (şasinin tam ortası)
 - [x] ~~İleri yön~~ → gövde tarafı +x, çatallar arkada (28.07)
 - [~] **LiDAR montaj konumu** — 29.07 kullanıcı kararı: **üstte, 360° engelsiz**
-      (bkz. LiDAR KARARI). URDF: x=0.400, y=0, z=0.4645 (zeminden 0.5645).
+      Güncel URDF: x=-0.300, y=0, z=0.180 (`base_link`), zeminden 0.280 m.
       z ölçülen üst yüzeye dayanıyor; x/y tutucu CAD'e eklenince kesinleşir.
 - [x] **Ön kamera konumu** — ÖLÇÜLDÜ 29.07: x=+0.4765, y=0, zeminden 0.1915
       (`camera_front_z=0.0915`). Panel kesiğinden, bkz. ÖN YÜZ PANEL KESİKLERİ.

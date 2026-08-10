@@ -6,12 +6,12 @@ marco_base_driver:
     use_fake_hardware: false
 
     # --- Kinematik ---
-    # DIKKAT: bu degerler marco_description/urdf/properties.xacro ile ayni
-    # olmak zorunda. Ayrisirlarsa odometrinin hesapladigi hareket ile TF
-    # agacinin gosterdigi robot celisir; hata Nav2 seviyesinde tuhaf
-    # davranis olarak ortaya cikar ve kaynagi zor bulunur.
+    # DIKKAT: wheel_radius fiziksel URDF degeriyle aynidir. wheel_separation
+    # ise saha donusunden kalibre edilen ETKIN odometri degeridir; URDF'deki
+    # 0.460 m geometrik teker merkez mesafesiyle bilerek ayni degildir.
     #
-    # Ikisi de SolidWorks montajindan OLCULDU (28.07), tahmin degil:
+    # wheel_radius ve URDF'deki geometrik aralik SolidWorks'ten olculdu;
+    # bu dosyadaki etkin aralik daha sonra saha donusleriyle kalibre edildi:
     #   wheel_radius     tahrik tekeri kusursuz silindir, yaricap 100.00 mm
     #                    (dis kabuk sacilimi 0.000 mm)
     #   wheel_separation teker merkezleri x=135.40 ve x=595.40 -> 460.00 mm

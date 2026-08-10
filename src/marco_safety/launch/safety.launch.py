@@ -27,13 +27,22 @@ def generate_launch_description() -> LaunchDescription:
     mux_params = os.path.join(share, "config", "twist_mux.yaml")
 
     use_sim_time = LaunchConfiguration("use_sim_time")
+    obstacle_detection = ParameterValue(
+        LaunchConfiguration("obstacle_detection"), value_type=bool
+    )
 
     collision_monitor = Node(
         package="nav2_collision_monitor",
         executable="collision_monitor",
         name="collision_monitor",
         output="screen",
-        parameters=[cm_params, {"use_sim_time": use_sim_time}],
+        parameters=[cm_params, {
+            "use_sim_time": use_sim_time,
+            "FrontStop.enabled": obstacle_detection,
+            "RearStop.enabled": obstacle_detection,
+            "FrontSlow.enabled": obstacle_detection,
+            "RearSlow.enabled": obstacle_detection,
+        }],
         remappings=[("tf", "/tf"), ("tf_static", "/tf_static"),
                     ("scan", LaunchConfiguration("scan_topic"))],
     )
@@ -77,6 +86,7 @@ def generate_launch_description() -> LaunchDescription:
                 LaunchConfiguration("input_timeout_s"), value_type=float),
             "obstacle_wait_timeout_s": ParameterValue(
                 LaunchConfiguration("obstacle_wait_timeout_s"), value_type=float),
+            "obstacle_detection_enabled": obstacle_detection,
         }],
         remappings=[("scan", LaunchConfiguration("scan_topic"))],
     )
@@ -90,6 +100,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("tf_timeout_s", default_value="0.5"),
             DeclareLaunchArgument("input_timeout_s", default_value="0.5"),
             DeclareLaunchArgument("obstacle_wait_timeout_s", default_value="15.0"),
+            DeclareLaunchArgument("obstacle_detection", default_value="true"),
             LogInfo(msg=f"collision_monitor: {cm_params}"),
             LogInfo(msg=f"twist_mux: {mux_params}"),
             collision_monitor,

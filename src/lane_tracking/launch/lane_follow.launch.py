@@ -42,10 +42,25 @@ def generate_launch_description():
             {
                 'camera_device': LaunchConfiguration('camera'),
                 'startup_mode': LaunchConfiguration('startup_mode'),
-                # Bu launch yalniz kamera + base_driver testidir; twist_mux yok.
-                'output_topic': '/cmd_vel',
+                # Donus dugumu bu komutlari normal suruste /cmd_vel'e aktarir.
+                'output_topic': '/cmd_vel_lane',
                 'show_debug_window': ParameterValue(
                     LaunchConfiguration('gui'), value_type=bool),
+            },
+        ],
+    )
+
+    turnaround = Node(
+        package='lane_tracking',
+        executable='turnaround',
+        name='turnaround_node',
+        output='screen',
+        parameters=[
+            os.path.join(lane_share, 'config', 'lane_tracking.yaml'),
+            {
+                'odom_topic': LaunchConfiguration('odom_topic'),
+                'turn_direction': ParameterValue(
+                    LaunchConfiguration('turn_direction'), value_type=int),
             },
         ],
     )
@@ -57,6 +72,9 @@ def generate_launch_description():
         DeclareLaunchArgument('camera', default_value='/dev/video0'),
         DeclareLaunchArgument('startup_mode', default_value='LANE_TRACKING'),
         DeclareLaunchArgument('gui', default_value='true'),
+        DeclareLaunchArgument('odom_topic', default_value='/odom'),
+        DeclareLaunchArgument('turn_direction', default_value='1'),
         base_driver,
         imgprocess,
+        turnaround,
     ])

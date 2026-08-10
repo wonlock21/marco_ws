@@ -51,6 +51,9 @@ def generate_launch_description() -> LaunchDescription:
             "use_imu": ParameterValue(
                 LaunchConfiguration("imu"), value_type=bool
             ),
+            "obstacle_detection_enabled": ParameterValue(
+                LaunchConfiguration("obstacle_detection"), value_type=bool
+            ),
             "serial_port": LaunchConfiguration("serial_port"),
             "lidar_port": LaunchConfiguration("lidar_port"),
             "data_root": LaunchConfiguration("data_root"),
@@ -80,11 +83,16 @@ def generate_launch_description() -> LaunchDescription:
             "turn_direction": ParameterValue(
                 LaunchConfiguration("turn_direction"), value_type=int
             ),
+            "obstacle_detection_enabled": ParameterValue(
+                LaunchConfiguration("obstacle_detection"), value_type=bool
+            ),
         }],
     )
     return LaunchDescription([
         DeclareLaunchArgument("sahte", default_value="false"),
         DeclareLaunchArgument("imu", default_value="true"),
+        # Gecici hareket videosu bypass'i. Saha testinden sonra tekrar true yap.
+        DeclareLaunchArgument("obstacle_detection", default_value="false"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
         DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument(

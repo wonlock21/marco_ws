@@ -1,0 +1,14 @@
+imgprocess_node:
+  ros__parameters:
+    # Lift takiliyken kuyruk savrulmasini ve ani yon degisimini azaltan profil.
+    # Adaptif renk parametreleri burada ezilmez; lane_tracking.yaml degerleri
+    # (140 / 81 / 18) aynen kullanilir.
+    lane_linear_speed: 0.060
+    lane_min_linear_speed: 0.020
+    max_angular_speed: 0.040
+    lane_steering_alpha: 0.12
+    lane_steering_release_alpha: 0.35
+    lane_heading_gain: 0.22
+    lane_center_deadband_ratio: 0.02
+    # Liftli testte goruntu kaybinda daha erken dur.
+    lane_loss_hold_frames: 2

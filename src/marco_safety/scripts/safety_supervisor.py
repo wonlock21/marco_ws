@@ -30,6 +30,7 @@ class SafetySupervisor(Node):
         self.declare_parameter('obstacle_wait_timeout_s', 15.0)
         self.declare_parameter('stop_min_points', 2)
         self.declare_parameter('slow_min_points', 3)
+        self.declare_parameter('obstacle_detection_enabled', True)
         self._base = str(self.get_parameter('base_frame').value)
         self._scan_timeout = float(self.get_parameter('scan_timeout_s').value)
         self._tf_timeout = float(self.get_parameter('tf_timeout_s').value)
@@ -38,6 +39,8 @@ class SafetySupervisor(Node):
             self.get_parameter('obstacle_wait_timeout_s').value)
         self._stop_n = int(self.get_parameter('stop_min_points').value)
         self._slow_n = int(self.get_parameter('slow_min_points').value)
+        self._obstacle_detection_enabled = bool(
+            self.get_parameter('obstacle_detection_enabled').value)
 
         self._tf = Buffer()
         self._listener = TransformListener(self._tf, self)
@@ -169,10 +172,12 @@ class SafetySupervisor(Node):
                 rear_stop = self._count(points, -1.40, 0.0, 0.45) >= self._stop_n
                 front_slow = self._count(points, 0.0, 1.30, 0.60) >= self._slow_n
                 rear_slow = self._count(points, -1.85, 0.0, 0.60) >= self._slow_n
-                stop = front_stop or rear_stop
-                slow = front_slow or rear_slow
-                direction = ('both' if front_stop and rear_stop else
-                             'front' if front_stop else 'rear' if rear_stop else 'none')
+                if self._obstacle_detection_enabled:
+                    stop = front_stop or rear_stop
+                    slow = front_slow or rear_slow
+                    direction = ('both' if front_stop and rear_stop else
+                                 'front' if front_stop else
+                                 'rear' if rear_stop else 'none')
             except TransformException:
                 tf_fresh = False
         if not scan_fresh:
@@ -209,6 +214,7 @@ class SafetySupervisor(Node):
         self._obstacle_pub.publish(Bool(data=stop))
         state = {
             'obstacle': stop, 'slowdown': slow, 'direction': direction,
+            'obstacle_detection_enabled': self._obstacle_detection_enabled,
             'scan_fresh': scan_fresh, 'tf_fresh': tf_fresh,
             'selected_input': selected, 'input_fresh': input_fresh,
             'estop': self._estop, 'guard_zero': guard,

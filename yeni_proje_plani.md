@@ -69,47 +69,48 @@ bir madde için tarihli komut, parametre özeti, rosbag/JSON ve sayısal sonuç 
    aralığı `0.460 m`, odometri dönüş kalibrasyonundaki etkin teker aralığı
    `0.421 m`. Geometrik ve etkin değer bilinçli olarak farklıdır; yanlışlıkla
    birbirinin üzerine yazılmayacaktır.
-2. `PROJE.md`, Mission Manager için doğrudan Route action → FollowPath akışını
-   tarif ediyor; güncel çalışma ağacı `NavigateToPose` içinden Route Server ve
-   FollowPath çalıştırıyor. Tek bir kanonik route yürütme sahibi seçilecek.
+2. ✅ Kanonik route sahibi kesinleştirildi: Mission Manager tek `NavigateToPose`
+   action'ı açar; özel BT ilk ComputeRoute'tan sonra ComputeAndTrackRoute ile tek
+   FollowPath'i eşzamanlı yürütür.
 3. `real_system.launch.py` harita ve graph'ı package dizininden çözüyor. Yarışma
    verisi `~/marco_data/fields/<saha>/` altına taşınmalı.
 4. Mission Manager graph'ı yalnız başlangıçta okuyup node `id/x/y` alanlarını
    kullanıyor; rol, yaw, yaklaşma, yön ve graph sürümü kullanılmıyor.
-5. Mission Manager ile Route Server aynı `/speed_limit` konusunda farklı amaçlarla
-   yayın yapabiliyor. Tek sahip veya açık bir hız-limit yöneticisi tanımlanmalı.
+5. ✅ Route Server `/route_speed_limit`, Mission Manager yalnız reset olayı üretir;
+   `/speed_limit` konusunun tek sahibi `speed_limit_manager` olmuştur.
 6. `route_graph_validator.py` simülasyon odaklı ve ayak izini kod içinde sabitliyor;
    saha rolleri ve A/B erişilebilirlik matrisi henüz doğrulanmıyor.
-7. `TEST.md` içindeki bazı komutlar güncel kaynakla uyuşmuyor; örneğin
-   `simulate_steps:=true` artık reddediliyor ve gerçek route launch graf istiyor.
-8. `AGENT_REFERANS.md` içinde encoder ve LiDAR gibi eski değerler bulunuyor; aktif
-   parametre kaynağı olarak kullanılmamalı.
+7. ✅ `TEST.md` mock görev komutu güncel gerçek sözleşmeye geçirildi.
+8. ✅ `AGENT_REFERANS.md` encoder, LiDAR ve route yürütme değerleri güncellendi.
 
 ---
 
-## Faz 0 — Kaynak ve sözleşme tabanını sabitleme 🟡
+## Faz 0 — Kaynak ve sözleşme tabanını sabitleme ✅
 
 **Amaç:** Yeni geliştirme başlamadan önce tek, derlenebilir ve çelişkisiz taban oluşturmak.
 
-- ⬜ Mevcut değişiklikleri koru; ilgisiz işler aynı commit içinde karışmasın. Güncel
-  çalışan sürüm commitlendikten sonra başlangıç commit kimliğini bu plana yaz.
-- ⬜ Kilitli araç değerlerini belgeleyip doğru tüketiciye bağla: teker yarıçapı
+- ✅ Mevcut değişiklikler korunarak başlangıç HEAD `1d43061` ve sözleşme
+  `FAZ0_SOZLESME.md` içinde kaydedildi. Commit/push kullanıcıya bırakıldı.
+- ✅ Kilitli araç değerlerini belgeleyip doğru tüketiciye bağla: teker yarıçapı
   `0.100 m`, encoder `360 tick/tur`, URDF geometrik teker aralığı `0.460 m`,
   odometri etkin teker aralığı `0.421 m`; bunların amaç dışı değiştirilmesini test et.
-- ⬜ Nav2 footprint poligonu ile Collision Monitor bölgelerinin aracın gerçek dış
+- ✅ Nav2 footprint poligonu ile Collision Monitor bölgelerinin aracın gerçek dış
   sınırlarını kapsadığını; LiDAR TF'nin `base_link`e göre `x=-0.300`, `y=0.000`,
   `z=0.180 m` olduğunu doğrula. `base_link` yerden `0.100 m` olduğu için LiDAR
   tarama düzlemi yerden `0.280 m` olur.
-- ⬜ Route yürütme mimarisini kesinleştir: Route Server kenar olaylarını canlı tutan,
+- ✅ Route yürütme mimarisini kesinleştir: Route Server kenar olaylarını canlı tutan,
   FollowPath'i tek kez sahiplenen ve aktif path/edge yayınlayan tek akış kullan.
-- ⬜ `/speed_limit`, `/cmd_vel_raw`, `/cmd_vel_safe` ve `/cmd_vel` sahiplerini belgeleyip
+- ✅ `/speed_limit`, `/cmd_vel_raw`, `/cmd_vel_safe` ve `/cmd_vel` sahiplerini belgeleyip
   aynı topic'te belirsiz çoklu sahipliği kaldır.
-- ⬜ `AGENT_REFERANS.md` ve `TEST.md` içindeki güncel kodla çelişen komut/değerleri düzelt.
-- ⬜ Tüm paketleri temiz ortamda derle; test-only düğümlerin gerçek modda açılmadığını
+- ✅ `AGENT_REFERANS.md` ve `TEST.md` içindeki güncel kodla çelişen komut/değerleri düzelt.
+- ✅ Tüm 12 paketi temiz ortamda derle; test-only düğümlerin gerçek modda açılmadığını
   doğrula.
 
 **Kabul:** Parametre tutarlılık testi, tam `colcon build`, ilgili testler ve tek topic/TF
-sahiplik raporu PASS.
+sahiplik raporu PASS. Hız aktarımı `0.15 m/s`, reset `0.0` canlı ROS mesajıyla PASS.
+Toplam 84 testte Faz 0 dışındaki `marco_perception` kullanıcı dosyalarının iki eski
+docstring biçim hatasından yalnız PEP257 testi FAIL; paket işlev testlerine ve Faz 0
+sözleşmesine etkisi yok, sahipliği korunarak bu turda değiştirilmedi.
 
 ## Faz 1 — Gerçek taban sürüşü ve odometri kalibrasyonu ⬜
 
@@ -199,8 +200,12 @@ tüm dokuz A/B kombinasyonunda route üret akışı PASS; invalid graph harekett
 - ⬜ Segment başlat, ara nokta, bitir, iptal, tek/çift yön, hız ve hareket yönü
   işlemlerini backend servislerine bağla.
 - ⬜ Node/edge listesi, silme, geri alma, doğrulama hataları ve route test sonucunu göster.
-- ⬜ Map görüntüsü, robot pozu ve graph geometrisini canlı göster; piksel→map dönüşümünde
+- 🟡 Map görüntüsü, robot pozu ve graph geometrisini canlı göster; piksel→map dönüşümünde
   OccupancyGrid resolution/origin/yaw bilgisini kullan.
+  (`liftant_v2_bitirme`: OccupancyGridFrame + mapToPixel/pixelToMap, rosbridge `/map`
+  throttle+isolate parse, `GcsMapView` occupancy arka planı, controller `onMapFrame`.
+  Canlı rosbridge kanıtı bu oturumda yok — test: map_server + rosbridge açıkken GCS bağlan,
+  Harita sekmesinde OccupancyGrid + robot pozu görünmeli; unit: `occupancy_grid_xform_test`.)
 - ⬜ Kaydet ve Aktifleştir işlemlerini ayır; fiziksel hareket için ayrıca açık onay iste.
 - ⬜ Bağlantı kopması, timeout ve tekrar tıklamada idempotent davranış sağla.
 

@@ -42,6 +42,17 @@ def generate_launch_description() -> LaunchDescription:
             # Kisa Nav2 tahmini action'i erken abort etmeden footprint'i korur.
             ("simulate_ahead_time: 2.0", "simulate_ahead_time: 0.5"),
             ("max_rotational_vel: 0.6", "max_rotational_vel: 0.3"),
+            # Demo davranislari icin dinamik engelin tek sahibi disaridaki
+            # collision_monitor'dur. Yerel costmap ayni LiDAR'i ikinci kez
+            # yorumlayip Spin/DriveOnHeading'i erken abort etmesin.
+            (
+                "      obstacle_layer:\n"
+                "        plugin: \"nav2_costmap_2d::ObstacleLayer\"\n"
+                "        enabled: True",
+                "      obstacle_layer:\n"
+                "        plugin: \"nav2_costmap_2d::ObstacleLayer\"\n"
+                "        enabled: False",
+            ),
         ],
     )
 

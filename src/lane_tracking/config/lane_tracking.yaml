@@ -25,7 +25,7 @@ imgprocess_node:
     lane_linear_speed: 0.060
     lane_min_linear_speed: 0.016
     # Dusuk geciren filtre: kucuk deger daha yumusak, fakat daha gec tepki verir.
-    lane_steering_alpha: 0.20
+    lane_steering_alpha: 0.24
     # Onceki sert donusu merkezde tasimamak icin azaltma/yon degisiminde hizli
     # sondurme. Yalniz hedef acisal hiz kuculurken devreye girer.
     lane_steering_release_alpha: 0.60
@@ -38,6 +38,10 @@ imgprocess_node:
     # Yaklasik 30 FPS'te 100 ms'lik tekil algilama kayiplarini tolere eder;
     # dorduncu kayip karede motor komutu guvenli bicimde sifirlanir.
     lane_loss_hold_frames: 3
+    # En az 0.5 s gorulmus seridin 0.3 s boyunca kaybolmasi serit sonudur.
+    # Tek karelik golge/parlama kayiplari donus baslatmaz.
+    lane_end_min_seen_frames: 15
+    lane_end_missing_frames: 9
     # Yerel ortalamaya dayali adaptif siyah maske. Tum goruntu genisligi
     # islenir; value_max parlak zemin dokularini maske disinda tutar.
     lane_adaptive_value_max: 140
@@ -50,3 +54,29 @@ imgprocess_node:
     wheel_separation: 0.460
     # Uzak konumlarda donus yetkisi; merkezdeki komut hala lineer ve sakindir.
     max_angular_speed: 0.075
+
+turnaround_node:
+  ros__parameters:
+    lane_command_topic: /cmd_vel_lane
+    output_topic: /cmd_vel
+    odom_topic: /odom
+    control_rate: 30.0
+    turn_angle_degrees: 180.0
+    # +1: saat yonunun tersi (sol), -1: saat yonu (sag).
+    turn_direction: 1
+    # Donus 0.24 rad/s ile sinirli; son yaklasik 60 derecede 0.18 rad/s'ye
+    # kadar iner. Ayri kalkis/yavaslama rampalari silkelenmeyi ve hedefteki
+    # tasma miktarini azaltir. Dusuk hiz saha testinde motor esigine gore
+    # turn_min_angular_speed ile ince ayarlanabilir.
+    turn_max_angular_speed: 0.24
+    turn_min_angular_speed: 0.18
+    turn_angular_gain: 0.22
+    turn_angular_acceleration: 0.12
+    turn_angular_deceleration: 0.18
+    turn_tolerance_degrees: 2.5
+    settle_duration: 0.80
+    stop_duration: 0.80
+    lane_command_timeout: 0.25
+    odom_timeout: 0.50
+    # Sikisma/odom sorunu halinde sonsuza kadar donus komutu verme.
+    turn_timeout: 25.0
