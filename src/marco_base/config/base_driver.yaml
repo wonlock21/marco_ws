@@ -54,6 +54,14 @@ marco_base_driver:
     # Yalnizca EKF olmadan cikplak odometri denenirken true yapilir.
     publish_tf: false
 
+    # STM32 STATE_ODOMETRY paketindeki float32 angle_x (derece), elektronik
+    # yerlesimde arac yaw acisidir ve /imu/data_raw olarak yayinlanir.
+    imu_frame_id: imu_link
+    # Fiziksel sola donuste angle_x azaliyorsa -1.0 yap.
+    imu_angle_sign: 1.0
+    imu_yaw_stddev_deg: 3.0
+    imu_yaw_rate_stddev: 0.08
+
     # --- Odometri gurultu modeli ---
     # Kovaryans anlik hiza gore olceklenir. EKF bu odometriyi
     # yalniz encoderdan hesaplanan vx/vyaw alanlarini tuketecek. Pose ve twist

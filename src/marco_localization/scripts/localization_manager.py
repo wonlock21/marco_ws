@@ -8,14 +8,16 @@ import shutil
 import signal
 import stat
 import subprocess
+import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import rclpy
 import yaml
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
 from marco_msgs.msg import FieldInfo, LocalizationStatus, MappingStatus
-from marco_msgs.srv import ListFields, StartLocalization
+from marco_msgs.srv import ListFields, SaveDemoPoint, StartLocalization
 from nav_msgs.msg import OccupancyGrid
 from rclpy.executors import ExternalShutdownException
 from rclpy.duration import Duration
@@ -74,6 +76,9 @@ class LocalizationManager(Node):
             StartLocalization, "/localization/start", self._on_start
         )
         self.create_service(ListFields, "/fields/list", self._on_list_fields)
+        self.create_service(
+            SaveDemoPoint, "/demo/point/save", self._on_save_demo_point
+        )
         self.create_service(Trigger, "/localization/stop", self._on_stop)
         self.create_timer(0.5, self._monitor_process)
         self.create_timer(0.5, self._publish_initial_pose)
@@ -86,6 +91,7 @@ class LocalizationManager(Node):
         self._started_at = 0.0
         self._initializing_at = 0.0
         self._saved_pose = None
+        self._latest_amcl_pose = None
         self._initial_pose_attempts = 0
         self._publish_status("Lokalizasyon hazir")
 
@@ -260,9 +266,13 @@ class LocalizationManager(Node):
         return response
 
     def _slam_toolbox_is_running(self) -> bool:
+        # Kapanan bir ROS 2 surecinin servis endpoint'leri DDS discovery
+        # onbelleginde kisa sure kalabiliyor. /mapping/save sonrasinda
+        # /slam_toolbox/serialize_map gorunmeye devam etse bile dugum gercekte
+        # kapanmis olabilir; servis adina bakmak AMCL'i yanlislikla engeller.
         return any(
-            name.startswith("/slam_toolbox/")
-            for name, _types in self.get_service_names_and_types()
+            name == "slam_toolbox"
+            for name, _namespace in self.get_node_names_and_namespaces()
         )
 
     def _on_start(self, request, response):
@@ -343,6 +353,7 @@ class LocalizationManager(Node):
         self._started_at = time.monotonic()
         self._initializing_at = 0.0
         self._saved_pose = saved_pose
+        self._latest_amcl_pose = None
         self._initial_pose_attempts = 0
         response.accepted = True
         response.message = f"Saha haritasi yukleniyor: {field_name}"
@@ -399,7 +410,153 @@ class LocalizationManager(Node):
             f"({self._initial_pose_attempts}/10)"
         )
 
-    def _on_amcl_pose(self, _msg: PoseWithCovarianceStamped) -> None:
+    @staticmethod
+    def _yaw_of(orientation) -> float:
+        siny = 2.0 * (
+            orientation.w * orientation.z
+            + orientation.x * orientation.y
+        )
+        cosy = 1.0 - 2.0 * (
+            orientation.y * orientation.y
+            + orientation.z * orientation.z
+        )
+        return math.atan2(siny, cosy)
+
+    @staticmethod
+    def _write_yaml_atomic(path: Path, content) -> None:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                yaml.safe_dump(
+                    content, stream, sort_keys=False, allow_unicode=True
+                )
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        except Exception:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            temporary.unlink(missing_ok=True)
+            raise
+
+    def _on_save_demo_point(self, request, response):
+        point_name = request.point_name.strip().upper()
+        if point_name not in ("A", "B"):
+            response.success = False
+            response.message = "Demo noktasi yalnizca A veya B olabilir"
+            return response
+        if (
+            self._state != LocalizationStatus.STATE_LOCALIZING
+            or self._process is None
+            or self._process.poll() is not None
+        ):
+            response.success = False
+            response.message = "Nokta kaydetmek icin aktif lokalizasyon gerekli"
+            return response
+        if self._latest_amcl_pose is None:
+            response.success = False
+            response.message = "Bu lokalizasyon oturumunda henuz AMCL pozu alinmadi"
+            return response
+
+        msg = self._latest_amcl_pose
+        position = msg.pose.pose.position
+        orientation = msg.pose.pose.orientation
+        values = (
+            position.x,
+            position.y,
+            orientation.x,
+            orientation.y,
+            orientation.z,
+            orientation.w,
+        )
+        if not all(math.isfinite(value) for value in values):
+            response.success = False
+            response.message = "Guncel AMCL pozu sonlu sayilar icermiyor"
+            return response
+        norm = math.sqrt(sum(value * value for value in values[2:]))
+        if norm < 1.0e-6:
+            response.success = False
+            response.message = "Guncel AMCL yonelimi gecersiz"
+            return response
+
+        point = Pose2D()
+        point.x = float(position.x)
+        point.y = float(position.y)
+        point.theta = float(self._yaw_of(orientation))
+        field_dir = Path(self._map_yaml).resolve().parent
+        root = self._data_root()
+        if field_dir.parent != root or field_dir.name != self._field_name:
+            response.success = False
+            response.message = "Aktif saha dizini data_root ile uyusmuyor"
+            return response
+        points_file = field_dir / "demo_points.yaml"
+        if points_file.is_symlink():
+            response.success = False
+            response.message = "demo_points.yaml sembolik bag olamaz"
+            return response
+
+        content = {
+            "version": 1,
+            "frame_id": "map",
+            "field_name": self._field_name,
+            "points": {},
+        }
+        try:
+            if points_file.exists():
+                with points_file.open("r", encoding="utf-8") as stream:
+                    loaded = yaml.safe_load(stream) or {}
+                if not isinstance(loaded, dict):
+                    raise ValueError("demo_points.yaml kok alani sozluk degil")
+                if loaded.get("field_name", self._field_name) != self._field_name:
+                    raise ValueError("demo_points.yaml farkli bir sahaya ait")
+                loaded_points = loaded.get("points", {})
+                if not isinstance(loaded_points, dict):
+                    raise ValueError("demo_points.yaml points alani sozluk degil")
+                content = loaded
+                content["version"] = 1
+                content["frame_id"] = "map"
+                content["field_name"] = self._field_name
+                content["points"] = loaded_points
+
+            content["points"][point_name] = {
+                "x": point.x,
+                "y": point.y,
+                "theta": point.theta,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._write_yaml_atomic(points_file, content)
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            response.success = False
+            response.message = f"Demo noktasi kaydedilemedi: {error}"
+            return response
+
+        response.success = True
+        response.message = (
+            f"{point_name} noktasi kaydedildi: x={point.x:.3f}, "
+            f"y={point.y:.3f}, theta={point.theta:.3f}"
+        )
+        response.pose = point
+        response.points_file = str(points_file)
+        self.get_logger().info(response.message)
+        return response
+
+    def _on_amcl_pose(self, msg: PoseWithCovarianceStamped) -> None:
+        if msg.header.frame_id and msg.header.frame_id != "map":
+            self.get_logger().warning(
+                f"AMCL pozu map cercevesinde degil: {msg.header.frame_id}"
+            )
+            return
+        if self._state in (
+            LocalizationStatus.STATE_WAITING_INITIAL_POSE,
+            LocalizationStatus.STATE_INITIALIZING,
+            LocalizationStatus.STATE_LOCALIZING,
+        ):
+            self._latest_amcl_pose = msg
         if self._state in (
             LocalizationStatus.STATE_WAITING_INITIAL_POSE,
             LocalizationStatus.STATE_INITIALIZING,

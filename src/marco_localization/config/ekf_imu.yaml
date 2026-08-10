@@ -3,33 +3,18 @@
 # Bu yapilandirma bir IMU eklendiginde kullanilir.
 # Kullanim: ros2 launch marco_localization localization.launch.py imu:=true
 #
-# IMU KAYNAGI TASARIMI (manyetometresiz)
-# ----------------------------------------
-# IMU'dan yalnizca iki bilgi aliyoruz:
-#   (1) Yaw hizi (gyro z ekseni): donus sirasinda encoder kaymasini duzeltir.
-#       Robotun dondugu sirada bir tekerlek zeminden kalkabilir; encoder o
-#       tekerl kalkar. Gyro bu kaymadan etkilenmez.
-#   (2) x yonundeki dogrusal ivme (accelerometer x): ani hiz degisimlerini
-#       EKF'e bildirir, kontrol onkestirimi ile birlesince hiz kestirimini
-#       iyilestirir.
-#
-# KULLANMIYORUZ:
-#   - Mutlak yaw acisi (orientation.z): manyetometre yok, hesaplanan aci
-#     guresim (gyro drift) biriktirerek uzun vadede kaymaya yol acar.
-#     Kapalı ortam = manyetik referans yok = tutarsiz.
-#   - Roll/pitch acisi: duz zemin, gereksiz.
+# IMU KAYNAGI TASARIMI
+# --------------------
+# STM32 STATE_ODOMETRY paketinin sonundaki float32 angle_x derece alanidir.
+# Elektronik yerlesimde bu eksen arac yaw eksenidir. marco_base_driver bunu
+# quaternion yaw ve turetilmis yaw hizi olarak /imu/data_raw'da yayinlar.
+# Paket ivme tasimadigi icin uydurma accelerometer verisi kullanilmaz.
 #
 # imu0_relative: true — IMU'nun ilk olcumu sifir noktasi kabul edilir;
 #   IMU'nun baslangic orientasyonuyla robot koordinat sistemi arasindaki
 #   sabit ofset hesaplanmaz, ornek basitlesir.
-# imu0_remove_gravitational_acceleration: true — EKF yercekim ivmesini
-#   cikarir; ham IMU ax olcumu yoksa bu gereklidir.
-#
-# IMU MODELI BILINMIYORSA:
-#   IMU geldikten sonra eksen yonlenmesi (ax gercekten x yonunde mi?),
-#   guresim parametreleri ve IMU kalindrasyonu gogunlukla (YAML'i degistir):
-#     imu0_twist_rejection_threshold — gyro gurultu bant disindaki degerleri at
-#     imu0_linear_acceleration_rejection_threshold — ayni, ivme icin
+# Yaw hizi ayni angle_x'in turevi oldugu icin ikinci kez fuze edilmez. Encoder
+# vyaw + IMU relative yaw iki ayri hareket bilgisini EKF'e verir.
 
 ekf_filter_node:
   ros__parameters:
@@ -57,23 +42,20 @@ ekf_filter_node:
     odom0_nodelay: true
 
     # --- Girdi 1: IMU ---
-    imu0: /imu/data
+    imu0: /imu/data_raw
     # Durum vektoru: x y z roll pitch yaw vx vy vz vroll vpitch vyaw ax ay az
     imu0_config: [false, false, false,  # x, y, z
-                  false, false, false,  # roll, pitch, yaw — KULLANMA (no mag)
+                  false, false, true,   # roll, pitch KULLANMA; yaw EVET
                   false, false, false,  # vx, vy, vz
-                  false, false, true,   # vroll, vpitch, vyaw — EVET: gyro
-                  true,  false, false]  # ax, ay, az — EVET: ax
+                  false, false, false,  # turetilmis vyaw ikinci kez sayilmaz
+                  false, false, false]  # paket ivme tasimiyor
     imu0_differential: false
     # Baslangic yonelmesi bilinmiyor; ilk olcumu referans al.
     imu0_relative: true
     imu0_queue_size: 10
     imu0_nodelay: true
-    imu0_remove_gravitational_acceleration: true
-    # Fiziksel olarak mumkun olmayan olcumleri reddet:
-    # Robotun max yaw hizi 0.6 rad/s → 2.0 rad/s asimak spurious.
-    imu0_twist_rejection_threshold: 2.5
-    imu0_linear_acceleration_rejection_threshold: 4.0
+    imu0_remove_gravitational_acceleration: false
+    imu0_pose_rejection_threshold: 5.0
 
     # --- Kontrol onkestirimi (ekf_odom.yaml ile ayni) ---
     use_control: true
@@ -85,8 +67,7 @@ ekf_filter_node:
     acceleration_gains:   [0.8, 0.0, 0.0, 0.0, 0.0, 0.8]
     deceleration_gains:   [1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
-    # IMU gyro ile odometri yaw hizi birbirini ortuyor; Q[11,11] biraz
-    # dusuruldu. IMU ivmesi ax geldigi icin Q[12,12] de etkin.
+    # Encoder yaw hizi + IMU relative yaw birlikte kullanilir.
     process_noise_covariance:
       [0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
        0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,

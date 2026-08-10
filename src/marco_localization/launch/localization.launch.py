@@ -5,7 +5,7 @@ Bu launch dosyasi:
      katmanini ayaga kaldirir.
   2. robot_localization ekf_node'u baslatir; o da odom -> base_footprint
      TF'ini yayinlar.
-  3. imu:=true ise IMU filtre node'unu da baslatir.
+  3. imu:=true ise STM32'nin /imu/data_raw yaw olcumunu EKF'e ekler.
 
 publish_tf cakismasini onlemek icin robot.launch.py tf:=false argumaniyla
 cagriliyor. Bu, joint_state_publisher entegrasyon tuzaginin yaninda karsimiza
@@ -81,42 +81,7 @@ def launch_setup(context, *args, **kwargs):
         parameters=[ekf_config],
     )
 
-    nodes = [robot_launch, ekf_node]
-
-    # IMU aktifse imu_filter_madgwick'i de baslatiyoruz.
-    # Bu dugum ham accel+gyro'dan quaternion orientation hesaplar ve
-    # robot_localization'in beklendigi sekilde sensor_msgs/Imu yayinlar.
-    # Manyetometre olmadigi icin yalnizca gyro entegrasyon modunda calistirilir
-    # (use_mag: false).
-    if imu_enabled:
-        imu_filter = Node(
-            package="imu_filter_madgwick",
-            executable="imu_filter_madgwick_node",
-            name="imu_filter",
-            output="screen",
-            parameters=[{
-                "use_mag": False,
-                # Gyro entegrasyonu ile elde edilen yaw orientasyonu
-                # robot_localization'a gidiyor ama biz orada kullanmiyoruz
-                # (imu0_config'de yaw=false). Sadece gyro yaw hizi (twist)
-                # ve ivme kullaniliyor. Bu filtre yalnizca gravity removal
-                # ve olasi gelecek kullanim icin buradadir.
-                "publish_tf": False,
-                "world_frame": "enu",
-                "gain": 0.1,
-                "zeta": 0.0,
-                "fixed_frame": "",
-                "orientation_stddev": 0.05,
-                "angular_scale": 1.0,
-            }],
-            remappings=[
-                ("imu/data_raw", "/imu/data_raw"),
-                ("imu/data", "/imu/data"),
-            ],
-        )
-        nodes.append(imu_filter)
-
-    return nodes
+    return [robot_launch, ekf_node]
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -133,10 +98,9 @@ def generate_launch_description() -> LaunchDescription:
         ),
         DeclareLaunchArgument(
             "imu",
-            default_value="false",
+            default_value="true",
             description=(
-                "IMU girdisini EKF'e ekle. true yapildiginda imu_filter_madgwick "
-                "de baslatilir ve /imu/data_raw topigi beklenilir."
+                "STM32 angle_x yaw girdisini /imu/data_raw uzerinden EKF'e ekle"
             ),
         ),
         DeclareLaunchArgument(

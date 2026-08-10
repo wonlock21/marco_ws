@@ -101,6 +101,23 @@ def test_odometri_24_bayt_geriye_uyumlu():
     assert odom.right_ticks == 200
     assert odom.left_mm_s == 10
     assert odom.right_mm_s == -10
+    assert odom.angle_x_deg is None
+
+
+def test_odometri_20_bayt_angle_x_cozulur():
+    """Yeni firmware float32 angle_x alanini derece cinsinden gonderir."""
+    payload = struct.pack("<Iiihhf", 250_000, 123, 456, 70, 71, -37.5)
+    odom = p.decode_odometry(payload)
+    assert odom.timestamp_us == 250_000
+    assert odom.left_ticks == 123
+    assert odom.right_ticks == 456
+    assert odom.angle_x_deg == pytest.approx(-37.5)
+
+
+def test_odometri_16_bayt_legacy_imu_yok():
+    payload = struct.pack("<Iiihh", 100, 1, 2, 3, 4)
+    odom = p.decode_odometry(payload)
+    assert odom.angle_x_deg is None
 
 
 def test_odometri_kisa_payload_red():

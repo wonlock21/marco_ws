@@ -1,0 +1,7 @@
+# Aktif AMCL lokalizasyonundaki arac pozunu A veya B demo noktasi olarak kaydet.
+string point_name
+---
+bool success
+string message
+geometry_msgs/Pose2D pose
+string points_file

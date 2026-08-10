@@ -76,6 +76,7 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[{
             "camera": LaunchConfiguration("camera"),
             "odom_topic": LaunchConfiguration("demo_odom_topic"),
+            "data_root": LaunchConfiguration("data_root"),
             "turn_direction": ParameterValue(
                 LaunchConfiguration("turn_direction"), value_type=int
             ),
@@ -83,7 +84,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     return LaunchDescription([
         DeclareLaunchArgument("sahte", default_value="false"),
-        DeclareLaunchArgument("imu", default_value="false"),
+        DeclareLaunchArgument("imu", default_value="true"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
         DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument(

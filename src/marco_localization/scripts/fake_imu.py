@@ -36,21 +36,22 @@ class FakeImu(Node):
         msg = Imu()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self._frame
-        # Yercekimi +z (ENU/URDF: z yukari). Madgwick gravity removal icin.
+        # Yeni STM32 angle_x sozlesmesi relative yaw orientation saglar.
+        msg.orientation.w = 1.0
         msg.linear_acceleration.x = 0.0
         msg.linear_acceleration.y = 0.0
         msg.linear_acceleration.z = 9.80665
         msg.angular_velocity.x = 0.0
         msg.angular_velocity.y = 0.0
         msg.angular_velocity.z = 0.0
-        # Kovaryans: diyagonal; -1 = bilinmiyor kullanma, sifir = guven.
-        msg.linear_acceleration_covariance[0] = 0.01
-        msg.linear_acceleration_covariance[4] = 0.01
-        msg.linear_acceleration_covariance[8] = 0.01
+        # Firmware paketi ivme tasimiyor; sahte kaynak da ayni sozlesmeyi izler.
+        msg.linear_acceleration_covariance[0] = -1.0
         msg.angular_velocity_covariance[0] = 0.001
         msg.angular_velocity_covariance[4] = 0.001
         msg.angular_velocity_covariance[8] = 0.001
-        msg.orientation_covariance[0] = -1.0
+        msg.orientation_covariance[0] = 1e6
+        msg.orientation_covariance[4] = 1e6
+        msg.orientation_covariance[8] = 0.05 ** 2
         self._pub.publish(msg)
 
 

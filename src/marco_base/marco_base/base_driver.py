@@ -3,6 +3,7 @@
 Sorumluluklari:
   /cmd_vel  -> ters kinematik -> tekerlek hiz komutu -> UART
   UART      -> encoder tick   -> odometri            -> /odom, /joint_states
+  UART      -> angle_x        -> IMU yaw              -> /imu/data_raw
   UART      -> durum bayrak   -> /base/estop, /base/manual_mode, /base/battery
 
 Bilincli olarak DAHIL EDILMEYENLER:
@@ -23,13 +24,13 @@ from geometry_msgs.msg import Quaternion, Twist, TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import QoSPresetProfiles
-from sensor_msgs.msg import BatteryState, JointState
+from sensor_msgs.msg import BatteryState, Imu, JointState
 from std_msgs.msg import Bool
 from tf2_ros import TransformBroadcaster
 
 from . import protocol as p
 from .fake_stm32 import FakeStm32, FakeStm32Transport
-from .odometry import DifferentialOdometry, twist_to_wheel_speeds
+from .odometry import DifferentialOdometry, timestamp_delta, twist_to_wheel_speeds
 from .transport import SerialTransport
 
 HEARTBEAT_PERIOD = 0.1
@@ -49,6 +50,8 @@ class BaseDriver(Node):
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
         self.publish_tf = self.get_parameter("publish_tf").value
+        self.imu_frame = str(self.get_parameter("imu_frame_id").value)
+        self.imu_angle_sign = float(self.get_parameter("imu_angle_sign").value)
 
         self.odometry = DifferentialOdometry(
             wheel_radius=self.get_parameter("wheel_radius").value,
@@ -69,6 +72,8 @@ class BaseDriver(Node):
         self._status: p.StatusFrame | None = None
         self._odom_frames_received = 0
         self._odom_len_warned = False
+        self._imu_previous: tuple[int, float] | None = None
+        self._imu_invalid_warned = False
 
         qos = QoSPresetProfiles.SENSOR_DATA.value
         self._odom_pub = self.create_publisher(Odometry, "odom", 10)
@@ -76,6 +81,7 @@ class BaseDriver(Node):
         self._estop_pub = self.create_publisher(Bool, "base/estop", 10)
         self._manual_pub = self.create_publisher(Bool, "base/manual_mode", 10)
         self._battery_pub = self.create_publisher(BatteryState, "base/battery", qos)
+        self._imu_pub = self.create_publisher(Imu, "imu/data_raw", qos)
 
         self._tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
 
@@ -108,6 +114,7 @@ class BaseDriver(Node):
             f"marco_base_driver hazir | {source} | "
             f"teker aras\u0131={self.wheel_separation:.3f} m | "
             f"metre/tick={self.odometry.meters_per_tick * 1000:.4f} mm | "
+            f"IMU={self.imu_frame} angle_x->yaw {self.imu_angle_sign:+.0f} | "
             f"TF yayini={'acik' if self.publish_tf else 'kapali (EKF yayinlayacak)'}"
         )
 
@@ -135,6 +142,10 @@ class BaseDriver(Node):
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("publish_tf", False)
+        self.declare_parameter("imu_frame_id", "imu_link")
+        self.declare_parameter("imu_angle_sign", 1.0)
+        self.declare_parameter("imu_yaw_stddev_deg", 3.0)
+        self.declare_parameter("imu_yaw_rate_stddev", 0.08)
 
         # Odometri gurultu modeli. Kovaryans kat edilen mesafeyle olceklenir;
         # duran robot icin sabit buyuk bir kovaryans vermek EKF'i yaniltir.
@@ -243,8 +254,8 @@ class BaseDriver(Node):
                         self.get_logger().warn(
                             f"STM32 odometri {len(payload)} bayt gonderiyor "
                             f"(protokol {p.ODOMETRY_PAYLOAD_LEN}). "
-                            f"Ilk {p.ODOMETRY_PAYLOAD_LEN} bayt kullaniliyor; "
-                            "elektronik ekibi kanonik boyuta cekmeli."
+                            "Eski odometri alinir fakat IMU kullanilamaz; "
+                            "elektronik ekibi 20 baytlik pakete cekmeli."
                         )
                     self._on_odometry(p.decode_odometry(payload))
                 elif msg_id is p.MsgId.STATE_STATUS:
@@ -264,13 +275,62 @@ class BaseDriver(Node):
             timestamp_us=frame.timestamp_us,
         )
         self._odom_frames_received += 1
+        stamp = self.get_clock().now().to_msg()
+        self._publish_imu(frame, stamp)
         if not updated:
             return
 
-        stamp = self.get_clock().now().to_msg()
         self._publish_odometry(stamp)
         self._publish_joint_states(stamp)
         self._publish_ground_truth(stamp)
+
+    def _publish_imu(self, frame: p.OdometryFrame, stamp) -> None:
+        """Firmware angle_x alanini ROS ENU yaw mesaji olarak yayinla."""
+        if frame.angle_x_deg is None:
+            return
+        angle_deg = float(frame.angle_x_deg)
+        if not math.isfinite(angle_deg):
+            if not self._imu_invalid_warned:
+                self._imu_invalid_warned = True
+                self.get_logger().warn("STM32 angle_x NaN/Inf; IMU mesaji reddedildi")
+            return
+
+        yaw = math.radians(angle_deg) * self.imu_angle_sign
+        yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+        yaw_rate = 0.0
+        if self._imu_previous is not None:
+            previous_stamp, previous_yaw = self._imu_previous
+            dt_us = timestamp_delta(previous_stamp, frame.timestamp_us)
+            if dt_us > 0:
+                delta = math.atan2(
+                    math.sin(yaw - previous_yaw),
+                    math.cos(yaw - previous_yaw),
+                )
+                yaw_rate = delta / (dt_us * 1e-6)
+        self._imu_previous = (frame.timestamp_us, yaw)
+
+        msg = Imu()
+        msg.header.stamp = stamp
+        msg.header.frame_id = self.imu_frame
+        msg.orientation.z = math.sin(yaw / 2.0)
+        msg.orientation.w = math.cos(yaw / 2.0)
+        msg.angular_velocity.z = yaw_rate
+
+        yaw_std = math.radians(
+            float(self.get_parameter("imu_yaw_stddev_deg").value)
+        )
+        yaw_rate_std = float(
+            self.get_parameter("imu_yaw_rate_stddev").value
+        )
+        # Roll/pitch olculmuyor. Paket ivme tasimadigi icin -1 "olcum yok".
+        msg.orientation_covariance[0] = 1e6
+        msg.orientation_covariance[4] = 1e6
+        msg.orientation_covariance[8] = yaw_std * yaw_std
+        msg.angular_velocity_covariance[0] = 1e6
+        msg.angular_velocity_covariance[4] = 1e6
+        msg.angular_velocity_covariance[8] = yaw_rate_std * yaw_rate_std
+        msg.linear_acceleration_covariance[0] = -1.0
+        self._imu_pub.publish(msg)
 
     def _publish_ground_truth(self, stamp) -> None:
         if self._ground_truth_pub is None:

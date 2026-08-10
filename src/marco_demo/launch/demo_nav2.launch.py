@@ -33,10 +33,16 @@ def generate_launch_description() -> LaunchDescription:
         profile="real",
         params_src=params_source,
         params_dst=params_file,
-        text_replacements=[(
-            'default_nav_to_pose_bt_xml: ""',
-            f'default_nav_to_pose_bt_xml: "{behavior_tree}"',
-        )],
+        text_replacements=[
+            (
+                'default_nav_to_pose_bt_xml: ""',
+                f'default_nav_to_pose_bt_xml: "{behavior_tree}"',
+            ),
+            # Demo hareketinde dinamik engeli collision_monitor durdurur.
+            # Kisa Nav2 tahmini action'i erken abort etmeden footprint'i korur.
+            ("simulate_ahead_time: 2.0", "simulate_ahead_time: 0.5"),
+            ("max_rotational_vel: 0.6", "max_rotational_vel: 0.3"),
+        ],
     )
 
     nav2 = GroupAction(actions=[
@@ -57,7 +63,7 @@ def generate_launch_description() -> LaunchDescription:
         ),
     ])
     return LaunchDescription([
-        LogInfo(msg=f"Demo Nav2 BT: {behavior_tree}"),
+        LogInfo(msg=f"Demo Nav2 davranis sunuculari; BT: {behavior_tree}"),
         LogInfo(msg="Demo hiz zinciri: Nav2 -> /cmd_vel_raw -> safety -> /cmd_vel"),
         nav2,
     ])

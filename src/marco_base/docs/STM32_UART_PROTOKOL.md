@@ -1,7 +1,7 @@
 # Orange Pi 5 ↔ STM32 UART Haberleşme Protokolü
 
-**Sürüm:** 0.3 · **Tarih:** 30.07.2026 · **Hazırlayan:** Yazılım / Navigasyon
-**Değişiklikler:** Baud 115200 · yönlü/kümülatif 360 tick/tur · host sıçrama filtresi (`max_tick_delta`)
+**Sürüm:** 0.4 · **Tarih:** 10.08.2026 · **Hazırlayan:** Yazılım / Navigasyon
+**Değişiklikler:** `STATE_ODOMETRY` sonuna float32 `angle_x` eklendi (20 bayt)
 
 Bu belge Orange Pi üzerinde çalışan ROS 2 katmanı ile STM32 alt seviye kontrolcüsü
 arasındaki seri haberleşmeyi tanımlar. Protokolü navigasyon ekibi belirler çünkü
@@ -117,10 +117,16 @@ Bu, protokolün en kritik mesajıdır. Odometrinin tamamı buradan türetilir.
 | 8 | int32 | `right_ticks` | **işaretli, yönlü ve kümülatif** encoder tick sayacı |
 | 12 | int16 | `left_speed` | mm/s, STM32'nin ölçtüğü anlık hız |
 | 14 | int16 | `right_speed` | mm/s |
+| 16 | float32 | `angle_x` | derece; araç düzlemindeki göreli yaw |
 
-**Kanonik payload boyutu: 16 bayt.** Host ≥16 baytı kabul eder ve yalnızca ilk 16'yı
-çözer (30.07 sahada firmware'in 24 bayt + sondaki 8 sıfır gönderdiği görüldü).
-STM32 tarafı mümkün olan en kısa sürede tam 16 bayta indirmelidir.
+**Kanonik payload boyutu: 20 bayt.** Kablo düzeni Python `struct` gösterimiyle
+`<Iiihhf` şeklindedir. Host geçiş süresince eski 16 baytlık paketi odometri için
+kabul eder; ancak o pakette IMU verisi olmadığı için `/imu/data_raw` yayınlanmaz.
+
+`angle_x`, STM32'nin derece cinsinden verdiği dönüş açısıdır. Orange Pi bunu
+`imu_link` çerçevesinde ROS ENU yaw quaternion'una dönüştürür; EKF ilk örneği
+göreli sıfır kabul eder. Fiziksel sola dönüşte işaret tersse
+`imu_angle_sign: -1.0` kullanılır.
 
 Üç tasarım kararı ve gerekçeleri:
 
