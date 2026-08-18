@@ -100,6 +100,7 @@ def generate_launch_description() -> LaunchDescription:
         executable="map_preview.py",
         name="map_preview",
         output="screen",
+        parameters=[{"tf_pose_source": "slam_toolbox"}],
     )
 
     rviz = Node(

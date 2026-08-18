@@ -16,8 +16,11 @@ Bilincli olarak DAHIL EDILMEYENLER:
 
 from __future__ import annotations
 
+import csv
 import math
 import struct
+from datetime import datetime
+from pathlib import Path
 
 import rclpy
 from geometry_msgs.msg import Quaternion, Twist, TransformStamped
@@ -45,6 +48,7 @@ class BaseDriver(Node):
         self._declare_parameters()
 
         self.wheel_separation = self.get_parameter("wheel_separation").value
+        self.wheel_radius = self.get_parameter("wheel_radius").value
         self.max_wheel_speed = self.get_parameter("max_wheel_speed").value
         self.cmd_timeout = self.get_parameter("cmd_vel_timeout").value
         self.odom_frame = self.get_parameter("odom_frame").value
@@ -54,7 +58,7 @@ class BaseDriver(Node):
         self.imu_angle_sign = float(self.get_parameter("imu_angle_sign").value)
 
         self.odometry = DifferentialOdometry(
-            wheel_radius=self.get_parameter("wheel_radius").value,
+            wheel_radius=self.wheel_radius,
             wheel_separation=self.wheel_separation,
             ticks_per_rev=self.get_parameter("ticks_per_revolution").value,
             max_tick_delta=self.get_parameter("max_tick_delta").value,
@@ -67,13 +71,20 @@ class BaseDriver(Node):
 
         self._parser = p.FrameParser()
         self._target = (0.0, 0.0)
+        self._last_sent_target = (0.0, 0.0)
+        self._last_command_enabled = False
         self._last_cmd_time = self.get_clock().now()
         self._last_heartbeat = 0.0
+        self._last_wheel_log_time = 0.0
         self._status: p.StatusFrame | None = None
         self._odom_frames_received = 0
         self._odom_len_warned = False
         self._imu_previous: tuple[int, float] | None = None
         self._imu_invalid_warned = False
+        self._wheel_csv_file = None
+        self._wheel_csv_writer = None
+        self._wheel_csv_rows_since_flush = 0
+        self._open_wheel_measurement_log()
 
         qos = QoSPresetProfiles.SENSOR_DATA.value
         self._odom_pub = self.create_publisher(Odometry, "odom", 10)
@@ -139,6 +150,13 @@ class BaseDriver(Node):
         self.declare_parameter("read_rate", 200.0)
         self.declare_parameter("cmd_vel_timeout", 0.5)
 
+        # STM32 encoder geri bildirimini hedef komutla birlikte kalici kaydet.
+        self.declare_parameter("wheel_measurement_log_enabled", True)
+        self.declare_parameter(
+            "wheel_measurement_log_directory", "~/.ros/marco_wheel_logs"
+        )
+        self.declare_parameter("wheel_measurement_terminal_rate_hz", 2.0)
+
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("publish_tf", False)
@@ -188,6 +206,43 @@ class BaseDriver(Node):
     def _now_seconds(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
 
+    def _open_wheel_measurement_log(self) -> None:
+        if not self.get_parameter("wheel_measurement_log_enabled").value:
+            return
+
+        directory = Path(
+            str(self.get_parameter("wheel_measurement_log_directory").value)
+        ).expanduser()
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = directory / f"wheel_measurements_{timestamp}.csv"
+            self._wheel_csv_file = path.open("w", newline="", encoding="utf-8")
+            fieldnames = [
+                "ros_time_s",
+                "stm32_timestamp_us",
+                "command_enabled",
+                "target_left_mm_s",
+                "target_right_mm_s",
+                "measured_left_mm_s",
+                "measured_right_mm_s",
+                "error_left_mm_s",
+                "error_right_mm_s",
+                "left_ticks",
+                "right_ticks",
+                "status_flags",
+            ]
+            self._wheel_csv_writer = csv.DictWriter(
+                self._wheel_csv_file, fieldnames=fieldnames
+            )
+            self._wheel_csv_writer.writeheader()
+            self._wheel_csv_file.flush()
+            self.get_logger().info(f"Teker olcum CSV kaydi: {path}")
+        except OSError as exc:
+            self._wheel_csv_file = None
+            self._wheel_csv_writer = None
+            self.get_logger().error(f"Teker olcum CSV dosyasi acilamadi: {exc}")
+
     # ------------------------------------------------------------------ komut yolu
 
     def _on_cmd_vel(self, msg: Twist) -> None:
@@ -225,6 +280,8 @@ class BaseDriver(Node):
                 enabled=not blocked,
             )
         )
+        self._last_sent_target = (left, right)
+        self._last_command_enabled = not blocked
 
         now = self._now_seconds()
         if now - self._last_heartbeat >= HEARTBEAT_PERIOD:
@@ -269,6 +326,7 @@ class BaseDriver(Node):
                 )
 
     def _on_odometry(self, frame: p.OdometryFrame) -> None:
+        self._record_wheel_measurement(frame)
         updated = self.odometry.update(
             left_ticks=frame.left_ticks,
             right_ticks=frame.right_ticks,
@@ -281,8 +339,55 @@ class BaseDriver(Node):
             return
 
         self._publish_odometry(stamp)
-        self._publish_joint_states(stamp)
+        self._publish_joint_states(stamp, frame)
         self._publish_ground_truth(stamp)
+
+    def _record_wheel_measurement(self, frame: p.OdometryFrame) -> None:
+        """Hedef ve STM32 olculen teker hizlarini logla."""
+        now = self._now_seconds()
+        target_left = int(round(self._last_sent_target[0] * 1000.0))
+        target_right = int(round(self._last_sent_target[1] * 1000.0))
+        measured_left = int(frame.left_mm_s)
+        measured_right = int(frame.right_mm_s)
+        error_left = target_left - measured_left
+        error_right = target_right - measured_right
+
+        if self._wheel_csv_writer is not None:
+            flags = int(self._status.flags) if self._status is not None else 0
+            self._wheel_csv_writer.writerow(
+                {
+                    "ros_time_s": f"{now:.6f}",
+                    "stm32_timestamp_us": frame.timestamp_us,
+                    "command_enabled": int(self._last_command_enabled),
+                    "target_left_mm_s": target_left,
+                    "target_right_mm_s": target_right,
+                    "measured_left_mm_s": measured_left,
+                    "measured_right_mm_s": measured_right,
+                    "error_left_mm_s": error_left,
+                    "error_right_mm_s": error_right,
+                    "left_ticks": frame.left_ticks,
+                    "right_ticks": frame.right_ticks,
+                    "status_flags": flags,
+                }
+            )
+            self._wheel_csv_rows_since_flush += 1
+            if self._wheel_csv_rows_since_flush >= 25:
+                self._wheel_csv_file.flush()
+                self._wheel_csv_rows_since_flush = 0
+
+        rate = float(
+            self.get_parameter("wheel_measurement_terminal_rate_hz").value
+        )
+        period = 1.0 / rate if rate > 0.0 else math.inf
+        if now - self._last_wheel_log_time >= period:
+            self._last_wheel_log_time = now
+            self.get_logger().info(
+                "[TEKER OLCUM] "
+                f"hedef sol={target_left:+d} sag={target_right:+d} mm/s | "
+                f"olculen sol={measured_left:+d} sag={measured_right:+d} mm/s | "
+                f"hata sol={error_left:+d} sag={error_right:+d} mm/s | "
+                f"aktif={self._last_command_enabled}"
+            )
 
     def _publish_imu(self, frame: p.OdometryFrame, stamp) -> None:
         """Firmware angle_x alanini ROS ENU yaw mesaji olarak yayinla."""
@@ -444,7 +549,7 @@ class BaseDriver(Node):
         msg.twist.covariance[28] = large
         msg.twist.covariance[35] = angular_std ** 2
 
-    def _publish_joint_states(self, stamp) -> None:
+    def _publish_joint_states(self, stamp, frame: p.OdometryFrame) -> None:
         msg = JointState()
         msg.header.stamp = stamp
         msg.name = ["left_wheel_joint", "right_wheel_joint", "fork_lift_joint"]
@@ -452,6 +557,11 @@ class BaseDriver(Node):
             self.odometry.left_wheel_angle,
             self.odometry.right_wheel_angle,
             self._fork_position(),
+        ]
+        msg.velocity = [
+            (frame.left_mm_s / 1000.0) / self.wheel_radius,
+            (frame.right_mm_s / 1000.0) / self.wheel_radius,
+            0.0,
         ]
         self._joint_pub.publish(msg)
 
@@ -475,6 +585,11 @@ class BaseDriver(Node):
             self._transport.close()
         except OSError:
             pass
+        finally:
+            if self._wheel_csv_file is not None:
+                self._wheel_csv_file.flush()
+                self._wheel_csv_file.close()
+                self._wheel_csv_file = None
         return super().destroy_node()
 
 

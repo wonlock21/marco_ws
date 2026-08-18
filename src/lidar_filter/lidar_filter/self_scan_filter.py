@@ -1,14 +1,48 @@
+"""Mask robot self-occlusion rays without clearing space behind the robot."""
+
 import math
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
+from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import LaserScan
+
+
+def parse_blocked_regions(values):
+    """Convert a flat degree array into validated ``(min, max)`` pairs."""
+    if len(values) % 2:
+        raise ValueError('blocked_regions_deg cift sayida deger icermeli')
+
+    regions = []
+    for index in range(0, len(values), 2):
+        minimum = float(values[index])
+        maximum = float(values[index + 1])
+        if not math.isfinite(minimum) or not math.isfinite(maximum):
+            raise ValueError('blocked_regions_deg sonlu acilar icermeli')
+        if minimum > maximum:
+            raise ValueError(
+                'blocked_regions_deg icinde minimum maksimumdan buyuk olamaz'
+            )
+        regions.append((minimum, maximum))
+    return regions
+
 
 class SelfScanFilter(Node):
+    """Replace configured self-occluded LiDAR rays with invalid measurements."""
 
     def __init__(self):
         super().__init__('self_scan_filter')
+
+        # Flat array: [min_deg_0, max_deg_0, min_deg_1, max_deg_1, ...].
+        # Yeni 45 cm montajda lift direklerinin acilari /scan_raw ile yeniden
+        # olculene kadar bos kalir; eski montaja ait acilar kullanilmaz.
+        blocked_parameter = self.declare_parameter(
+            'blocked_regions_deg', Parameter.Type.DOUBLE_ARRAY
+        )
+        self.blocked_regions = parse_blocked_regions(
+            blocked_parameter.value or []
+        )
 
         # YDLIDAR'dan gelen HAM veri
         self.subscription = self.create_subscription(
@@ -25,14 +59,9 @@ class SelfScanFilter(Node):
             qos_profile_sensor_data
         )
 
-        # Araç üzerindeki demirlerin LiDAR'a göre açıları
-        self.blocked_regions = [
-            (-180.0, -174.0),
-            (-164.0, -154.0),
-        ]
-
         self.get_logger().info(
-            'LiDAR self-filter aktif: /scan_raw -> /scan'
+            'LiDAR self-filter aktif: /scan_raw -> /scan | '
+            f'kapali bolge sayisi={len(self.blocked_regions)}'
         )
 
     def scan_callback(self, msg):
@@ -54,7 +83,7 @@ class SelfScanFilter(Node):
         filtered.ranges = list(msg.ranges)
         filtered.intensities = list(msg.intensities)
 
-        for i, distance in enumerate(filtered.ranges):
+        for i, _distance in enumerate(filtered.ranges):
 
             angle_rad = msg.angle_min + i * msg.angle_increment
             angle_deg = math.degrees(angle_rad)
@@ -62,7 +91,11 @@ class SelfScanFilter(Node):
             for min_angle, max_angle in self.blocked_regions:
 
                 if min_angle <= angle_deg <= max_angle:
-                    filtered.ranges[i] = float('inf')
+                    # NaN LaserScan icin gecersiz/olcumsuz isindir. +inf
+                    # kullanmak Nav2 obstacle layer'da inf_is_valid=true iken
+                    # isin boyunca ray-clearing yaparak liftin arkasini kesin
+                    # bos gosterebilirdi; self-occlusion icin bu guvenli degil.
+                    filtered.ranges[i] = float('nan')
 
                     if i < len(filtered.intensities):
                         filtered.intensities[i] = 0.0

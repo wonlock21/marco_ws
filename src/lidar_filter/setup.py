@@ -7,18 +7,18 @@ setup(
     version='0.0.0',
     packages=find_packages(exclude=['test']),
     data_files=[
-    	(
-        	'share/ament_index/resource_index/packages',
-        	['resource/lidar_filter']
-    	),
-    	(
-        	'share/lidar_filter',
-        	['package.xml']
-    	),
-    	(
-        	'share/lidar_filter/launch',
-        	['launch/lidar_with_filter.launch.py']
-    	),
+        (
+            'share/ament_index/resource_index/packages',
+            ['resource/lidar_filter']
+        ),
+        (
+            'share/lidar_filter',
+            ['package.xml']
+        ),
+        (
+            'share/lidar_filter/launch',
+            ['launch/lidar_with_filter.launch.py']
+        ),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -33,8 +33,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-        	'self_scan_filter = lidar_filter.self_scan_filter:main',
-	],
+            'self_scan_filter = lidar_filter.self_scan_filter:main',
+        ],
     },
 )
-

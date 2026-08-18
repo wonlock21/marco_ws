@@ -5,7 +5,7 @@ drive:
   geometric_wheel_separation_m: 0.460
   odometry_effective_wheel_separation_m: 0.421
 geometry:
-  footprint: [[0.50, 0.35], [0.50, -0.35], [-1.18, -0.35], [-1.18, 0.35]]
-  lidar_base_link_xyz_m: [0.000, 0.240, 0.180]
+  footprint: [[0.50, 0.35], [0.50, -0.35], [-1.20, -0.35], [-1.20, 0.35]]
+  lidar_base_link_xyz_m: [0.350, 0.000, 0.350]
   base_link_height_m: 0.100
-  lidar_scan_height_m: 0.280
+  lidar_scan_height_m: 0.450

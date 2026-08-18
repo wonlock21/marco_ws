@@ -19,6 +19,7 @@ from rclpy.qos import (
     QoSReliabilityPolicy,
 )
 from sensor_msgs.msg import CompressedImage
+from tf2_ros import Buffer, TransformException, TransformListener
 
 
 def _png_chunk(kind: bytes, payload: bytes) -> bytes:
@@ -98,6 +99,7 @@ class MapPreview(Node):
         self.declare_parameter("map_topic", "/map")
         self.declare_parameter("slam_pose_topic", "/pose")
         self.declare_parameter("amcl_pose_topic", "/amcl_pose")
+        self.declare_parameter("tf_pose_source", "tf")
 
         latched = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -112,13 +114,15 @@ class MapPreview(Node):
             MapMetaData, "/map_preview/metadata", latched
         )
         self._pixel_pub = self.create_publisher(
-            MapPixelPose, "/map_preview/robot_pixel", 10
+            MapPixelPose, "/map_preview/robot_pixel", latched
         )
 
         self._info = None
         self._latest_pose = None
         self._latest_source = ""
         self._map_count = 0
+        self._tf = Buffer()
+        self._tf_listener = TransformListener(self._tf, self)
 
         self.create_subscription(
             OccupancyGrid,
@@ -138,6 +142,11 @@ class MapPreview(Node):
             lambda msg: self._on_pose(msg, "amcl"),
             10,
         )
+        # AMCL, robot hareket esiklerini asmadiginda yeni /amcl_pose mesaji
+        # yayinlamayabilir. Flutter sayfasi da ilk mesajdan sonra acilabilir.
+        # Guncel ve kanonik robot pozunu TF'den duzenli okuyarak pikseli
+        # yeniden yayinla; transient-local QoS son degeri gec aboneye saklar.
+        self.create_timer(0.2, self._publish_tf_pixel)
 
     def _on_map(self, msg: OccupancyGrid) -> None:
         try:
@@ -168,6 +177,30 @@ class MapPreview(Node):
             return
         self._latest_pose = msg
         self._latest_source = source
+        self._publish_pixel()
+
+    def _publish_tf_pixel(self) -> None:
+        if self._info is None:
+            return
+        try:
+            transform = self._tf.lookup_transform(
+                "map", "base_footprint", rclpy.time.Time()
+            )
+        except TransformException:
+            return
+
+        pose = PoseWithCovarianceStamped()
+        pose.header = transform.header
+        pose.header.frame_id = "map"
+        # Bu mesaj TF'nin olculme zamani degil, pikselin yayinlanma zamanidir.
+        # Flutter tazelik kontrolu yaparken hareketsiz pozu eski sanmamalidir.
+        pose.header.stamp = self.get_clock().now().to_msg()
+        pose.pose.pose.position.x = transform.transform.translation.x
+        pose.pose.pose.position.y = transform.transform.translation.y
+        pose.pose.pose.position.z = transform.transform.translation.z
+        pose.pose.pose.orientation = transform.transform.rotation
+        self._latest_pose = pose
+        self._latest_source = str(self.get_parameter("tf_pose_source").value)
         self._publish_pixel()
 
     def _publish_pixel(self) -> None:

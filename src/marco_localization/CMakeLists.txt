@@ -24,6 +24,7 @@ install(PROGRAMS
   scripts/map_preview.py
   scripts/localization_manager.py
   scripts/mapping_manager.py
+  scripts/buzzer_driver.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
