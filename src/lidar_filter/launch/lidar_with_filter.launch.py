@@ -1,17 +1,18 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import LifecycleNode, Node
-from ament_index_python.packages import get_package_share_directory
-import os
 
 
 def generate_launch_description():
 
-    ydlidar_share = get_package_share_directory('ydlidar_ros2_driver')
+    localization_share = get_package_share_directory('marco_localization')
 
     params_file = os.path.join(
-        ydlidar_share,
-        'params',
-        'ydlidar.yaml'
+        localization_share,
+        'config',
+        'lidar_tmini_pro.yaml'
     )
 
     driver_node = LifecycleNode(
@@ -23,19 +24,7 @@ def generate_launch_description():
         parameters=[params_file],
         namespace='/',
         remappings=[
-            ('scan', 'scan_raw'),
-        ],
-    )
-
-    tf2_node = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='static_tf_pub_laser',
-        arguments=[
-            '0', '0', '0.02',
-            '0', '0', '0', '1',
-            'base_link',
-            'laser_frame'
+            ('scan', '/scan_raw'),
         ],
     )
 
@@ -48,6 +37,5 @@ def generate_launch_description():
 
     return LaunchDescription([
         driver_node,
-        tf2_node,
         filter_node,
     ])

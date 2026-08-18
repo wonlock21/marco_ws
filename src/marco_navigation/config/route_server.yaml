@@ -1,7 +1,8 @@
 ### nav2_route Route Server — MarCO Faz 7 ###
 #
 # Serbest NavFn yerine tanimli GeoJSON rota aginda en kisa/en hizli yol.
-# CostmapScorer YOK: engelden kacinmak icin rota degistirme (sartname).
+# CostmapScorer statik haritadaki duvarla veya harita disiyla kesisen
+# ogretilmis kenari gecersiz sayar. Dinamik engel davranisi safety zincirindedir.
 # TimeScorer + DistanceScorer = rota optimizasyonu (madde 5).
 
 route_server:
@@ -34,11 +35,19 @@ route_server:
     GeoJsonGraphFileLoader:
       plugin: "nav2_route::GeoJsonGraphFileLoader"
 
-    # Engelden otomatik kacinma YOK — CostmapScorer ekleme.
-    edge_cost_functions: ["DistanceScorer", "TimeScorer", "DynamicEdgesScorer"]
+    edge_cost_functions: ["DistanceScorer", "CostmapScorer", "TimeScorer", "DynamicEdgesScorer"]
     DistanceScorer:
       plugin: "nav2_route::DistanceScorer"
       weight: 1.0
+    CostmapScorer:
+      plugin: "nav2_route::CostmapScorer"
+      weight: 1.0
+      costmap_topic: "global_costmap/costmap_raw"
+      max_cost: 253.0
+      use_maximum: true
+      invalid_on_collision: true
+      invalid_off_map: true
+      check_resolution: 1
     TimeScorer:
       plugin: "nav2_route::TimeScorer"
       weight: 1.0

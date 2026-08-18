@@ -32,6 +32,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ResetMissionSafety.srv"
   "srv/SaveMapping.srv"
   "srv/SaveDemoPoint.srv"
+  "srv/SaveDemoRoutePoint.srv"
+  "srv/ClearDemoRoute.srv"
   "srv/StartLocalization.srv"
   "srv/StartDemoScenario.srv"
   "srv/StartMapping.srv"

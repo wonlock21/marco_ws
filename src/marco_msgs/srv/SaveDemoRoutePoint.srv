@@ -1,0 +1,8 @@
+# Aktif AMCL pozunu A veya B hedefine giden rotaya sirali ara nokta olarak ekle.
+string target_name
+---
+bool success
+string message
+uint32 route_index
+geometry_msgs/Pose2D pose
+string points_file

@@ -15,6 +15,8 @@
     YDLidar Tmini Pro. Surucu yapilandirmasi frame_id'yi "laser_link"
     olarak yayinlar (marco_localization/config/lidar_tmini_pro.yaml),
     bu link ile birebir eslesir; ek static TF gerekmez.
+    rpy simdilik 0 0 0 kabuludur. Fiziksel montaj yaw'i /scan_raw ile
+    olculmeden bu donusume tahmini bir aci eklenmemelidir.
     Olculen tarama: 360 derece, 430 nokta, 0.03-12 m, 10 Hz.
     Govde olculeri yaklasiktir, gorsel amacli.
   -->

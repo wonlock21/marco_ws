@@ -3,7 +3,9 @@
 import pytest
 
 from lane_tracking.imgprocess_node import (
+    apply_deadband,
     combine_lane_errors,
+    compute_lane_turn_command,
     enforce_minimum_wheel_speed,
     lane_end_confirmed,
     scale_lane_error,
@@ -56,6 +58,12 @@ def test_olu_band_disinda_tepki_lineer_artiyor():
     assert angular == pytest.approx(-0.0045454545)
 
 
+def test_deadband_merkezde_sifir_kenarda_lineer_artar():
+    assert apply_deadband(0.009, 0.01) == 0.0
+    assert apply_deadband(0.10, 0.01) == pytest.approx((0.10 - 0.01) / 0.99)
+    assert apply_deadband(-0.10, 0.01) == pytest.approx(-(0.10 - 0.01) / 0.99)
+
+
 def test_donuste_yavas_teker_kalkis_esiginin_altina_dusmez():
     angular = 0.040
     separation = 0.460
@@ -105,6 +113,42 @@ def test_birlesik_hata_kamera_kenarinda_sinirlanir():
 
     assert combined == 1.0
     assert angular == pytest.approx(-0.075)
+
+
+def test_offset_heading_modu_yanal_ofset_ve_yonu_birlestirir():
+    mode, offset_term, combined, angular = compute_lane_turn_command(
+        control_mode='offset_heading',
+        normalized_error=0.20,
+        scaled_error=0.19,
+        heading_error=0.30,
+        offset_gain=0.85,
+        heading_gain=0.55,
+        center_deadband_ratio=0.01,
+        max_angular_speed=0.12,
+    )
+
+    assert mode == 'offset_heading'
+    assert offset_term == pytest.approx((0.20 - 0.01) / 0.99)
+    assert combined == pytest.approx(0.85 * offset_term + 0.55 * 0.30)
+    assert angular == pytest.approx(-combined * 0.12)
+
+
+def test_legacy_modu_onceki_birlesimi_korur():
+    mode, position_term, combined, angular = compute_lane_turn_command(
+        control_mode='legacy',
+        normalized_error=0.20,
+        scaled_error=0.25,
+        heading_error=0.40,
+        offset_gain=0.85,
+        heading_gain=0.35,
+        center_deadband_ratio=0.01,
+        max_angular_speed=0.075,
+    )
+
+    assert mode == 'legacy'
+    assert position_term == pytest.approx(0.25)
+    assert combined == pytest.approx(0.39)
+    assert angular == pytest.approx(-0.02925)
 
 
 def test_kamera_acilisindaki_serit_yoklugu_son_sayilmaz():

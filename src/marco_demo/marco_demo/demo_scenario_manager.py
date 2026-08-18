@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Kayitli A/B noktalarina dik segmentlerle giden hareket demosu."""
+"""Kayitli A/B rota grafini Nav2 Route ve FollowPath ile yuruten demo."""
 
+import json
 import math
 import os
 import shutil
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -18,7 +20,7 @@ from lifecycle_msgs.msg import State
 from lifecycle_msgs.srv import GetState
 from marco_msgs.msg import DemoStatus, LocalizationStatus
 from marco_msgs.srv import StartDemoScenario
-from nav2_msgs.action import DriveOnHeading, Spin
+from nav2_msgs.action import ComputeRoute, FollowPath
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
@@ -38,38 +40,87 @@ class DemoAbort(RuntimeError):
     pass
 
 
-def _normalize_angle(angle: float) -> float:
-    return math.atan2(math.sin(angle), math.cos(angle))
+def _same_position(first: Pose2D, second: Pose2D, tolerance: float = 0.02) -> bool:
+    return math.hypot(first.x - second.x, first.y - second.y) <= tolerance
 
 
-def _axis_heading(axis: str, delta: float) -> float:
-    if axis == "x":
-        return 0.0 if delta >= 0.0 else math.pi
-    return math.pi / 2.0 if delta >= 0.0 else -math.pi / 2.0
-
-
-def _preferred_axis_order(
-    x: float,
-    y: float,
-    yaw: float,
-    target_x: float,
-    target_y: float,
-    tolerance: float,
-) -> list[str]:
-    """Ilk donusu en az yapan Manhattan segment sirasini sec."""
-    deltas = {"x": target_x - x, "y": target_y - y}
-    candidates = [
-        axis for axis in ("x", "y") if abs(deltas[axis]) > tolerance
+def _build_route_graph(
+    point_a: Pose2D,
+    point_b: Pose2D,
+    route_a: list[Pose2D],
+    route_b: list[Pose2D],
+) -> tuple[dict, dict[str, int]]:
+    """A rotasi -> A -> B rotasi -> B sirali ve cift yonlu grafi uret."""
+    entries = [
+        *((f"A_ARA_{index}", "transit", point) for index, point in enumerate(route_a, 1)),
+        ("A", "task", point_a),
+        *((f"B_ARA_{index}", "transit", point) for index, point in enumerate(route_b, 1)),
+        ("B", "task", point_b),
     ]
-    if len(candidates) < 2:
-        return candidates
-    candidates.sort(
-        key=lambda axis: (
-            abs(_normalize_angle(_axis_heading(axis, deltas[axis]) - yaw)),
-            -abs(deltas[axis]),
-        )
-    )
-    return candidates
+    compact = []
+    for name, role, point in entries:
+        if compact and _same_position(compact[-1][2], point):
+            if role == "task":
+                compact[-1] = (name, role, point)
+            continue
+        compact.append((name, role, point))
+    if len(compact) < 2:
+        raise DemoAbort("Rota grafi icin en az iki farkli nokta gerekli")
+
+    features = []
+    goal_ids = {}
+    for node_id, (name, role, point) in enumerate(compact):
+        properties = {
+            "id": node_id,
+            "frame": "map",
+            "name": name,
+            "metadata": {"role": role},
+        }
+        features.append({
+            "type": "Feature",
+            "properties": properties,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [point.x, point.y],
+            },
+        })
+        if name in ("A", "B"):
+            goal_ids[name] = node_id
+
+    if set(goal_ids) != {"A", "B"}:
+        raise DemoAbort("A ve B ayni konuma kaydedilemez")
+
+    edge_id = 100
+    for start_id in range(len(compact) - 1):
+        end_id = start_id + 1
+        start = compact[start_id][2]
+        end = compact[end_id][2]
+        for directed_start, directed_end, coordinates in (
+            (start_id, end_id, [[start.x, start.y], [end.x, end.y]]),
+            (end_id, start_id, [[end.x, end.y], [start.x, start.y]]),
+        ):
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "id": edge_id,
+                    "startid": directed_start,
+                    "endid": directed_end,
+                    "cost": 1.0,
+                    "metadata": {"abs_speed_limit": 0.18},
+                },
+                "geometry": {
+                    "type": "MultiLineString",
+                    "coordinates": [coordinates],
+                },
+            })
+            edge_id += 1
+
+    return {
+        "type": "FeatureCollection",
+        "name": "marco_saved_demo_route",
+        "crs": {"type": "name", "properties": {"name": "map"}},
+        "features": features,
+    }, goal_ids
 
 
 class DemoScenarioManager(Node):
@@ -83,9 +134,7 @@ class DemoScenarioManager(Node):
         self.declare_parameter("nav_goal_timeout", 180.0)
         self.declare_parameter("lane_phase_timeout", 120.0)
         self.declare_parameter("handoff_delay", 1.2)
-        self.declare_parameter("linear_speed", 0.18)
         self.declare_parameter("position_tolerance", 0.10)
-        self.declare_parameter("yaw_tolerance", math.radians(5.0))
         self.declare_parameter("obstacle_clear_delay", 0.5)
         self.declare_parameter("obstacle_detection_enabled", True)
 
@@ -167,16 +216,16 @@ class DemoScenarioManager(Node):
             callback_group=self._callbacks,
         )
         self.create_timer(0.5, self._monitor, callback_group=self._callbacks)
-        self._drive = ActionClient(
+        self._compute_route = ActionClient(
             self,
-            DriveOnHeading,
-            "/drive_on_heading",
+            ComputeRoute,
+            "/compute_route",
             callback_group=self._callbacks,
         )
-        self._spin = ActionClient(
+        self._follow_path = ActionClient(
             self,
-            Spin,
-            "/spin",
+            FollowPath,
+            "/follow_path",
             callback_group=self._callbacks,
         )
         # Action endpoint'i lifecycle CONFIGURING asamasinda gorunebilir ve bu
@@ -187,6 +236,11 @@ class DemoScenarioManager(Node):
             "/velocity_smoother/get_state",
             callback_group=self._callbacks,
         )
+        self._route_ready = self.create_client(
+            GetState,
+            "/route_server/get_state",
+            callback_group=self._callbacks,
+        )
         self._tf = Buffer()
         self._tf_listener = TransformListener(self._tf, self)
 
@@ -195,6 +249,10 @@ class DemoScenarioManager(Node):
         self._message = "Demo hazir"
         self._point_a = Pose2D()
         self._point_b = Pose2D()
+        self._route_a = []
+        self._route_b = []
+        self._route_graph_file = ""
+        self._route_goal_ids = {}
         self._active_target = ""
         self._localization_state = LocalizationStatus.STATE_IDLE
         self._localization_field = ""
@@ -341,7 +399,22 @@ class DemoScenarioManager(Node):
         configured = str(self.get_parameter("data_root").value)
         return Path(os.path.expanduser(configured)).resolve()
 
-    def _load_saved_points(self) -> tuple[Pose2D, Pose2D]:
+    @classmethod
+    def _point_from_entry(cls, entry, label: str) -> Pose2D:
+        if not isinstance(entry, dict):
+            raise DemoAbort(f"{label} noktasi gecersiz")
+        values = (entry.get("x"), entry.get("y"), entry.get("theta"))
+        if not all(isinstance(value, (int, float)) for value in values):
+            raise DemoAbort(f"{label} noktasi sayisal degil")
+        point = Pose2D()
+        point.x, point.y, point.theta = (float(value) for value in values)
+        if not cls._valid_point(point):
+            raise DemoAbort(f"{label} noktasi sonlu sayilar icermiyor")
+        return point
+
+    def _load_saved_points(
+        self,
+    ) -> tuple[Pose2D, Pose2D, list[Pose2D], list[Pose2D]]:
         field_name = self._localization_field.strip()
         if not field_name or Path(field_name).name != field_name:
             raise DemoAbort("Aktif lokalizasyon saha adi gecersiz")
@@ -372,19 +445,74 @@ class DemoScenarioManager(Node):
         loaded = []
         for name in ("A", "B"):
             entry = entries.get(name)
-            if not isinstance(entry, dict):
+            if entry is None:
                 raise DemoAbort(f"{name} noktasi kayitli degil")
-            values = (entry.get("x"), entry.get("y"), entry.get("theta"))
-            if not all(isinstance(value, (int, float)) for value in values):
-                raise DemoAbort(f"{name} noktasi sayisal degil")
-            point = Pose2D()
-            point.x, point.y, point.theta = (float(value) for value in values)
-            if not self._valid_point(point):
-                raise DemoAbort(f"{name} noktasi sonlu sayilar icermiyor")
-            loaded.append(point)
-        return loaded[0], loaded[1]
+            loaded.append(self._point_from_entry(entry, name))
 
-    def _begin_demo(self, point_a: Pose2D, point_b: Pose2D) -> str:
+        routes = content.get("routes", {})
+        if routes is None:
+            routes = {}
+        if not isinstance(routes, dict):
+            raise DemoAbort("demo_points.yaml routes alani gecersiz")
+        loaded_routes = []
+        for target_name in ("A", "B"):
+            route = routes.get(target_name, [])
+            if not isinstance(route, list):
+                raise DemoAbort(f"{target_name} rotasi liste degil")
+            loaded_routes.append([
+                self._point_from_entry(entry, f"{target_name} rota {index + 1}")
+                for index, entry in enumerate(route)
+            ])
+        return loaded[0], loaded[1], loaded_routes[0], loaded_routes[1]
+
+    def _write_route_graph(
+        self,
+        point_a: Pose2D,
+        point_b: Pose2D,
+        route_a: list[Pose2D],
+        route_b: list[Pose2D],
+    ) -> tuple[str, dict[str, int]]:
+        field_name = self._localization_field.strip()
+        if not field_name or Path(field_name).name != field_name:
+            raise DemoAbort("Aktif lokalizasyon saha adi gecersiz")
+        root = self._data_root()
+        field_dir = (root / field_name).resolve()
+        if field_dir.parent != root or not field_dir.is_dir():
+            raise DemoAbort(f"Aktif saha klasoru bulunamadi: {field_dir}")
+        graph_path = field_dir / "demo_route.geojson"
+        if graph_path.is_symlink():
+            raise DemoAbort("demo_route.geojson sembolik bag olamaz")
+
+        graph, goal_ids = _build_route_graph(
+            point_a, point_b, route_a, route_b
+        )
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=".demo_route.", suffix=".tmp", dir=str(field_dir)
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                json.dump(graph, stream, ensure_ascii=False, indent=2)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, graph_path)
+        except Exception:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            temporary.unlink(missing_ok=True)
+            raise
+        return str(graph_path), goal_ids
+
+    def _begin_demo(
+        self,
+        point_a: Pose2D,
+        point_b: Pose2D,
+        route_a: list[Pose2D] | None = None,
+        route_b: list[Pose2D] | None = None,
+    ) -> str:
         with self._lock:
             if self._state not in (
                 DemoStatus.STATE_IDLE,
@@ -417,9 +545,22 @@ class DemoScenarioManager(Node):
                 raise DemoAbort(self._message)
             self._point_a = self._copy_point(point_a)
             self._point_b = self._copy_point(point_b)
+            self._route_a = [self._copy_point(point) for point in route_a or []]
+            self._route_b = [self._copy_point(point) for point in route_b or []]
+            try:
+                self._route_graph_file, self._route_goal_ids = (
+                    self._write_route_graph(
+                        self._point_a,
+                        self._point_b,
+                        self._route_a,
+                        self._route_b,
+                    )
+                )
+            except (OSError, TypeError, ValueError) as error:
+                raise DemoAbort(f"Demo rota grafi yazilamadi: {error}") from error
             self._cancel_requested = False
             self._turn_finishing = False
-            self._start_nav_process()
+            self._start_nav_process(self._route_graph_file)
             self._set_state(
                 DemoStatus.STATE_STARTING, "Demo Nav2 sunuculari baslatiliyor"
             )
@@ -428,7 +569,11 @@ class DemoScenarioManager(Node):
                 args=("A", self._point_a),
                 daemon=True,
             ).start()
-            return "A/B dik hareket demo senaryosu baslatildi"
+            return (
+                "A/B kayitli rota demo senaryosu baslatildi; "
+                f"A ara nokta={len(self._route_a)}, "
+                f"B ara nokta={len(self._route_b)}"
+            )
 
     def _on_start(self, request, response):
         try:
@@ -445,8 +590,10 @@ class DemoScenarioManager(Node):
 
     def _on_start_saved(self, _request, response):
         try:
-            point_a, point_b = self._load_saved_points()
-            response.message = self._begin_demo(point_a, point_b)
+            point_a, point_b, route_a, route_b = self._load_saved_points()
+            response.message = self._begin_demo(
+                point_a, point_b, route_a, route_b
+            )
             response.success = True
         except DemoAbort as error:
             response.success = False
@@ -470,7 +617,7 @@ class DemoScenarioManager(Node):
             self._cancel_requested = False
             self._set_state(
                 DemoStatus.STATE_NAVIGATING_B,
-                "B noktasina dik hareket hazirlaniyor",
+                "B noktasina Nav2 rota hareketi hazirlaniyor",
                 "B",
             )
             threading.Thread(
@@ -479,7 +626,7 @@ class DemoScenarioManager(Node):
                 daemon=True,
             ).start()
             response.success = True
-            response.message = "Yuk onayi alindi; B noktasina dik rota basladi"
+            response.message = "Yuk onayi alindi; B Nav2 rotasi basladi"
             return response
 
     def _on_cancel(self, _request, response):
@@ -509,10 +656,16 @@ class DemoScenarioManager(Node):
             raise DemoAbort("ros2 komutu PATH icinde bulunamadi")
         return executable
 
-    def _start_nav_process(self) -> None:
+    def _start_nav_process(self, graph_file: str) -> None:
         try:
             self._nav_process = subprocess.Popen(
-                [self._ros2(), "launch", "marco_demo", "demo_nav2.launch.py"],
+                [
+                    self._ros2(),
+                    "launch",
+                    "marco_demo",
+                    "demo_nav2.launch.py",
+                    f"graph:={graph_file}",
+                ],
                 start_new_session=True,
             )
         except OSError as error:
@@ -550,24 +703,47 @@ class DemoScenarioManager(Node):
 
     def _wait_nav2_active(self, timeout: float) -> None:
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
+        pending = {
+            "Nav2": self._nav_ready,
+            "Route Server": self._route_ready,
+        }
+        while pending and time.monotonic() < deadline:
             if self._cancel_requested:
                 raise DemoAbort("Demo iptal edildi")
-            remaining = deadline - time.monotonic()
-            if not self._nav_ready.wait_for_service(
-                timeout_sec=min(0.5, max(0.0, remaining))
-            ):
-                continue
-            future = self._nav_ready.call_async(GetState.Request())
-            response = self._wait_future(
-                future,
-                min(deadline, time.monotonic() + 2.0),
-                "Nav2 lifecycle durumu",
-            )
-            if response.current_state.id == State.PRIMARY_STATE_ACTIVE:
-                return
-            time.sleep(0.1)
-        raise DemoAbort("Nav2 dugumleri ACTIVE durumuna gecemedi")
+            for label, client in list(pending.items()):
+                remaining = deadline - time.monotonic()
+                if not client.wait_for_service(
+                    timeout_sec=min(0.25, max(0.0, remaining))
+                ):
+                    continue
+                future = client.call_async(GetState.Request())
+                query_deadline = min(deadline, time.monotonic() + 5.0)
+                while not future.done() and time.monotonic() < query_deadline:
+                    if self._cancel_requested:
+                        future.cancel()
+                        raise DemoAbort("Demo iptal edildi")
+                    time.sleep(0.05)
+                if not future.done():
+                    # Lifecycle dugumu configure gecisindeyken get_state yaniti
+                    # gecikebilir. Tek bir yavas sorgu tum Nav2 baslatmayi iptal
+                    # etmemeli; genel nav_startup_timeout dolana kadar yeniden dene.
+                    future.cancel()
+                    continue
+                try:
+                    response = future.result()
+                except Exception as error:  # noqa: BLE001 - ROS future hatasi
+                    self.get_logger().warning(
+                        f"{label} lifecycle durumu okunamadi; tekrar denenecek: "
+                        f"{error}"
+                    )
+                    continue
+                if response.current_state.id == State.PRIMARY_STATE_ACTIVE:
+                    pending.pop(label)
+            if pending:
+                time.sleep(0.1)
+        if pending:
+            names = ", ".join(pending)
+            raise DemoAbort(f"ACTIVE durumuna gecemeyen dugumler: {names}")
 
     def _lookup_map_pose(self, timeout: float = 3.0) -> tuple[float, float, float]:
         deadline = time.monotonic() + timeout
@@ -600,12 +776,6 @@ class DemoScenarioManager(Node):
             time.sleep(0.05)
         raise DemoAbort(f"map -> base_footprint TF alinamadi: {last_error}")
 
-    @staticmethod
-    def _set_allowance(goal, seconds: float) -> None:
-        whole = max(1, int(math.ceil(seconds)))
-        goal.time_allowance.sec = whole
-        goal.time_allowance.nanosec = 0
-
     def _wait_obstacle_clear(self) -> None:
         if not self._obstacles_enabled():
             return
@@ -627,7 +797,7 @@ class DemoScenarioManager(Node):
             else:
                 return
 
-    def _run_action(self, client, goal, label: str) -> int:
+    def _run_action_wrapped(self, client, goal, label: str):
         timeout = float(self.get_parameter("nav_goal_timeout").value)
         deadline = time.monotonic() + timeout
         handle = self._wait_future(
@@ -642,129 +812,72 @@ class DemoScenarioManager(Node):
             )
         finally:
             self._active_goal = None
-        return wrapped.status
+        return wrapped
 
-    def _spin_to(self, target_yaw: float, label: str) -> None:
-        tolerance = float(self.get_parameter("yaw_tolerance").value)
-        for attempt in range(4):
-            self._wait_obstacle_clear()
-            _x, _y, current_yaw = self._lookup_map_pose()
-            delta = _normalize_angle(target_yaw - current_yaw)
-            if abs(delta) <= tolerance:
-                return
-            goal = Spin.Goal()
-            goal.target_yaw = float(delta)
-            self._set_allowance(
-                goal, float(self.get_parameter("nav_goal_timeout").value)
-            )
-            status = self._run_action(self._spin, goal, label)
-            if status == GoalStatus.STATUS_SUCCEEDED:
-                continue
-            recent_obstacle = (
-                self._obstacle_active()
-                or time.monotonic() - self._last_obstacle_at < 2.0
-            )
-            if not recent_obstacle:
-                raise DemoAbort(f"{label} basarisiz; action status={status}")
-            self._wait_obstacle_clear()
-        _x, _y, current_yaw = self._lookup_map_pose()
-        error = abs(_normalize_angle(target_yaw - current_yaw))
-        if error > tolerance:
-            raise DemoAbort(f"{label} yon toleransina ulasamadi")
+    def _run_action(self, client, goal, label: str) -> int:
+        return self._run_action_wrapped(client, goal, label).status
 
-    def _drive_axis(
-        self, axis: str, target_coordinate: float, target_name: str
-    ) -> None:
-        tolerance = float(self.get_parameter("position_tolerance").value)
-        speed = float(self.get_parameter("linear_speed").value)
-        if not math.isfinite(speed) or speed <= 0.0:
-            raise DemoAbort("Demo linear_speed pozitif olmali")
-        for attempt in range(4):
-            self._wait_obstacle_clear()
-            x, y, _yaw = self._lookup_map_pose()
-            current = x if axis == "x" else y
-            delta = target_coordinate - current
-            if abs(delta) <= tolerance:
-                return
-            heading = _axis_heading(axis, delta)
-            axis_name = "X" if axis == "x" else "Y"
-            self._spin_to(
-                heading, f"{target_name} {axis_name} eksenine donus"
-            )
-            x, y, _yaw = self._lookup_map_pose()
-            current = x if axis == "x" else y
-            remaining = abs(target_coordinate - current)
-            if remaining <= tolerance:
-                return
+    def _move_nav2_route(self, target_name: str, point: Pose2D) -> None:
+        self._wait_obstacle_clear()
+        goal_id = self._route_goal_ids.get(target_name)
+        if goal_id is None:
+            raise DemoAbort(f"{target_name} rota hedefi graf icinde yok")
 
-            goal = DriveOnHeading.Goal()
-            goal.target.x = float(remaining)
-            goal.speed = float(speed)
-            allowance = max(
-                float(self.get_parameter("nav_goal_timeout").value),
-                remaining / speed + 30.0,
-            )
-            self._set_allowance(goal, allowance)
-            status = self._run_action(
-                self._drive,
-                goal,
-                f"{target_name} {axis_name} duz segment",
-            )
-            if status == GoalStatus.STATUS_SUCCEEDED:
-                continue
-            recent_obstacle = (
-                self._obstacle_active()
-                or time.monotonic() - self._last_obstacle_at < 2.0
-            )
-            if not recent_obstacle:
-                raise DemoAbort(
-                    f"{target_name} {axis_name} segmenti basarisiz; "
-                    f"action status={status}"
-                )
-            self._wait_obstacle_clear()
-        x, y, _yaw = self._lookup_map_pose()
-        error = abs(target_coordinate - (x if axis == "x" else y))
-        if error > tolerance:
-            raise DemoAbort(
-                f"{target_name} {axis.upper()} ekseni toleransina ulasamadi"
-            )
-
-    def _move_orthogonal(self, target_name: str, point: Pose2D) -> None:
-        tolerance = float(self.get_parameter("position_tolerance").value)
-        x, y, yaw = self._lookup_map_pose()
-        order = _preferred_axis_order(
-            x, y, yaw, point.x, point.y, tolerance
+        route_goal = ComputeRoute.Goal()
+        route_goal.goal_id = int(goal_id)
+        route_goal.use_start = False
+        route_goal.use_poses = False
+        route_result = self._run_action_wrapped(
+            self._compute_route,
+            route_goal,
+            f"{target_name} rota hesaplama",
         )
-        if order:
-            self.get_logger().info(
-                f"{target_name} dik rota sirasi: "
-                + " -> ".join(axis.upper() for axis in order)
+        if route_result.status != GoalStatus.STATUS_SUCCEEDED:
+            raise DemoAbort(
+                f"{target_name} rotasi hesaplanamadi; "
+                f"action status={route_result.status}"
             )
-        else:
-            self.get_logger().info(
-                f"{target_name} konumu zaten tolerans icinde"
-            )
-        for axis in order:
-            coordinate = point.x if axis == "x" else point.y
-            self._drive_axis(axis, coordinate, target_name)
 
-        # Diferansiyel suruste kalan kucuk eksen hatasini en fazla iki kez duzelt.
-        for _attempt in range(2):
-            x, y, _yaw = self._lookup_map_pose()
-            errors = {"x": point.x - x, "y": point.y - y}
-            if math.hypot(errors["x"], errors["y"]) <= tolerance:
-                break
-            axis = max(errors, key=lambda name: abs(errors[name]))
-            coordinate = point.x if axis == "x" else point.y
-            self._drive_axis(axis, coordinate, target_name)
+        path = route_result.result.path
+        if path.header.frame_id not in ("", "map") or len(path.poses) < 2:
+            raise DemoAbort(f"{target_name} icin gecerli rota yolu uretilmedi")
+        path.header.frame_id = "map"
+        for pose in path.poses:
+            pose.header.frame_id = "map"
+        path.poses[-1].pose.orientation.x = 0.0
+        path.poses[-1].pose.orientation.y = 0.0
+        path.poses[-1].pose.orientation.z = math.sin(point.theta / 2.0)
+        path.poses[-1].pose.orientation.w = math.cos(point.theta / 2.0)
+
+        node_count = len(route_result.result.route.nodes)
+        edge_count = len(route_result.result.route.edges)
+        self._set_state(
+            self._state,
+            f"{target_name} Nav2 rotasi izleniyor: "
+            f"{node_count} dugum, {edge_count} kenar",
+            target_name,
+        )
+        follow_goal = FollowPath.Goal()
+        follow_goal.path = path
+        follow_goal.controller_id = "FollowPath"
+        self._wait_obstacle_clear()
+        status = self._run_action(
+            self._follow_path,
+            follow_goal,
+            f"{target_name} rota takibi",
+        )
+        if status != GoalStatus.STATUS_SUCCEEDED:
+            raise DemoAbort(
+                f"{target_name} rotasi takip edilemedi; action status={status}"
+            )
 
         x, y, _yaw = self._lookup_map_pose()
+        tolerance = float(self.get_parameter("position_tolerance").value)
         error = math.hypot(point.x - x, point.y - y)
         if error > tolerance * 1.5:
             raise DemoAbort(
                 f"{target_name} konum toleransina ulasamadi: {error:.3f} m"
             )
-        self._spin_to(point.theta, f"{target_name} serit yonune donus")
 
     def _navigate_then_lane(self, target_name: str, point: Pose2D) -> None:
         try:
@@ -772,10 +885,12 @@ class DemoScenarioManager(Node):
                 self.get_parameter("nav_startup_timeout").value
             )
             self._wait_nav2_active(startup_timeout)
-            if not self._drive.wait_for_server(timeout_sec=startup_timeout):
-                raise DemoAbort("drive_on_heading action sunucusu hazir olmadi")
-            if not self._spin.wait_for_server(timeout_sec=startup_timeout):
-                raise DemoAbort("spin action sunucusu hazir olmadi")
+            if not self._compute_route.wait_for_server(
+                timeout_sec=startup_timeout
+            ):
+                raise DemoAbort("compute_route action sunucusu hazir olmadi")
+            if not self._follow_path.wait_for_server(timeout_sec=startup_timeout):
+                raise DemoAbort("follow_path action sunucusu hazir olmadi")
             state = (
                 DemoStatus.STATE_NAVIGATING_A
                 if target_name == "A"
@@ -783,10 +898,10 @@ class DemoScenarioManager(Node):
             )
             self._set_state(
                 state,
-                f"{target_name} noktasina dik segmentlerle gidiliyor",
+                f"{target_name} noktasina Nav2 rota grafi ile gidiliyor",
                 target_name,
             )
-            self._move_orthogonal(target_name, point)
+            self._move_nav2_route(target_name, point)
             delay = max(0.0, float(self.get_parameter("handoff_delay").value))
             end = time.monotonic() + delay
             while time.monotonic() < end:

@@ -22,19 +22,24 @@ imgprocess_node:
     qr_linear_speed: 0.10
     # Duzlukte ilk 0.20 m/s degerinin ucte biri. Donus keskinlestikce
     # lane_min_linear_speed seviyesine dogrusal olarak iner.
-    lane_linear_speed: 0.060
-    lane_min_linear_speed: 0.016
+    lane_linear_speed: 0.050
+    lane_min_linear_speed: 0.015
     # Dusuk geciren filtre: kucuk deger daha yumusak, fakat daha gec tepki verir.
-    lane_steering_alpha: 0.24
+    lane_steering_alpha: 0.25
     # Onceki sert donusu merkezde tasimamak icin azaltma/yon degisiminde hizli
     # sondurme. Yalniz hedef acisal hiz kuculurken devreye girer.
     lane_steering_release_alpha: 0.60
     # Tam kamera genisliginde lineer kontrol. 0.01, 640 px goruntude merkez
     # cevresinde yaklasik +/-3 px gibi dar bir olu bolge birakir.
     lane_center_deadband_ratio: 0.01
-    # Alt banttaki yanal hata ile ust banttaki serit yonunu birlestirir.
-    # Bu sayede serit kadrajdan cikmadan donus daha erken baslar.
-    lane_heading_gain: 0.35
+    # Serit denetleyici modu:
+    # - offset_heading: alt bant yanal ofset + ust bant yon bilgisi
+    # - legacy: onceki merkezlenmis hata + yon birlestirme mantigi
+    lane_control_mode: offset_heading
+    # Yanal ofset agirligi. Buyudukce arac merkeze daha istekli doner.
+    lane_offset_gain: 0.85
+    # Ust banttaki serit yonunun agirligi. Buyudukce donus daha erken baslar.
+    lane_heading_gain: 0.55
     # Yaklasik 30 FPS'te 100 ms'lik tekil algilama kayiplarini tolere eder;
     # dorduncu kayip karede motor komutu guvenli bicimde sifirlanir.
     lane_loss_hold_frames: 3
@@ -46,14 +51,14 @@ imgprocess_node:
     # islenir; value_max parlak zemin dokularini maske disinda tutar.
     lane_adaptive_value_max: 140
     lane_adaptive_block_size: 81
-    lane_adaptive_offset: 18
+    lane_adaptive_offset: 20
     # Gercek motorlar yaklasik 50 mm/s altinda statik surtunmeyi asamiyor.
     # Donuste ortak ileri hiz, yavas teker bu esigin altina dusmeyecek kadar
     # otomatik yukseltilir. wheel_separation base_driver ile ayni olmalidir.
-    lane_min_wheel_speed: 0.055
+    lane_min_wheel_speed: 0.000
     wheel_separation: 0.460
     # Uzak konumlarda donus yetkisi; merkezdeki komut hala lineer ve sakindir.
-    max_angular_speed: 0.075
+    max_angular_speed: 0.120
 
 turnaround_node:
   ros__parameters:

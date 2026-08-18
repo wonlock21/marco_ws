@@ -42,6 +42,16 @@ def scale_lane_error(
     return normalized_error, scaled_error, target_angular
 
 
+def apply_deadband(value, deadband_ratio=0.01):
+    """Normalize edilmis sinyalde kucuk merkez hatalarini sifirla."""
+    deadband = max(0.0, min(0.95, float(deadband_ratio)))
+    magnitude = abs(float(value))
+    if magnitude <= deadband:
+        return 0.0
+    scaled_magnitude = (magnitude - deadband) / (1.0 - deadband)
+    return -scaled_magnitude if float(value) < 0.0 else scaled_magnitude
+
+
 def enforce_minimum_wheel_speed(
         linear_speed, angular_speed, wheel_separation,
         minimum_wheel_speed):
@@ -61,6 +71,27 @@ def combine_lane_errors(
         float(position_error) + float(heading_gain) * float(heading_error),
     ))
     return combined_error, -combined_error * float(max_angular_speed)
+
+
+def compute_lane_turn_command(
+        control_mode, normalized_error, scaled_error, heading_error,
+        offset_gain, heading_gain, center_deadband_ratio,
+        max_angular_speed):
+    """Serit hatalarindan hedef acisal hiz uret."""
+    mode = str(control_mode).strip().lower()
+    if mode == 'legacy':
+        combined_error, target_angular = combine_lane_errors(
+            scaled_error, heading_error, heading_gain, max_angular_speed)
+        return 'legacy', scaled_error, combined_error, target_angular
+
+    offset_term = apply_deadband(normalized_error, center_deadband_ratio)
+    combined_error = max(-1.0, min(
+        1.0,
+        float(offset_gain) * float(offset_term)
+        + float(heading_gain) * float(heading_error),
+    ))
+    target_angular = -combined_error * float(max_angular_speed)
+    return 'offset_heading', offset_term, combined_error, target_angular
 
 
 def lane_end_confirmed(
@@ -97,6 +128,10 @@ class ImgProcessNode(Node):
             self.get_parameter('lane_steering_release_alpha').value)
         self.lane_center_deadband_ratio = float(
             self.get_parameter('lane_center_deadband_ratio').value)
+        self.lane_control_mode = str(
+            self.get_parameter('lane_control_mode').value).strip().lower()
+        self.lane_offset_gain = float(
+            self.get_parameter('lane_offset_gain').value)
         self.lane_heading_gain = float(
             self.get_parameter('lane_heading_gain').value)
         self.lane_loss_hold_frames = int(
@@ -189,6 +224,8 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_steering_alpha', 0.25)
         self.declare_parameter('lane_steering_release_alpha', 0.60)
         self.declare_parameter('lane_center_deadband_ratio', 0.01)
+        self.declare_parameter('lane_control_mode', 'offset_heading')
+        self.declare_parameter('lane_offset_gain', 0.85)
         self.declare_parameter('lane_heading_gain', 0.35)
         self.declare_parameter('lane_loss_hold_frames', 3)
         # Serit, yeni bir takip oturumunda yeterince gorulmeden "son" karari
@@ -340,9 +377,15 @@ class ImgProcessNode(Node):
             error, half_frame_width, self.max_angular_speed,
             self.lane_center_deadband_ratio)
         heading_error = self.lane_tracker.last_heading_error
-        combined_error, target_angular = combine_lane_errors(
-            scaled_error, heading_error, self.lane_heading_gain,
-            self.max_angular_speed)
+        control_mode, position_term, combined_error, target_angular = (
+            compute_lane_turn_command(
+                self.lane_control_mode, normalized_error, scaled_error,
+                heading_error, self.lane_offset_gain,
+                self.lane_heading_gain,
+                self.lane_center_deadband_ratio,
+                self.max_angular_speed,
+            )
+        )
         alpha = max(0.0, min(1.0, self.lane_steering_alpha))
         releasing = (
             abs(target_angular) < abs(self.filtered_lane_angular)
@@ -378,7 +421,8 @@ class ImgProcessNode(Node):
             float(linear_speed), float(self.filtered_lane_angular))
         self.get_logger().info(
             f'[SERIT] hata={error:+.1f} px ({normalized_error:+.1%}) | '
-            f'merkez={scaled_error:+.1%} | '
+            f'mod={control_mode} | '
+            f'merkez={position_term:+.1%} | '
             f'yon={heading_error:+.1%} | '
             f'birlesik={combined_error:+.1%} | '
             f'hedef_w={target_angular:+.3f} rad/s | '

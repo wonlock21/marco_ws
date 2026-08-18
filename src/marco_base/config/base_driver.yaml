@@ -29,7 +29,7 @@ marco_base_driver:
     # Fiziksel merkez mesafesi 0.460 m; 07.08.2026 saha 360 derece
     # kalibrasyonlarinin (0.4280, 0.4247, 0.4092 m) ortalamasi odometri icin
     # etkin 0.421 m verdi. URDF fiziksel geometriyi 0.460 m olarak korur.
-    wheel_separation: 0.421
+    wheel_separation: 0.460
     # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
     ticks_per_revolution: 360
     max_wheel_speed: 0.838
@@ -45,6 +45,12 @@ marco_base_driver:
     # /cmd_vel susarsa arac durur. STM32 watchdog'u (200 ms) son savunma
     # hatti; bu deger normal isleyisteki ilk hat.
     cmd_vel_timeout: 0.5
+
+    # Her STM32 odometri paketindeki gercek teker hizini, son gonderilen hedef
+    # ile birlikte CSV'ye yazar. Terminal cikisi analiz icin 2 Hz ile sinirli.
+    wheel_measurement_log_enabled: true
+    wheel_measurement_log_directory: ~/.ros/marco_wheel_logs
+    wheel_measurement_terminal_rate_hz: 2.0
 
     # --- Cerceveler ---
     odom_frame: odom

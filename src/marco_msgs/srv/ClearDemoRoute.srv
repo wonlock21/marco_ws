@@ -1,0 +1,6 @@
+# A veya B hedefine ait kayitli ara/donus noktalarini temizle.
+string target_name
+---
+bool success
+string message
+string points_file

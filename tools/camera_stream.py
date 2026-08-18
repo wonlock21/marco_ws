@@ -10,8 +10,6 @@ from urllib.parse import parse_qs, urlparse
 
 import cv2
 
-from lane_tracking.lane_detector import LaneDetector
-
 
 INDEX_HTML = """<!doctype html>
 <html lang="tr">
@@ -32,7 +30,12 @@ INDEX_HTML = """<!doctype html>
 class Camera:
     def __init__(self, device, width, height, fps, quality, lane_overlay):
         self.quality = quality
-        self.lane_detector = LaneDetector(use_opencl=True) if lane_overlay else None
+        if lane_overlay:
+            from lane_tracking.lane_detector import LaneDetector
+
+            self.lane_detector = LaneDetector(use_opencl=True)
+        else:
+            self.lane_detector = None
         self.condition = threading.Condition()
         self.frame = None
         self.sequence = 0

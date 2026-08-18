@@ -138,6 +138,7 @@ def _kur(context, *args, **kwargs):
         executable="map_preview.py",
         name="map_preview",
         output="screen",
+        parameters=[{"tf_pose_source": "amcl"}],
     )
 
     mesajlar = [

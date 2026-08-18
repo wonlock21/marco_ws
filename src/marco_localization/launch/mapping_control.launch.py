@@ -88,6 +88,29 @@ def generate_launch_description() -> LaunchDescription:
             ),
         }],
     )
+    buzzer_driver = Node(
+        package="marco_localization",
+        executable="buzzer_driver.py",
+        name="buzzer_driver",
+        output="screen",
+        parameters=[{
+            "wpi_pin": ParameterValue(
+                LaunchConfiguration("buzzer_wpi_pin"), value_type=int
+            ),
+            "active_high": ParameterValue(
+                LaunchConfiguration("buzzer_active_high"), value_type=bool
+            ),
+            "on_time_s": ParameterValue(
+                LaunchConfiguration("buzzer_on_time"), value_type=float
+            ),
+            "off_time_s": ParameterValue(
+                LaunchConfiguration("buzzer_off_time"), value_type=float
+            ),
+            "dry_run": ParameterValue(
+                LaunchConfiguration("buzzer_dry_run"), value_type=bool
+            ),
+        }],
+    )
     return LaunchDescription([
         DeclareLaunchArgument("sahte", default_value="false"),
         DeclareLaunchArgument("imu", default_value="true"),
@@ -111,8 +134,15 @@ def generate_launch_description() -> LaunchDescription:
         ),
         DeclareLaunchArgument("turn_direction", default_value="1"),
         DeclareLaunchArgument("rosbridge_port", default_value="9090"),
+        # Orange Pi 5 Plus fiziksel pin 7 = GPIO1_D6 = wiringOP pin 2.
+        DeclareLaunchArgument("buzzer_wpi_pin", default_value="2"),
+        DeclareLaunchArgument("buzzer_active_high", default_value="true"),
+        DeclareLaunchArgument("buzzer_on_time", default_value="0.40"),
+        DeclareLaunchArgument("buzzer_off_time", default_value="0.25"),
+        DeclareLaunchArgument("buzzer_dry_run", default_value="false"),
         bridge,
         manager,
         localization_manager,
         demo_manager,
+        buzzer_driver,
     ])

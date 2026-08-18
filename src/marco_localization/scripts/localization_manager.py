@@ -17,7 +17,13 @@ import rclpy
 import yaml
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
 from marco_msgs.msg import FieldInfo, LocalizationStatus, MappingStatus
-from marco_msgs.srv import ListFields, SaveDemoPoint, StartLocalization
+from marco_msgs.srv import (
+    ClearDemoRoute,
+    ListFields,
+    SaveDemoPoint,
+    SaveDemoRoutePoint,
+    StartLocalization,
+)
 from nav_msgs.msg import OccupancyGrid
 from rclpy.executors import ExternalShutdownException
 from rclpy.duration import Duration
@@ -79,6 +85,14 @@ class LocalizationManager(Node):
         self.create_service(ListFields, "/fields/list", self._on_list_fields)
         self.create_service(
             SaveDemoPoint, "/demo/point/save", self._on_save_demo_point
+        )
+        self.create_service(
+            SaveDemoRoutePoint,
+            "/demo/route/point/save",
+            self._on_save_demo_route_point,
+        )
+        self.create_service(
+            ClearDemoRoute, "/demo/route/clear", self._on_clear_demo_route
         )
         self.create_service(Trigger, "/localization/stop", self._on_stop)
         self.create_timer(0.5, self._monitor_process)
@@ -449,24 +463,15 @@ class LocalizationManager(Node):
             temporary.unlink(missing_ok=True)
             raise
 
-    def _on_save_demo_point(self, request, response):
-        point_name = request.point_name.strip().upper()
-        if point_name not in ("A", "B"):
-            response.success = False
-            response.message = "Demo noktasi yalnizca A veya B olabilir"
-            return response
+    def _active_demo_pose(self) -> tuple[Pose2D | None, str]:
         if (
             self._state != LocalizationStatus.STATE_LOCALIZING
             or self._process is None
             or self._process.poll() is not None
         ):
-            response.success = False
-            response.message = "Nokta kaydetmek icin aktif lokalizasyon gerekli"
-            return response
+            return None, "Nokta kaydetmek icin aktif lokalizasyon gerekli"
         if self._latest_amcl_pose is None:
-            response.success = False
-            response.message = "Bu lokalizasyon oturumunda henuz AMCL pozu alinmadi"
-            return response
+            return None, "Bu lokalizasyon oturumunda henuz AMCL pozu alinmadi"
 
         msg = self._latest_amcl_pose
         position = msg.pose.pose.position
@@ -480,54 +485,83 @@ class LocalizationManager(Node):
             orientation.w,
         )
         if not all(math.isfinite(value) for value in values):
-            response.success = False
-            response.message = "Guncel AMCL pozu sonlu sayilar icermiyor"
-            return response
+            return None, "Guncel AMCL pozu sonlu sayilar icermiyor"
         norm = math.sqrt(sum(value * value for value in values[2:]))
         if norm < 1.0e-6:
-            response.success = False
-            response.message = "Guncel AMCL yonelimi gecersiz"
-            return response
+            return None, "Guncel AMCL yonelimi gecersiz"
 
         point = Pose2D()
         point.x = float(position.x)
         point.y = float(position.y)
         point.theta = float(self._yaw_of(orientation))
+        return point, ""
+
+    def _demo_points_path(self) -> tuple[Path | None, str]:
         field_dir = Path(self._map_yaml).resolve().parent
         root = self._data_root()
         if field_dir.parent != root or field_dir.name != self._field_name:
-            response.success = False
-            response.message = "Aktif saha dizini data_root ile uyusmuyor"
-            return response
+            return None, "Aktif saha dizini data_root ile uyusmuyor"
         points_file = field_dir / "demo_points.yaml"
         if points_file.is_symlink():
-            response.success = False
-            response.message = "demo_points.yaml sembolik bag olamaz"
-            return response
+            return None, "demo_points.yaml sembolik bag olamaz"
+        return points_file, ""
 
+    def _load_demo_points_content(self, points_file: Path) -> dict:
         content = {
-            "version": 1,
+            "version": 2,
             "frame_id": "map",
             "field_name": self._field_name,
             "points": {},
+            "routes": {"A": [], "B": []},
         }
-        try:
-            if points_file.exists():
-                with points_file.open("r", encoding="utf-8") as stream:
-                    loaded = yaml.safe_load(stream) or {}
-                if not isinstance(loaded, dict):
-                    raise ValueError("demo_points.yaml kok alani sozluk degil")
-                if loaded.get("field_name", self._field_name) != self._field_name:
-                    raise ValueError("demo_points.yaml farkli bir sahaya ait")
-                loaded_points = loaded.get("points", {})
-                if not isinstance(loaded_points, dict):
-                    raise ValueError("demo_points.yaml points alani sozluk degil")
-                content = loaded
-                content["version"] = 1
-                content["frame_id"] = "map"
-                content["field_name"] = self._field_name
-                content["points"] = loaded_points
+        if points_file.exists():
+            with points_file.open("r", encoding="utf-8") as stream:
+                loaded = yaml.safe_load(stream) or {}
+            if not isinstance(loaded, dict):
+                raise ValueError("demo_points.yaml kok alani sozluk degil")
+            if loaded.get("field_name", self._field_name) != self._field_name:
+                raise ValueError("demo_points.yaml farkli bir sahaya ait")
+            loaded_points = loaded.get("points", {})
+            if not isinstance(loaded_points, dict):
+                raise ValueError("demo_points.yaml points alani sozluk degil")
+            loaded_routes = loaded.get("routes", {})
+            if not isinstance(loaded_routes, dict):
+                raise ValueError("demo_points.yaml routes alani sozluk degil")
+            for target_name in ("A", "B"):
+                route = loaded_routes.get(target_name, [])
+                if not isinstance(route, list):
+                    raise ValueError(
+                        f"demo_points.yaml {target_name} rotasi liste degil"
+                    )
+            content = loaded
+            content["points"] = loaded_points
+            content["routes"] = {
+                "A": list(loaded_routes.get("A", [])),
+                "B": list(loaded_routes.get("B", [])),
+            }
+        content["version"] = 2
+        content["frame_id"] = "map"
+        content["field_name"] = self._field_name
+        return content
 
+    def _on_save_demo_point(self, request, response):
+        point_name = request.point_name.strip().upper()
+        if point_name not in ("A", "B"):
+            response.success = False
+            response.message = "Demo noktasi yalnizca A veya B olabilir"
+            return response
+        point, error = self._active_demo_pose()
+        if point is None:
+            response.success = False
+            response.message = error
+            return response
+        points_file, error = self._demo_points_path()
+        if points_file is None:
+            response.success = False
+            response.message = error
+            return response
+        try:
+            content = self._load_demo_points_content(points_file)
             content["points"][point_name] = {
                 "x": point.x,
                 "y": point.y,
@@ -547,6 +581,76 @@ class LocalizationManager(Node):
         )
         response.pose = point
         response.points_file = str(points_file)
+        self.get_logger().info(response.message)
+        return response
+
+    def _on_save_demo_route_point(self, request, response):
+        target_name = request.target_name.strip().upper()
+        if target_name not in ("A", "B"):
+            response.success = False
+            response.message = "Rota hedefi yalnizca A veya B olabilir"
+            return response
+        point, error = self._active_demo_pose()
+        if point is None:
+            response.success = False
+            response.message = error
+            return response
+        points_file, error = self._demo_points_path()
+        if points_file is None:
+            response.success = False
+            response.message = error
+            return response
+        try:
+            content = self._load_demo_points_content(points_file)
+            route = content["routes"][target_name]
+            route.append({
+                "x": point.x,
+                "y": point.y,
+                "theta": point.theta,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            })
+            self._write_yaml_atomic(points_file, content)
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            response.success = False
+            response.message = f"Demo rota noktasi kaydedilemedi: {error}"
+            return response
+
+        response.success = True
+        response.route_index = len(route) - 1
+        response.pose = point
+        response.points_file = str(points_file)
+        response.message = (
+            f"{target_name} rotasi ara nokta {response.route_index + 1} "
+            f"kaydedildi: x={point.x:.3f}, y={point.y:.3f}"
+        )
+        self.get_logger().info(response.message)
+        return response
+
+    def _on_clear_demo_route(self, request, response):
+        target_name = request.target_name.strip().upper()
+        if target_name not in ("A", "B"):
+            response.success = False
+            response.message = "Temizlenecek rota yalnizca A veya B olabilir"
+            return response
+        points_file, error = self._demo_points_path()
+        if points_file is None:
+            response.success = False
+            response.message = error
+            return response
+        try:
+            content = self._load_demo_points_content(points_file)
+            removed = len(content["routes"][target_name])
+            content["routes"][target_name] = []
+            self._write_yaml_atomic(points_file, content)
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            response.success = False
+            response.message = f"Demo rotasi temizlenemedi: {error}"
+            return response
+        response.success = True
+        response.points_file = str(points_file)
+        response.message = (
+            f"{target_name} rotasi temizlendi; {removed} ara nokta silindi"
+        )
         self.get_logger().info(response.message)
         return response
 

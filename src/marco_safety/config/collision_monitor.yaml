@@ -4,7 +4,8 @@
 #         → twist_mux → /cmd_vel → base_driver
 #
 # Sartname: engelde DUR (kacinma yok). Yavaslama bolgesi + durma bolgesi.
-# Ayak izi CAD'e yakin (base_footprint): x -1.18..+0.50, y ±0.35
+# Gercek footprint (base_footprint): x -1.20..+0.50, y +/-0.35.
+# Stop/slow bolgeleri daha sonra gercek fren mesafesi testiyle kalibre edilecek.
 
 collision_monitor:
   ros__parameters:
@@ -31,7 +32,7 @@ collision_monitor:
       polygon_pub_topic: "polygon_front_stop"
       enabled: true
 
-    # CAD arka ucu x=-1.18 m. Stop alani gercek boyu 0.22 m tamponla kapsar.
+    # Gercek arka/fork ucu x=-1.20 m; mevcut bolge simdilik degistirilmedi.
     RearStop:
       type: "polygon"
       points: [0.00, 0.45, 0.00, -0.45, -1.40, -0.45, -1.40, 0.45]
