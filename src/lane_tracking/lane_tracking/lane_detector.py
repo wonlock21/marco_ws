@@ -43,14 +43,26 @@ def adaptive_dark_mask_cpu(frame, value_max=140, block_size=81, offset=18):
 class LaneDetector:
     def __init__(
             self, use_opencl=False, value_max=140, block_size=81,
-            adaptive_offset=18):
+            adaptive_offset=18, ipm_enabled=False, ipm_source_points=None,
+            ipm_destination_points=None, lookahead_y=160,
+            lookahead_band_half_height=5):
         self.use_opencl = use_opencl
         self.gpu_mask = OpenClLaneMask() if use_opencl else None
         self.value_max = int(value_max)
         self.block_size = int(block_size)
         self.adaptive_offset = int(adaptive_offset)
+        self.ipm_enabled = bool(ipm_enabled)
+        self.ipm_source_points = ipm_source_points or [
+            0.20, 0.95, 0.42, 0.45, 0.58, 0.45, 0.80, 0.95]
+        self.ipm_destination_points = ipm_destination_points or [
+            0.20, 1.00, 0.20, 0.00, 0.80, 0.00, 0.80, 1.00]
+        self.lookahead_y = int(lookahead_y)
+        self.lookahead_band_half_height = max(
+            1, int(lookahead_band_half_height))
         self.last_mask = None
         self.last_selected_mask = None
+        self.last_debug_frame = None
+        self.last_lookahead_x = None
         self.last_heading_error = 0.0
         self.last_confidence = 0.0
         self._previous_center_x = None
@@ -59,17 +71,20 @@ class LaneDetector:
         """Yeni surus oturumu icin zamansal kontur hafizasini temizle."""
         self.last_heading_error = 0.0
         self.last_confidence = 0.0
+        self.last_lookahead_x = None
         self._previous_center_x = None
 
     def process(self, frame, center_x):
         height, width = frame.shape[:2]
+        working_frame = self._birdseye(frame) if self.ipm_enabled else frame
+        self.last_debug_frame = working_frame
         if self.use_opencl:
             mask = self.gpu_mask.process(
-                frame, value_max=self.value_max,
+                working_frame, value_max=self.value_max,
                 block_size=self.block_size, offset=self.adaptive_offset)
         else:
             mask = adaptive_dark_mask_cpu(
-                frame, value_max=self.value_max,
+                working_frame, value_max=self.value_max,
                 block_size=self.block_size, offset=self.adaptive_offset)
         self.last_mask = mask
 
@@ -80,6 +95,8 @@ class LaneDetector:
             self.last_selected_mask = np.zeros_like(mask)
             self.last_heading_error = 0.0
             self.last_confidence = 0.0
+            self.last_lookahead_x = None
+            self._draw_lookahead(working_frame, center_x, None)
             return False, 0.0
 
         selected_mask = np.zeros_like(mask)
@@ -99,6 +116,14 @@ class LaneDetector:
         if far_x is None:
             far_x = contour_x
 
+        lookahead_y = max(0, min(height - 1, self.lookahead_y))
+        lookahead_x = self._band_center(
+            selected_mask,
+            lookahead_y - self.lookahead_band_half_height,
+            lookahead_y + self.lookahead_band_half_height + 1)
+        self.last_lookahead_x = (
+            float(lookahead_x) if lookahead_x is not None else None)
+
         half_width = max(1.0, width * 0.5)
         self.last_heading_error = max(
             -1.0, min(1.0, (far_x - near_x) / half_width))
@@ -112,17 +137,58 @@ class LaneDetector:
 
         near_y = int(height * 0.84)
         far_y = int(height * 0.54)
-        cv2.drawContours(frame, [selected], -1, (0, 220, 0), 2)
-        cv2.circle(frame, (int(round(near_x)), near_y), 7, (0, 255, 0), -1)
-        cv2.circle(frame, (int(round(far_x)), far_y), 6, (0, 165, 255), -1)
+        cv2.drawContours(working_frame, [selected], -1, (0, 220, 0), 2)
+        cv2.circle(
+            working_frame, (int(round(near_x)), near_y),
+            7, (0, 255, 0), -1)
+        cv2.circle(
+            working_frame, (int(round(far_x)), far_y),
+            6, (0, 165, 255), -1)
         cv2.line(
-            frame, (int(round(near_x)), near_y),
+            working_frame, (int(round(near_x)), near_y),
             (int(round(far_x)), far_y), (0, 255, 255), 2)
         cv2.line(
-            frame, (center_x, near_y), (int(round(near_x)), near_y),
+            working_frame,
+            (center_x, near_y), (int(round(near_x)), near_y),
             (255, 255, 0), 2)
+        self._draw_lookahead(working_frame, center_x, lookahead_x)
 
         return True, float(near_x - center_x)
+
+    def _birdseye(self, frame):
+        height, width = frame.shape[:2]
+        source = self._normalized_points(
+            self.ipm_source_points, width, height, 'ipm_source_points')
+        destination = self._normalized_points(
+            self.ipm_destination_points, width, height,
+            'ipm_destination_points')
+        transform = cv2.getPerspectiveTransform(source, destination)
+        return cv2.warpPerspective(
+            frame, transform, (width, height), flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE)
+
+    @staticmethod
+    def _normalized_points(values, width, height, name):
+        if len(values) != 8:
+            raise ValueError(f'{name} tam olarak 8 deger icermeli')
+        points = np.asarray(values, dtype=np.float32).reshape(4, 2)
+        if not np.all(np.isfinite(points)):
+            raise ValueError(f'{name} sonlu sayilar icermeli')
+        points[:, 0] *= max(1, width - 1)
+        points[:, 1] *= max(1, height - 1)
+        return points
+
+    def _draw_lookahead(self, frame, center_x, lane_x):
+        height, width = frame.shape[:2]
+        y = max(0, min(height - 1, self.lookahead_y))
+        cv2.line(frame, (0, y), (width - 1, y), (255, 0, 255), 1)
+        cv2.circle(frame, (int(center_x), y), 5, (255, 0, 0), -1)
+        if lane_x is not None:
+            cv2.circle(
+                frame, (int(round(lane_x)), y), 7, (0, 0, 255), -1)
+            cv2.line(
+                frame, (int(center_x), y), (int(round(lane_x)), y),
+                (255, 255, 0), 2)
 
     def _select_contour(self, contours, width, height):
         minimum_area = max(80.0, width * height * 0.001)
@@ -141,7 +207,9 @@ class LaneDetector:
             candidate_x = x + w * 0.5
             continuity_penalty = 0.0
             if self._previous_center_x is not None:
-                jump = abs(candidate_x - self._previous_center_x) / max(1, width)
+                jump = (
+                    abs(candidate_x - self._previous_center_x)
+                    / max(1, width))
                 if jump > 0.45:
                     continue
                 continuity_penalty = jump * 4.0

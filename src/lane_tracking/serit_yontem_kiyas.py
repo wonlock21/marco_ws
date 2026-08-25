@@ -4,8 +4,8 @@ Farkli kosturmalarda olculen sayilar kiyaslanamaz, cunku sahne ve el titremesi
 degisiyor. Bu betik her kareyi uc yontemle birden isler, boylece aradaki fark
 yalnizca yonteme ait olur.
 
-  1) OTSU (tum kare)    : mevcut tracker.py, esiklenmis goruntunun agirlik merkezi
-  2) HSV  (tum kare)    : mevcut tracker.py, en buyuk konturun agirlik merkezi
+  1) OTSU (tum kare)    : eski deney, esiklenmis goruntunun agirlik merkezi
+  2) HSV  (tum kare)    : eski deney, en buyuk konturun agirlik merkezi
   3) HSV  (alt serit)   : ayni ama yalnizca karenin alt %40'i
   4) OTSU + kontur      : OTSU maskesi uzerinde en buyuk kontur
   5) OTSU + kontur, alt : ayni, yalnizca alt serit
@@ -35,7 +35,7 @@ KP, KD = 0.10, 0.05
 
 
 def hsv_maskesi(kare: np.ndarray, cekirdek: np.ndarray) -> np.ndarray:
-    """tracker.py ile ayni siyah maskesi ve gurultu temizligi."""
+    """Eski HSV deneyindeki siyah maske ve gurultu temizligi."""
     hsv = cv2.cvtColor(kare, cv2.COLOR_BGR2HSV)
     maske = cv2.inRange(hsv, np.array([0, 0, 0]), np.array([180, 255, 50]))
     return cv2.dilate(cv2.erode(maske, cekirdek, iterations=1), cekirdek, iterations=1)

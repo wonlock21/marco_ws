@@ -113,10 +113,8 @@ class PwmBridge(Node):
         self.declare_parameter("baudrate", 115200)
         self.declare_parameter("use_fake_hardware", False)
 
-        # Kabul edilen PWM araligi. lane_tracking/controller.py bugun 0..150
-        # uretiyor; bu sinirlar oradaki kirpmanin tekrari degil, bagimsiz
-        # dogrulamasidir. Kontrolcu kazanci degistiginde tasan degerlerin
-        # motora ulasmasi engellenir.
+        # Kabul edilen PWM araligi. Eski/acik dongu PWM kaynaklarindan tasan
+        # degerlerin motora ulasmasini bagimsiz olarak engeller.
         self.declare_parameter("pwm_min", 0.0)
         self.declare_parameter("pwm_max", 150.0)
 

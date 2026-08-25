@@ -1,8 +1,6 @@
-"""Tek kare yakalayip tracker.py'nin iki yontemini de gorsellestirir.
+"""Tek karede eski Otsu/HSV deneylerini gorsellestirir.
 
-tracker.py cv2.imshow kullaniyor; Orange Pi uzerinde pencere acmak hem CPU
-yiyor hem uzaktan bakilamiyor. Bu betik ayni islemi yapip sonucu PNG'ye
-yazar, boylece tespitin dogru olup olmadigi kayit uzerinden incelenebilir.
+Sonucu PNG'ye yazar; guncel imgprocess surus zincirinin parcasi degildir.
 
 Kullanim:
     python3 serit_teshis.py <cikti.png>

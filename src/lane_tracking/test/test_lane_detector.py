@@ -2,6 +2,7 @@
 
 import cv2
 import numpy as np
+import pytest
 
 from lane_tracking.lane_detector import LaneDetector
 
@@ -89,3 +90,33 @@ def test_yeni_oturum_onceki_kontur_konumunu_unutur():
 
     assert found is True
     assert error < -100.0
+
+
+def test_ipm_lookahead_satirinda_serit_merkezini_bulur():
+    frame = np.full((240, 320, 3), 210, dtype=np.uint8)
+    cv2.rectangle(frame, (215, 40), (245, 239), (20, 20, 20), -1)
+    identity = [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0]
+    detector = LaneDetector(
+        ipm_enabled=True,
+        ipm_source_points=identity,
+        ipm_destination_points=identity,
+        lookahead_y=150,
+        lookahead_band_half_height=4,
+    )
+
+    found, _ = detector.process(frame, center_x=160)
+
+    assert found is True
+    assert detector.last_lookahead_x == pytest.approx(230.0, abs=1.0)
+    assert detector.last_debug_frame is not None
+
+
+def test_lookahead_satirini_kesmeyen_kontur_pd_olcumu_uretmez():
+    frame = np.full((240, 320, 3), 210, dtype=np.uint8)
+    cv2.rectangle(frame, (145, 190), (175, 239), (20, 20, 20), -1)
+    detector = LaneDetector(lookahead_y=150, lookahead_band_half_height=4)
+
+    found, _ = detector.process(frame, center_x=160)
+
+    assert found is True
+    assert detector.last_lookahead_x is None

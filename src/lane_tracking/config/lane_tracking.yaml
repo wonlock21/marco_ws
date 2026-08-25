@@ -1,9 +1,14 @@
 imgprocess_node:
   ros__parameters:
     camera_device: /dev/video0
-    frame_width: 320
-    frame_height: 240
-    frame_rate: 30.0
+    # Yeni sistem ROS goruntu topigini kullanir. Eski dogrudan V4L2 yolu icin
+    # camera_input: v4l2 yapilabilir; diger algoritma ayarlari kaybolmaz.
+    camera_input: ros_topic
+    camera_topic: /camera/image_raw
+    camera_timeout: 0.50
+    frame_width: 640
+    frame_height: 480
+    frame_rate: 25.0
     show_debug_window: true
     # RK3588 Mali-G610 OpenCL. /dev/mali0 erisilemezse dugum guvenli bicimde
     # CPU'ya duser; OpenCL sorgusu surucu yokken yapilmaz.
@@ -20,9 +25,9 @@ imgprocess_node:
     # kenarlara -1..+1 normalize edilerek max_angular_speed'e olceklenir.
     kp_lane: 0.00030
     qr_linear_speed: 0.10
-    # Duzlukte ilk 0.20 m/s degerinin ucte biri. Donus keskinlestikce
-    # lane_min_linear_speed seviyesine dogrusal olarak iner.
-    lane_linear_speed: 0.050
+    # PD look-ahead modunda sabit ortak hizdir. 0.079 m/s ve 0.460 m teker
+    # araligi, asagidaki acisal sinirla teker hedeflerini 58..100 mm/s tutar.
+    lane_linear_speed: 0.079
     lane_min_linear_speed: 0.015
     # Dusuk geciren filtre: kucuk deger daha yumusak, fakat daha gec tepki verir.
     lane_steering_alpha: 0.25
@@ -33,13 +38,20 @@ imgprocess_node:
     # cevresinde yaklasik +/-3 px gibi dar bir olu bolge birakir.
     lane_center_deadband_ratio: 0.01
     # Serit denetleyici modu:
+    # - pd_lookahead: IPM look-ahead hatasindan gercek PD kontrol
     # - offset_heading: alt bant yanal ofset + ust bant yon bilgisi
     # - legacy: onceki merkezlenmis hata + yon birlestirme mantigi
-    lane_control_mode: offset_heading
+    lane_control_mode: pd_lookahead
     # Yanal ofset agirligi. Buyudukce arac merkeze daha istekli doner.
     lane_offset_gain: 0.85
     # Ust banttaki serit yonunun agirligi. Buyudukce donus daha erken baslar.
     lane_heading_gain: 0.55
+    # Normalize look-ahead hatasi icin PD: angular = Kp*e + Kd*de/dt.
+    # Integral terimi bilerek yoktur. D terimi kamera gurultusune karsi
+    # derivative_alpha ile yumusatilir; dt ROS saatinden hesaplanir.
+    lane_pd_kp: 0.080
+    lane_pd_kd: 0.010
+    lane_pd_derivative_alpha: 0.25
     # Yaklasik 30 FPS'te 100 ms'lik tekil algilama kayiplarini tolere eder;
     # dorduncu kayip karede motor komutu guvenli bicimde sifirlanir.
     lane_loss_hold_frames: 3
@@ -52,13 +64,23 @@ imgprocess_node:
     lane_adaptive_value_max: 140
     lane_adaptive_block_size: 81
     lane_adaptive_offset: 20
+    # IPM noktalari normalize (x,y) ve sirayla:
+    # sol-alt, sol-ust, sag-ust, sag-alt. 640x480 kamera, 20 cm yukseklik ve
+    # yaklasik 45 derece egim icin arac seride ortali/paralelken kalibre edildi.
+    # Bu yamuk seridi kusbakisinda dik, sabit genislikte ve merkezde tutar.
+    lane_ipm_enabled: true
+    lane_ipm_source_points: [0.050, 0.950, 0.224, 0.050, 0.654, 0.050, 0.848, 0.950]
+    lane_ipm_destination_points: [0.20, 1.00, 0.20, 0.00, 0.80, 0.00, 0.80, 1.00]
+    # 480 px yukseklikte IPM goruntusundeki ileriye bakma satiri.
+    lane_lookahead_y: 320
+    lane_lookahead_band_half_height: 5
     # Gercek motorlar yaklasik 50 mm/s altinda statik surtunmeyi asamiyor.
     # Donuste ortak ileri hiz, yavas teker bu esigin altina dusmeyecek kadar
     # otomatik yukseltilir. wheel_separation base_driver ile ayni olmalidir.
     lane_min_wheel_speed: 0.000
     wheel_separation: 0.460
-    # Uzak konumlarda donus yetkisi; merkezdeki komut hala lineer ve sakindir.
-    max_angular_speed: 0.120
+    # (100 - 58) mm/s / 0.460 m = 0.091304 rad/s.
+    max_angular_speed: 0.091304
 
 turnaround_node:
   ros__parameters:

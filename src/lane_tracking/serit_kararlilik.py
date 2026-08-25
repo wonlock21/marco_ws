@@ -1,8 +1,7 @@
-"""Serit hatasinin zaman icindeki kararliligini olcer.
+"""Eski Otsu/HSV deney hattinin zaman icindeki kararliligini olcer.
 
-tracker.py ile birebir ayni islem hattini calistirir ama ROS'a yayinlamak
-yerine hatayi biriktirip istatistigini verir. Amac, kontrolcudeki turev
-teriminin gercek serit uzerinde ne kadar savurdugunu sayiyla gostermek.
+ROS'a yayin yapmak yerine hatayi biriktirip istatistigini verir. Guncel
+imgprocess surus zincirinin parcasi degildir; yalniz karsilastirma aracidir.
 
 Kullanim:
     python3 serit_kararlilik.py [saniye]
@@ -18,7 +17,7 @@ import numpy as np
 
 SURE = float(sys.argv[1]) if len(sys.argv) > 1 else 20.0
 
-# Kontrolcunun sabitleri (controller.py)
+# Eski PWM/PD deneyinin karsilastirma sabitleri.
 KP, KD, TABAN = 0.10, 0.05, 100.0
 
 cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
@@ -59,7 +58,7 @@ while time.monotonic() - baslangic < SURE:
     else:
         hsv_kayip += 1
 
-    time.sleep(0.1)  # tracker.py'nin 10 Hz zamanlayicisi
+    time.sleep(0.1)  # Eski deneydeki 10 Hz ornekleme hizi.
 
 cap.release()
 

@@ -1,15 +1,67 @@
 """Tam kamera genisligine yayilan serit kontrol olcegi testleri."""
 
+import numpy as np
 import pytest
+from sensor_msgs.msg import Image
 
 from lane_tracking.imgprocess_node import (
     apply_deadband,
     combine_lane_errors,
     compute_lane_turn_command,
+    compute_pd_angular,
     enforce_minimum_wheel_speed,
+    image_message_to_bgr,
     lane_end_confirmed,
     scale_lane_error,
 )
+
+
+def test_ros_bgr8_mesaji_opencv_karesine_cevrilir():
+    msg = Image()
+    msg.width = 2
+    msg.height = 1
+    msg.encoding = 'bgr8'
+    msg.step = 6
+    msg.data = bytes([1, 2, 3, 4, 5, 6])
+
+    frame = image_message_to_bgr(msg)
+
+    assert frame.shape == (1, 2, 3)
+    assert np.array_equal(frame[0, 1], [4, 5, 6])
+
+
+def test_pd_ros_dt_ile_p_ve_d_terimi_uretir():
+    angular, error, derivative = compute_pd_angular(
+        error_px=-80.0,
+        half_frame_width=160.0,
+        previous_error=-0.25,
+        dt=0.05,
+        kp=0.08,
+        kd=0.01,
+        max_angular_speed=0.10,
+        previous_derivative=0.0,
+        derivative_alpha=1.0,
+    )
+
+    assert error == pytest.approx(-0.5)
+    assert derivative == pytest.approx(-5.0)
+    assert angular == pytest.approx(-0.09)
+
+
+def test_pd_ilk_karede_turev_uretmez_ve_cikisi_sinirlar():
+    angular, error, derivative = compute_pd_angular(
+        error_px=160.0,
+        half_frame_width=160.0,
+        previous_error=None,
+        dt=None,
+        kp=0.50,
+        kd=0.50,
+        max_angular_speed=0.10,
+    )
+
+    assert error == 1.0
+    assert derivative == 0.0
+    assert angular == 0.10
 
 
 @pytest.mark.parametrize(
