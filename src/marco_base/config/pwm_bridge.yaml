@@ -6,9 +6,8 @@ marco_pwm_bridge:
     use_fake_hardware: false
 
     # --- PWM araligi ---
-    # lane_tracking/controller.py bugun 0..150 uretir. Bu sinirlar oradaki
-    # kirpmanin tekrari degil, bagimsiz dogrulamasidir: kontrolcu kazanci
-    # degistiginde tasan degerler motora ulasmaz.
+    # Eski/acik dongu PWM kaynaklari 0..150 araligini kullanir. Bu sinirlar
+    # bagimsiz dogrulamadir; tasan degerlerin motora ulasmasini engeller.
     pwm_min: 0.0
     pwm_max: 150.0
 

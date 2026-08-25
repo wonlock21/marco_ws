@@ -5,9 +5,11 @@ import os
 
 import cv2
 from geometry_msgs.msg import Twist
+import numpy as np
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
+from rclpy.qos import QoSPresetProfiles
+from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
 
 from .lane_detector import LaneDetector
@@ -108,6 +110,63 @@ def lane_end_confirmed(
     )
 
 
+def image_message_to_bgr(msg):
+    """Convert common raw ROS image encodings to an owned BGR array."""
+    channels_by_encoding = {
+        'bgr8': 3,
+        'rgb8': 3,
+        'bgra8': 4,
+        'rgba8': 4,
+        'mono8': 1,
+    }
+    encoding = str(msg.encoding).lower()
+    channels = channels_by_encoding.get(encoding)
+    if channels is None:
+        raise ValueError(f'desteklenmeyen kamera kodlamasi: {msg.encoding}')
+    row_bytes = int(msg.width) * channels
+    if int(msg.step) < row_bytes:
+        raise ValueError('kamera mesaji step degeri satir genisliginden kucuk')
+    raw = np.frombuffer(msg.data, dtype=np.uint8)
+    required = int(msg.step) * int(msg.height)
+    if raw.size < required:
+        raise ValueError('kamera mesaji beklenenden kisa')
+    rows = raw[:required].reshape(int(msg.height), int(msg.step))
+    pixels = rows[:, :row_bytes]
+    if channels == 1:
+        image = pixels.reshape(int(msg.height), int(msg.width))
+        return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    image = pixels.reshape(int(msg.height), int(msg.width), channels)
+    if encoding == 'rgb8':
+        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    if encoding == 'rgba8':
+        return cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
+    if encoding == 'bgra8':
+        return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+    return image.copy()
+
+
+def compute_pd_angular(
+        error_px, half_frame_width, previous_error, dt, kp, kd,
+        max_angular_speed, previous_derivative=0.0,
+        derivative_alpha=0.25):
+    """Compute bounded PD steering from camera-minus-lane pixel error."""
+    if half_frame_width <= 0.0 or max_angular_speed <= 0.0:
+        return 0.0, 0.0, 0.0
+    error = max(-1.0, min(
+        1.0, float(error_px) / float(half_frame_width)))
+    raw_derivative = 0.0
+    if previous_error is not None and dt is not None and 0.001 <= dt <= 0.25:
+        raw_derivative = (error - float(previous_error)) / float(dt)
+    alpha = max(0.0, min(1.0, float(derivative_alpha)))
+    derivative = float(previous_derivative) + alpha * (
+        raw_derivative - float(previous_derivative))
+    angular = float(kp) * error + float(kd) * derivative
+    angular = max(
+        -float(max_angular_speed),
+        min(float(max_angular_speed), angular))
+    return angular, error, derivative
+
+
 class ImgProcessNode(Node):
     def __init__(self):
         super().__init__('imgprocess_node')
@@ -148,6 +207,13 @@ class ImgProcessNode(Node):
             self.get_parameter('wheel_separation').value)
         self.max_angular_speed = float(
             self.get_parameter('max_angular_speed').value)
+        self.pd_kp = float(self.get_parameter('lane_pd_kp').value)
+        self.pd_kd = float(self.get_parameter('lane_pd_kd').value)
+        self.pd_derivative_alpha = float(
+            self.get_parameter('lane_pd_derivative_alpha').value)
+        self._pd_previous_error = None
+        self._pd_previous_time = None
+        self._pd_derivative = 0.0
         self.filtered_lane_angular = 0.0
         self.lane_missed_frames = 0
         self.lane_seen_frames = 0
@@ -156,6 +222,13 @@ class ImgProcessNode(Node):
         self.show_debug_window = bool(
             self.get_parameter('show_debug_window').value)
         self.use_gpu = self._configure_gpu()
+        self.camera_input = str(
+            self.get_parameter('camera_input').value).strip().lower()
+        self.camera_topic = str(self.get_parameter('camera_topic').value)
+        self.camera_timeout = float(
+            self.get_parameter('camera_timeout').value)
+        self._last_camera_time = None
+        self._camera_timed_out = False
 
         output_topic = str(self.get_parameter('output_topic').value)
         self.pub_cmd_vel = self.create_publisher(Twist, output_topic, 10)
@@ -181,6 +254,16 @@ class ImgProcessNode(Node):
                     'lane_adaptive_block_size').value),
                 adaptive_offset=int(self.get_parameter(
                     'lane_adaptive_offset').value),
+                ipm_enabled=bool(self.get_parameter(
+                    'lane_ipm_enabled').value),
+                ipm_source_points=list(self.get_parameter(
+                    'lane_ipm_source_points').value),
+                ipm_destination_points=list(self.get_parameter(
+                    'lane_ipm_destination_points').value),
+                lookahead_y=int(self.get_parameter(
+                    'lane_lookahead_y').value),
+                lookahead_band_half_height=int(self.get_parameter(
+                    'lane_lookahead_band_half_height').value),
             )
         except Exception as exc:
             self.use_gpu = False
@@ -194,20 +277,52 @@ class ImgProcessNode(Node):
                     'lane_adaptive_block_size').value),
                 adaptive_offset=int(self.get_parameter(
                     'lane_adaptive_offset').value),
+                ipm_enabled=bool(self.get_parameter(
+                    'lane_ipm_enabled').value),
+                ipm_source_points=list(self.get_parameter(
+                    'lane_ipm_source_points').value),
+                ipm_destination_points=list(self.get_parameter(
+                    'lane_ipm_destination_points').value),
+                lookahead_y=int(self.get_parameter(
+                    'lane_lookahead_y').value),
+                lookahead_band_half_height=int(self.get_parameter(
+                    'lane_lookahead_band_half_height').value),
             )
-        self.cap = self._open_camera()
+        self.cap = None
+        self.timer = None
+        self.camera_subscription = None
+        if self.camera_input == 'ros_topic':
+            qos = QoSPresetProfiles.SENSOR_DATA.value
+            self.camera_subscription = self.create_subscription(
+                Image, self.camera_topic, self._camera_callback, qos)
+            self.camera_watchdog = self.create_timer(
+                min(0.1, max(0.02, self.camera_timeout * 0.5)),
+                self._camera_watchdog_callback)
+        elif self.camera_input == 'v4l2':
+            self.cap = self._open_camera()
+            frame_rate = float(self.get_parameter('frame_rate').value)
+            self.timer = self.create_timer(
+                1.0 / frame_rate, self.timer_callback)
+        else:
+            raise ValueError(
+                'camera_input yalnizca ros_topic veya v4l2 olabilir')
 
-        frame_rate = float(self.get_parameter('frame_rate').value)
-        self.timer = self.create_timer(1.0 / frame_rate, self.timer_callback)
-
+        camera_source = (
+            self.camera_topic
+            if self.camera_input == 'ros_topic'
+            else self.get_parameter('camera_device').value)
         self.get_logger().info(
             f'Goruntu isleme hazir | durum={self.current_state.name} | '
             f'cikis={output_topic} | '
+            f'kamera={self.camera_input}:{camera_source} | '
             f'isleme={"OpenCL GPU" if self.use_gpu else "CPU"}')
         self._log_parameters()
 
     def _declare_parameters(self):
         self.declare_parameter('camera_device', '/dev/video0')
+        self.declare_parameter('camera_input', 'v4l2')
+        self.declare_parameter('camera_topic', '/camera/image_raw')
+        self.declare_parameter('camera_timeout', 0.5)
         self.declare_parameter('frame_width', 320)
         self.declare_parameter('frame_height', 240)
         self.declare_parameter('frame_rate', 30.0)
@@ -227,6 +342,9 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_control_mode', 'offset_heading')
         self.declare_parameter('lane_offset_gain', 0.85)
         self.declare_parameter('lane_heading_gain', 0.35)
+        self.declare_parameter('lane_pd_kp', 0.080)
+        self.declare_parameter('lane_pd_kd', 0.012)
+        self.declare_parameter('lane_pd_derivative_alpha', 0.25)
         self.declare_parameter('lane_loss_hold_frames', 3)
         # Serit, yeni bir takip oturumunda yeterince gorulmeden "son" karari
         # verilmez. Boylece kamera acilisindaki bos kareler donusu tetiklemez.
@@ -236,6 +354,15 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_adaptive_value_max', 140)
         self.declare_parameter('lane_adaptive_block_size', 81)
         self.declare_parameter('lane_adaptive_offset', 18)
+        self.declare_parameter('lane_ipm_enabled', False)
+        self.declare_parameter(
+            'lane_ipm_source_points',
+            [0.20, 0.95, 0.42, 0.45, 0.58, 0.45, 0.80, 0.95])
+        self.declare_parameter(
+            'lane_ipm_destination_points',
+            [0.20, 1.00, 0.20, 0.00, 0.80, 0.00, 0.80, 1.00])
+        self.declare_parameter('lane_lookahead_y', 160)
+        self.declare_parameter('lane_lookahead_band_half_height', 5)
         self.declare_parameter('lane_min_wheel_speed', 0.055)
         self.declare_parameter('wheel_separation', 0.460)
         self.declare_parameter('max_angular_speed', 0.075)
@@ -310,7 +437,6 @@ class ImgProcessNode(Node):
                 '180 derece donus tamamlandi; LANE_TRACKING devam ediyor')
 
     def timer_callback(self):
-        self._publish_active()
         ret, frame = self.cap.read()
         if not ret:
             self.stop_robot()
@@ -318,6 +444,37 @@ class ImgProcessNode(Node):
                 'Kamera goruntusu okunamadi; dur komutu yayinlandi',
                 throttle_duration_sec=2.0)
             return
+        self._process_frame(frame)
+
+    def _camera_callback(self, msg):
+        try:
+            frame = image_message_to_bgr(msg)
+        except (ValueError, cv2.error) as exc:
+            self.stop_robot()
+            self.get_logger().error(
+                f'Kamera mesaji islenemedi: {exc}',
+                throttle_duration_sec=2.0)
+            return
+        self._last_camera_time = self.get_clock().now()
+        self._camera_timed_out = False
+        self._process_frame(frame)
+
+    def _camera_watchdog_callback(self):
+        now = self.get_clock().now()
+        stale = self._last_camera_time is None
+        if self._last_camera_time is not None:
+            age = (now - self._last_camera_time).nanoseconds * 1e-9
+            stale = age > self.camera_timeout
+        if stale:
+            self.stop_robot()
+            if not self._camera_timed_out:
+                self._camera_timed_out = True
+                self.get_logger().warning(
+                    f'{self.camera_topic} goruntusu yok; '
+                    'dur komutu yayinlandi')
+
+    def _process_frame(self, frame):
+        self._publish_active()
 
         height, width, _ = frame.shape
         center_x = width // 2
@@ -343,8 +500,17 @@ class ImgProcessNode(Node):
             self._draw_state(frame, 'SERIT TAKIBI', (0, 255, 0))
             found, error = self.lane_tracker.process(frame, center_x)
             if found:
-                self.lane_seen_frames += 1
-                self.publish_lane_movement(error, center_x)
+                if self.lane_control_mode == 'pd_lookahead':
+                    lane_x = self.lane_tracker.last_lookahead_x
+                    if lane_x is None:
+                        self._handle_lane_loss()
+                    else:
+                        self.lane_seen_frames += 1
+                        pd_error = float(center_x) - float(lane_x)
+                        self.publish_pd_lane_movement(pd_error, center_x)
+                else:
+                    self.lane_seen_frames += 1
+                    self.publish_lane_movement(error, center_x)
             else:
                 self._handle_lane_loss()
         elif self.current_state == ProcessState.TURNAROUND:
@@ -358,6 +524,44 @@ class ImgProcessNode(Node):
             cv2.imshow('Orange Pi Kamera Arayuzu', debug_frame)
             cv2.waitKey(1)
         self._publish_debug_image(debug_frame)
+
+    def publish_pd_lane_movement(self, error, half_frame_width):
+        now = self.get_clock().now()
+        dt = None
+        if self._pd_previous_time is not None:
+            dt = (now - self._pd_previous_time).nanoseconds * 1e-9
+        angular, normalized_error, derivative = compute_pd_angular(
+            error_px=error,
+            half_frame_width=half_frame_width,
+            previous_error=self._pd_previous_error,
+            dt=dt,
+            kp=self.pd_kp,
+            kd=self.pd_kd,
+            max_angular_speed=self.max_angular_speed,
+            previous_derivative=self._pd_derivative,
+            derivative_alpha=self.pd_derivative_alpha,
+        )
+        self._pd_previous_error = normalized_error
+        self._pd_previous_time = now
+        self._pd_derivative = derivative
+
+        linear_speed = max(0.0, self.lane_linear_speed)
+        half_track = self.wheel_separation * 0.5
+        left_target = linear_speed - angular * half_track
+        right_target = linear_speed + angular * half_track
+        self.publish_movement(linear_speed, angular)
+        self.lane_missed_frames = 0
+        self.last_lane_command = (linear_speed, angular)
+        self.get_logger().info(
+            f'[SERIT PD] lookahead_hata={error:+.1f}px '
+            f'({normalized_error:+.1%}) | dt='
+            f'{dt if dt is not None else 0.0:.4f}s | '
+            f'P={self.pd_kp * normalized_error:+.4f} | '
+            f'D={self.pd_kd * derivative:+.4f} | '
+            f'cmd_vel: v={linear_speed:.3f} w={angular:+.3f} rad/s | '
+            f'teker hedef sol={left_target * 1000.0:+.0f} '
+            f'sag={right_target * 1000.0:+.0f} mm/s',
+            throttle_duration_sec=0.5)
 
     @staticmethod
     def _draw_state(frame, text, color):
@@ -474,6 +678,9 @@ class ImgProcessNode(Node):
 
     def _reset_lane_control(self, new_session=True):
         self.filtered_lane_angular = 0.0
+        self._pd_previous_error = None
+        self._pd_previous_time = None
+        self._pd_derivative = 0.0
         self.lane_missed_frames = 0
         self.last_lane_command = None
         if new_session:
@@ -489,13 +696,20 @@ class ImgProcessNode(Node):
         if (self.current_state is not ProcessState.LANE_TRACKING
                 or self.lane_tracker.last_mask is None):
             return frame
+        detection_frame = self.lane_tracker.last_debug_frame
+        if detection_frame is None:
+            detection_frame = frame
         mask_bgr = cv2.cvtColor(
             self.lane_tracker.last_mask, cv2.COLOR_GRAY2BGR)
-        cv2.putText(frame, 'ALGILAMA', (10, frame.shape[0] - 12),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
+        label = (
+            'IPM ALGILAMA'
+            if self.lane_tracker.ipm_enabled else 'ALGILAMA')
+        cv2.putText(
+            detection_frame, label, (10, detection_frame.shape[0] - 12),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
         cv2.putText(mask_bgr, 'ADAPTIF MASKE', (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
-        return cv2.hconcat([frame, mask_bgr])
+        return cv2.hconcat([detection_frame, mask_bgr])
 
     def stop_robot(self):
         self.publish_movement(0.0, 0.0)
@@ -531,7 +745,8 @@ class ImgProcessNode(Node):
         self.current_state = ProcessState.IDLE
         if rclpy.ok():
             self._publish_active()
-        self.cap.release()
+        if self.cap is not None:
+            self.cap.release()
         if self.show_debug_window:
             cv2.destroyAllWindows()
         super().destroy_node()
