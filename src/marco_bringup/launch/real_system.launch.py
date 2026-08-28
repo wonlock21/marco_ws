@@ -91,11 +91,13 @@ def _setup(context, *args, **kwargs):
     imu_enabled = _bool(context, "imu")
 
     required = {
+        "lane_tracking",
         "marco_base", "marco_bringup", "marco_description", "marco_docking",
         "marco_localization", "marco_mission", "marco_msgs", "marco_navigation",
         "marco_safety", "nav2_amcl", "nav2_bringup", "nav2_collision_monitor",
         "nav2_map_server", "nav2_route", "robot_localization",
-        "robot_state_publisher", "rosbridge_server", "twist_mux", "xacro",
+        "robot_state_publisher", "rosbridge_server", "twist_mux", "usb_cam",
+        "web_video_server", "xacro",
     }
     if fake:
         required.add("marco_perception")
@@ -155,6 +157,18 @@ def _setup(context, *args, **kwargs):
     docking_share = get_package_share_directory("marco_docking")
     mission_share = get_package_share_directory("marco_mission")
     bringup_share = get_package_share_directory("marco_bringup")
+    lane_share = get_package_share_directory("lane_tracking")
+
+    front_camera = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(lane_share, "launch", "front_camera.launch.py")
+        ),
+        launch_arguments={
+            "camera": LaunchConfiguration("camera"),
+            "web_stream": LaunchConfiguration("camera_web_stream"),
+            "web_video_port": LaunchConfiguration("camera_web_port"),
+        }.items(),
+    )
 
     route_safe = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -208,7 +222,7 @@ def _setup(context, *args, **kwargs):
         LogInfo(msg=f"Rota grafi: {graph_file}"),
         LogInfo(msg="Hiz zinciri: Nav2 -> /cmd_vel_raw -> collision_monitor "
                     "-> /cmd_vel_safe -> twist_mux -> /cmd_vel -> base_driver"),
-        route_safe, docking, mission, rosbridge,
+        front_camera, route_safe, docking, mission, rosbridge,
     ]
 
 
@@ -229,5 +243,10 @@ def generate_launch_description():
         DeclareLaunchArgument("yaw", default_value="0.0",
                               description="Baslangic yonu, radyan"),
         DeclareLaunchArgument("rosbridge_port", default_value="9090"),
+        DeclareLaunchArgument(
+            "camera", default_value="/dev/marco_front_camera"
+        ),
+        DeclareLaunchArgument("camera_web_stream", default_value="true"),
+        DeclareLaunchArgument("camera_web_port", default_value="8080"),
         OpaqueFunction(function=_setup),
     ])

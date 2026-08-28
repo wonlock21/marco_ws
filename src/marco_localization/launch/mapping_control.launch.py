@@ -13,11 +13,22 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description() -> LaunchDescription:
     bringup_share = get_package_share_directory("marco_bringup")
+    lane_share = get_package_share_directory("lane_tracking")
     bridge = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(bringup_share, "launch", "gui_bridge.launch.py")
         ),
         launch_arguments={"port": LaunchConfiguration("rosbridge_port")}.items(),
+    )
+    front_camera = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(lane_share, "launch", "front_camera.launch.py")
+        ),
+        launch_arguments={
+            "camera": LaunchConfiguration("camera"),
+            "web_stream": LaunchConfiguration("camera_web_stream"),
+            "web_video_port": LaunchConfiguration("camera_web_port"),
+        }.items(),
     )
     manager = Node(
         package="marco_localization",
@@ -30,6 +41,9 @@ def generate_launch_description() -> LaunchDescription:
             ),
             "use_imu": ParameterValue(
                 LaunchConfiguration("imu"), value_type=bool
+            ),
+            "obstacle_detection_enabled": ParameterValue(
+                LaunchConfiguration("obstacle_detection"), value_type=bool
             ),
             "serial_port": LaunchConfiguration("serial_port"),
             "lidar_port": LaunchConfiguration("lidar_port"),
@@ -128,7 +142,11 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "initial_pose_yaw_std", default_value="0.174532925"
         ),
-        DeclareLaunchArgument("camera", default_value="/dev/video0"),
+        DeclareLaunchArgument(
+            "camera", default_value="/dev/marco_front_camera"
+        ),
+        DeclareLaunchArgument("camera_web_stream", default_value="true"),
+        DeclareLaunchArgument("camera_web_port", default_value="8080"),
         DeclareLaunchArgument(
             "demo_odom_topic", default_value="/odometry/filtered"
         ),
@@ -141,6 +159,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("buzzer_off_time", default_value="0.25"),
         DeclareLaunchArgument("buzzer_dry_run", default_value="false"),
         bridge,
+        front_camera,
         manager,
         localization_manager,
         demo_manager,

@@ -17,6 +17,8 @@ setup(
             glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'),
             glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'udev'),
+            glob('udev/*.rules')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -27,6 +29,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'front_camera_publisher = '
+            'lane_tracking.front_camera_publisher:main',
             'imgprocess = lane_tracking.imgprocess_node:main',
             'turnaround = lane_tracking.turnaround_node:main',
             'turn_then_rear_lane = '

@@ -132,6 +132,7 @@ class MappingManager(Node):
         super().__init__("mapping_manager")
         self.declare_parameter("fake_hardware", False)
         self.declare_parameter("use_imu", False)
+        self.declare_parameter("obstacle_detection_enabled", True)
         self.declare_parameter("serial_port", "/dev/marco_stm32")
         self.declare_parameter("lidar_port", "/dev/ttyUSB0")
         self.declare_parameter("startup_timeout", 30.0)
@@ -293,6 +294,10 @@ class MappingManager(Node):
             f"sahte:={str(bool(self.get_parameter('fake_hardware').value)).lower()}",
             "lidar:=true",
             f"imu:={str(bool(self.get_parameter('use_imu').value)).lower()}",
+            (
+                "obstacle_detection:="
+                f"{str(bool(self.get_parameter('obstacle_detection_enabled').value)).lower()}"
+            ),
             f"serial_port:={self.get_parameter('serial_port').value}",
             f"lidar_port:={self.get_parameter('lidar_port').value}",
             "rviz:=false",

@@ -1,0 +1,27 @@
+/**:
+  ros__parameters:
+    # Konftel Cam10 icin udev tarafindan uretilen kalici cihaz adi.
+    # /dev/videoX numarasi kamera yeniden baglaninca degisebilir.
+    video_device: /dev/marco_front_camera
+    framerate: 20.0
+    io_method: mmap
+    frame_id: camera_front_link
+    pixel_format: mjpeg2rgb
+    av_device_format: YUV422P
+    image_width: 640
+    image_height: 480
+    camera_name: front_camera
+
+    # -1 kamera varsayilanini korur. Otomatik pozlama, beyaz ayari ve
+    # odaklama hareket halindeki ortam degisimlerine uyum saglar.
+    brightness: -1
+    contrast: -1
+    saturation: -1
+    sharpness: -1
+    gain: -1
+    auto_white_balance: true
+    white_balance: 6500
+    autoexposure: true
+    exposure: 167
+    autofocus: true
+    focus: -1

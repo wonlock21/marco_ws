@@ -126,7 +126,7 @@ def _build_route_graph(
 class DemoScenarioManager(Node):
     def __init__(self) -> None:
         super().__init__("demo_scenario_manager")
-        self.declare_parameter("camera", "/dev/video0")
+        self.declare_parameter("camera", "/dev/marco_front_camera")
         self.declare_parameter("odom_topic", "/odometry/filtered")
         self.declare_parameter("data_root", "~/marco_data/fields")
         self.declare_parameter("turn_direction", 1)
