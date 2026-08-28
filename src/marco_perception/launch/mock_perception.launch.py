@@ -1,6 +1,7 @@
-"""Sahte serit/QR (goruntu ekibi yerine).
+"""
+Sahte serit/QR (goruntu ekibi yerine).
 
-  ros2 launch marco_perception mock_perception.launch.py
+ros2 launch marco_perception mock_perception.launch.py
 """
 
 from launch import LaunchDescription

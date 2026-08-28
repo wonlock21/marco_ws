@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Sahte serit + QR yayinicisi (goruntu ekibi gelene kadar).
+"""
+Sahte serit + QR yayinicisi (goruntu ekibi gelene kadar).
 
 Topikler (PROJE_PLANI sozlesmesi):
   /lane/offset   marco_msgs/LaneOffset
