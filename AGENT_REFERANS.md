@@ -135,8 +135,9 @@ teker açısal limit 8.38 rad/s · toplam uzunluk 1.536 ✓
 NOT: 30mm yerden yükseklik + 200mm teker → tahrik tekerleri şasi içine gömülü, normal.
 
 **properties.xacro'da `TAHMINI` etiketli her değer mekanik ekibinden doğrulanmalı.**
-Güncel kilitli değerler: URDF geometrik `wheel_separation=0.460`, odometri etkin
-`wheel_separation=0.421`, `lidar_x/y/z=-0.300/0/0.180`, `body_length=0.950`.
+Güncel Faz 0 değerleri: fiziksel ve odometri `wheel_separation=0.460`;
+`lidar_x/y/z=+0.350/0/+0.350` (`base_link`, tarama zeminden 0.450 m);
+`body_length=0.950`. Önceki `0.421` ve eski LiDAR konumu tarihsel/geçersizdir.
 
 ## FAZ 3 İLERLEMESİ (marco_base) — sürücü katmanı BİTTİ, EKF kaldı
 **BİTTİ:**
@@ -470,8 +471,10 @@ körlüğü konuları GÜNDEMDEN ÇIKARILDI — tekrar açma.
 `DM_Üst-1` üst yüzleri aynı düzlemde). Tmini Pro gövdesi 33 mm → tarama
 düzlemi yüzeyin ~20 mm üzerinde.
 
-Güncel montaj: `lidar_x=-0.300` `lidar_y=0` `lidar_z=0.180` (`base_link`e göre),
-tarama düzlemi zeminden `0.280 m`. Fiziksel montaj değişirse yeniden ölçülmelidir.
+Bu 29.07 yerleşim kararı, 11.08 kullanıcı fiziksel ölçümüyle geçersiz olmuştur.
+Güncel montaj: `lidar_x=+0.350`, `lidar_y=0`, `lidar_z=+0.350`
+(`base_link`e göre); tarama düzlemi zeminden `0.450 m`. Fiziksel montaj
+değişirse yeniden ölçülmelidir.
 
 ### İLERİ YÖN KARARI (28.07, kullanıcı onayladı)
 **+x = GÖVDE tarafı. Çatallar ARKADA.**
@@ -521,13 +524,13 @@ ama ayak izi bu çıkıntıyı içermek zorunda.
 ## AÇIK SORULAR (cevap gelince buraya yaz)
 - [x] ~~Simülatör kararı~~ → WSL2 Ubuntu 22.04 + Gazebo Fortress/ros_gz; Faz 2 doğrulandı 02.08
 - [ ] Encoder redüktör öncesi mi sonrası mı? → tick katsayısı
-- [x] Geometrik wheel separation **0.460 m**; saha kalibreli odometri etkin değeri
-      **0.421 m** (`base_driver.yaml`).
+- [x] Fiziksel ve odometri wheel separation **0.460 m**. Önceki **0.421 m**,
+      düzeltilmekte olan STM32 verisiyle türetilmişti; firmware sonrası tekrar
+      fiziksel kabul yapılacak.
 - [x] ~~`base_link` orijini~~ → tahrik aksı ortası, CAD z=1171.95 (şasinin tam ortası)
 - [x] ~~İleri yön~~ → gövde tarafı +x, çatallar arkada (28.07)
-- [~] **LiDAR montaj konumu** — 29.07 kullanıcı kararı: **üstte, 360° engelsiz**
-      Güncel URDF: x=-0.300, y=0, z=0.180 (`base_link`), zeminden 0.280 m.
-      z ölçülen üst yüzeye dayanıyor; x/y tutucu CAD'e eklenince kesinleşir.
+- [x] **LiDAR montaj konumu** — 11.08 kullanıcı fiziksel ölçümü:
+      x=+0.350, y=0, z=+0.350 (`base_link`), tarama zeminden 0.450 m.
 - [x] **Ön kamera konumu** — ÖLÇÜLDÜ 29.07: x=+0.4765, y=0, zeminden 0.1915
       (`camera_front_z=0.0915`). Panel kesiğinden, bkz. ÖN YÜZ PANEL KESİKLERİ.
 - [ ] Arka kamera konumu (CAD'de açıklık yok; simetri varsayıldı)

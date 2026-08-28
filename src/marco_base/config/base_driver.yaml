@@ -6,9 +6,9 @@ marco_base_driver:
     use_fake_hardware: false
 
     # --- Kinematik ---
-    # DIKKAT: wheel_radius fiziksel URDF degeriyle aynidir. wheel_separation
-    # ise saha donusunden kalibre edilen ETKIN odometri degeridir; URDF'deki
-    # 0.460 m geometrik teker merkez mesafesiyle bilerek ayni degildir.
+    # DIKKAT: wheel_radius ve wheel_separation fiziksel URDF degerleriyle
+    # aynidir. Onceki 0.421 m etkin odometri degeri, duzeltilmekte olan STM32
+    # verisiyle hesaplandigi icin 22.08.2026 Faz 0 kararinda geri cekilmistir.
     #
     # wheel_radius ve URDF'deki geometrik aralik SolidWorks'ten olculdu;
     # bu dosyadaki etkin aralik daha sonra saha donusleriyle kalibre edildi:
@@ -26,9 +26,8 @@ marco_base_driver:
     # altinda lastik ezilmesi kadar azalabilir, odometry_check.py ile
     # dogrulanmali.
     wheel_radius: 0.100
-    # Fiziksel merkez mesafesi 0.460 m; 07.08.2026 saha 360 derece
-    # kalibrasyonlarinin (0.4280, 0.4247, 0.4092 m) ortalamasi odometri icin
-    # etkin 0.421 m verdi. URDF fiziksel geometriyi 0.460 m olarak korur.
+    # Fiziksel merkez mesafesi 0.460 m. STM32 firmware duzeltmesinden sonra
+    # duz surus ve iki yonlu 360 derece testleriyle yeniden dogrulanacak.
     wheel_separation: 0.460
     # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
     ticks_per_revolution: 360

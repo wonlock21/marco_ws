@@ -42,7 +42,7 @@ Mevcut depo iyi bir ROS temeline sahiptir: STM32 taban sürücüsü, odometri/IM
 
 Ancak depo bugün itibarıyla yarışma görevinin tamamını gerçek donanımda uçtan uca yapabilecek durumda değildir. Yarışmaya çıkışı engelleyen başlıca konular şunlardır:
 
-- Araç sözleşmesi denetimi başarısızdır: fiziksel olarak kabul edilen `0.460 m`, sözleşmede kalan eski `0.421 m` ile henüz tekleştirilmemiştir; STM32 firmware düzeltmesi sonrası yeniden kabul gerekir.
+- Faz 0 yazılım sözleşmesinde fiziksel ve odometri teker aralığı `0.460 m` olarak tekleştirilmiş ve otomatik denetim PASS olmuştur; STM32 firmware düzeltmesi sonrası fiziksel yeniden kabul hâlâ zorunludur.
 - Çalışma alanında güncel `build/` ve `install/` bulunmadığından mevcut HEAD için temiz derleme/test kanıtı yoktur.
 - Operatör arayüzünden şartnameye uygun rota öğretme, semantik düğüm tanımlama ve aktif saha paketini devreye alma akışı eksiktir.
 - Gerçek çizgi/QR algısının `LaneOffset` ve `QrDetection` üretim bağlantısı yoktur; QR içeriği ve kameraya göre metrik poz çıkarımı tamamlanmamıştır.
@@ -111,7 +111,7 @@ Not: Şartname çiziminde yük `500 × 420 × 360 mm`, paletle ilgili `600 mm`, 
 
 | Öncelik | Bulgu | Sonuç |
 |---|---|---|
-| P0 | Fiziksel karar `0.460`; `vehicle_contract.yaml` içinde eski `0.421` kaldığı için sözleşme kontrolü başarısız; STM32 firmware düzeltmesi sürüyor | Firmware sonrası kalibrasyon ve sözleşme tekliği olmadan odometri kabul edilemez |
+| P0 | `0.460 m` yazılım sözleşmesi tekleştirildi ve otomatik test PASS; STM32 firmware düzeltmesi/fiziksel tekrar ölçüm açık | Fiziksel kabul tamamlanmadan odometri yarışma için dondurulamaz |
 | P0 | Güncel kaynak için temiz build/test kurulumu yok | Geçmiş başarı kayıtları bugünkü HEAD’i kanıtlamıyor |
 | P0 | PLC protokolü/adaptörü yok; çalışan lift/limit donanımının gerçek action sunucusu yok | Yük alma/bırakma ve kapı görevi uçtan uca tamamlanamaz |
 | P0 | Üretim QR/çizgi düğümleri docking arayüzlerini üretmiyor | Hassas yanaşma gerçek sensörle çalışamaz |
@@ -233,6 +233,15 @@ Her durum; giriş koşulu, timeout, tekrar deneme, güvenli duruş, PLC mesajı,
 Fazların kabul kapıları zorunludur. Bir faz “çalışıyor gibi göründüğü” için değil, tanımlı kanıtları ürettiği için tamamlanır.
 
 ### F0 — Resmî sürüm, finalist durumu ve mühendislik temeli
+
+**Güncel ilerleme (22.08.2026):** 14/14 paket derlendi; Faz 0 araç sözleşmesi
+PASS. Dokunulmamış kaynakla ROS test kaydı 72 testte 1 error/0 failure/5 skip;
+tek error, ayrı çalışma alanı olan `lane_tracking` paketinin bu WSL ortamında
+`pyopencl` olmadan test toplayamamasıdır. Flutter analiz temiz ve Flutter test
+sonucu 50 PASS/1 canlı rosbridge testi SKIP. `0.460 m` sözleşmesi otomatik teste
+bağlandı. Fiziksel ölçüm, firmware, cihaz envanteri, e-stop/mod truth table,
+final lojistiği ve PLC dış bağımlılığı açık olduğu için Faz 0’ın tamamı henüz
+kapanmış değildir. Ayrıntı: `FAZ0_SOZLESME.md`.
 
 **Süre:** 22–23 Ağustos  
 **Öncelik:** P0  

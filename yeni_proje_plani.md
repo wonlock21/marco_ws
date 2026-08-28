@@ -1,6 +1,7 @@
 # MarCO Forklift AMR — Güncel Uygulama Planı
 
-> Tarih: 08.08.2026  
+> Tarih: 22.08.2026
+>
 > Ana teknik kaynak: `PROJE.md`  
 > Mevcut durum ve geçmiş kanıtlar: `PROJE_PLANI.md`, `AGENT_REFERANS.md`,
 > `TEST.md` ve güncel `src/` kaynak ağacı
@@ -57,18 +58,17 @@ bir madde için tarihli komut, parametre özeti, rosbag/JSON ve sayısal sonuç 
 | Güvenlik zinciri | 🟡 | Collision Monitor, supervisor ve twist_mux simülasyonda çalışıyor; fiziksel duruş kabulü yok. |
 | Docking | 🟡 | Action server ve simülasyon test girdileriyle 20/20 kabul var; gerçek kamera/QR/şerit yok. |
 | Mission Manager | 🟡 | Görev, iptal, e-stop, mock PLC ve çok durak API'si var; saha graph semantiği, genel q5 olayı ve gerçek lift/PLC eksik. |
-| Rosbridge/GCS | 🟡 | Rosbridge launch ve görev/telemetri sözleşmesi var; rota öğretme ekranı/backend'i bu repoda yok. |
+| Rosbridge/GCS | 🟡 | Flutter uygulaması `/mnt/c/Users/emre/desktop/liftant_v2_bitirme` altında; rosbridge/mapping ekranları var, kalıcı rota backend'i eksik. |
 | Tek gerçek launch | 🟡 | `real_system.launch.py` mevcut; hâlâ package içi harita/graf ve eksik gerçek donanım adaptörlerine bağlı. |
 | Rota editörü | ⬜ | `route_editor_node` ve servisleri yok. |
 | Route guard | ⬜ | Mission `/route/cross_track_error` dinliyor fakat gerçek yayıncı yok. |
 
 ## 5. İlk çözülmesi gereken tutarsızlıklar
 
-1. Teker parametrelerinin kullanım amacı açık tutulacak: teker yarıçapı
-   `0.100 m` (100 mm/10 cm), encoder `360 tick/tur`, URDF'deki fiziksel CAD teker
-   aralığı `0.460 m`, odometri dönüş kalibrasyonundaki etkin teker aralığı
-   `0.421 m`. Geometrik ve etkin değer bilinçli olarak farklıdır; yanlışlıkla
-   birbirinin üzerine yazılmayacaktır.
+1. Teker parametreleri tek sözleşmede tutulacak: teker yarıçapı `0.100 m`
+   (100 mm/10 cm), encoder `360 tick/tur`, fiziksel ve odometri teker aralığı
+   `0.460 m`. Önceki `0.421 m`, düzeltilmekte olan STM32 verisiyle türetilmiş
+   tarihsel değerdir; firmware sonrası `0.460 m` fiziksel olarak doğrulanacaktır.
 2. ✅ Kanonik route sahibi kesinleştirildi: Mission Manager tek `NavigateToPose`
    action'ı açar; özel BT ilk ComputeRoute'tan sonra ComputeAndTrackRoute ile tek
    FollowPath'i eşzamanlı yürütür.
@@ -85,32 +85,37 @@ bir madde için tarihli komut, parametre özeti, rosbag/JSON ve sayısal sonuç 
 
 ---
 
-## Faz 0 — Kaynak ve sözleşme tabanını sabitleme ✅
+## Faz 0 — Kaynak ve sözleşme tabanını sabitleme 🟡
 
 **Amaç:** Yeni geliştirme başlamadan önce tek, derlenebilir ve çelişkisiz taban oluşturmak.
 
-- ✅ Mevcut değişiklikler korunarak başlangıç HEAD `1d43061` ve sözleşme
-  `FAZ0_SOZLESME.md` içinde kaydedildi. Commit/push kullanıcıya bırakıldı.
+- ✅ Mevcut değişiklikler korunarak ROS başlangıç HEAD `9d5fd47` ve Flutter
+  referans HEAD `46ac767`, `FAZ0_SOZLESME.md` içinde kaydedildi. Commit/push
+  kullanıcıya bırakıldı.
 - ✅ Kilitli araç değerlerini belgeleyip doğru tüketiciye bağla: teker yarıçapı
-  `0.100 m`, encoder `360 tick/tur`, URDF geometrik teker aralığı `0.460 m`,
-  odometri etkin teker aralığı `0.421 m`; bunların amaç dışı değiştirilmesini test et.
-- ✅ Nav2 footprint poligonu ile Collision Monitor bölgelerinin aracın gerçek dış
-  sınırlarını kapsadığını; LiDAR TF'nin `base_link`e göre `x=-0.300`, `y=0.000`,
-  `z=0.180 m` olduğunu doğrula. `base_link` yerden `0.100 m` olduğu için LiDAR
-  tarama düzlemi yerden `0.280 m` olur.
+  `0.100 m`, encoder `360 tick/tur`, fiziksel ve odometri teker aralığı
+  `0.460 m`; bu değerlerin tüketiciler arasında ayrışmasını test et.
+- ✅ Nav2 footprint poligonu ile Collision Monitor bölgelerinin yazılım
+  sözleşmesini kapsadığını ve 11.08 fiziksel ölçümüne göre LiDAR TF'nin
+  `base_link`e göre `x=+0.350`, `y=0.000`, `z=+0.350 m` olduğunu otomatik
+  testle doğrula. `base_link` yerden `0.100 m` olduğu için LiDAR tarama düzlemi
+  yerden `0.450 m` olur.
 - ✅ Route yürütme mimarisini kesinleştir: Route Server kenar olaylarını canlı tutan,
   FollowPath'i tek kez sahiplenen ve aktif path/edge yayınlayan tek akış kullan.
 - ✅ `/speed_limit`, `/cmd_vel_raw`, `/cmd_vel_safe` ve `/cmd_vel` sahiplerini belgeleyip
   aynı topic'te belirsiz çoklu sahipliği kaldır.
 - ✅ `AGENT_REFERANS.md` ve `TEST.md` içindeki güncel kodla çelişen komut/değerleri düzelt.
-- ✅ Tüm 12 paketi temiz ortamda derle; test-only düğümlerin gerçek modda açılmadığını
-  doğrula.
+- ✅ Tüm 14 paketi temiz ortamda derle ve çevrimdışı otomatik testleri çalıştır.
+- ⬜ STM32 firmware, fiziksel ölçüm/kalibrasyon, USB/udev envanteri, e-stop/mod
+  truth table, lift action kabulü, final lojistiği ve PLC takip bilgisini kapat.
 
-**Kabul:** Parametre tutarlılık testi, tam `colcon build`, ilgili testler ve tek topic/TF
-sahiplik raporu PASS. Hız aktarımı `0.15 m/s`, reset `0.0` canlı ROS mesajıyla PASS.
-Toplam 84 testte Faz 0 dışındaki `marco_perception` kullanıcı dosyalarının iki eski
-docstring biçim hatasından yalnız PEP257 testi FAIL; paket işlev testlerine ve Faz 0
-sözleşmesine etkisi yok, sahipliği korunarak bu turda değiştirilmedi.
+**Kabul durumu:** 22.08.2026 parametre tutarlılık testi PASS ve 14/14 paket
+build PASS. Dokunulmamış kaynakla `colcon test-result` 72 testte 1 error,
+0 failure, 5 skip göstermektedir; tek error ayrı çalışma alanı olan
+`lane_tracking` paketinin WSL'de eksik `pyopencl` bağımlılığıdır. Flutter
+`analyze` temiz; Flutter testlerinde 50 PASS, canlı rosbridge ortamı gerektiren
+1 test SKIP. Fiziksel araç ve `lane_tracking` hedef ortam kabulleri ayrıca
+tamamlanacaktır.
 
 ## Faz 1 — Gerçek taban sürüşü ve odometri kalibrasyonu ⬜
 
@@ -348,9 +353,9 @@ Faz 0
 
 ## 7. Şimdi başlanacak ilk üç iş paketi
 
-1. **Parametre ve route mimarisi kilidi:** geometrik `0.460 m` ile odometri etkin
-   `0.421 m` teker aralığının kullanım yerlerini ayır; route yürütme sahibini ve
-   speed-limit sahipliğini tekleştir.
+1. **Parametre ve route mimarisi kilidi:** `0.460 m` teker aralığını araç
+   sözleşmesinde ve bütün tüketicilerde tekleştir; route yürütme sahibini ve
+   speed-limit sahipliğini sabitle.
 2. **Gerçek odometri/lokalizasyon kanıtı:** 10 m, iki yön 360°, gerçek SLAM ve AMCL
    ölçümlerini tamamla. Route Editor güvenilir map pozuna bağımlıdır.
 3. **Route Editor MVP:** İki mevcut node arasında branch-safe segment oluşturup
