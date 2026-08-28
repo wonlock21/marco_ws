@@ -14,6 +14,7 @@
 
   <exec_depend>marco_bringup</exec_depend>
   <exec_depend>marco_demo</exec_depend>
+  <exec_depend>lane_tracking</exec_depend>
   <exec_depend>marco_navigation</exec_depend>
   <exec_depend>marco_msgs</exec_depend>
   <exec_depend>marco_simulation</exec_depend>

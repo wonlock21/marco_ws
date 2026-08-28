@@ -32,6 +32,7 @@ def generate_launch_description() -> LaunchDescription:
         ),
         launch_arguments={
             "use_sim_time": "false",
+            "obstacle_detection": LaunchConfiguration("obstacle_detection"),
             # Speckle filtresi SLAM icindir; guvenlik tek isinlik ince engeli
             # kaybetmemek icin dogrudan YDLidar /scan_raw verisini kullanir.
             "scan_topic": "/scan_raw",
@@ -42,6 +43,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("sahte", default_value="false"),
         DeclareLaunchArgument("lidar", default_value="true"),
         DeclareLaunchArgument("imu", default_value="false"),
+        DeclareLaunchArgument("obstacle_detection", default_value="true"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
         DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument("rviz", default_value="false"),

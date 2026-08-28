@@ -1,0 +1,11 @@
+# Konftel CAM10 video aygitina yeniden numaralandirmadan bagimsiz bir ad ver.
+SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{idVendor}=="2e7e", ATTRS{idProduct}=="0862", SYMLINK+="marco_front_camera"
+
+# CAM10, Orange Pi USB denetleyicisi tarafindan otomatik askidan uyandirilirken
+# tum USB aygiti dusurebiliyor. Video akisi boyunca gerceklesen yeniden
+# numaralandirmayi engellemek icin bu kamera icin autosuspend'i kapat.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="2e7e", ATTR{idProduct}=="0862", TEST=="power/control", ATTR{power/control}="on"
+
+# Orange Pi 6.1 vendor cekirdeginde CAM10'un USB ses arayuzu tum birlesik
+# aygiti dusuruyor. Yalniz mikrofon arayuzlerini ayir; UVC video bagli kalsin.
+ACTION=="bind", SUBSYSTEM=="usb", DRIVER=="snd-usb-audio", ATTR{bInterfaceClass}=="01", ATTRS{idVendor}=="2e7e", ATTRS{idProduct}=="0862", RUN+="/bin/sh -c 'echo -n %k > /sys/bus/usb/drivers/snd-usb-audio/unbind'"

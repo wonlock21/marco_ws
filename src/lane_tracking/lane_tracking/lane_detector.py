@@ -86,6 +86,7 @@ class LaneDetector:
             mask = adaptive_dark_mask_cpu(
                 working_frame, value_max=self.value_max,
                 block_size=self.block_size, offset=self.adaptive_offset)
+        mask = self._recover_wide_lane(mask)
         self.last_mask = mask
 
         contours, _ = cv2.findContours(
@@ -154,6 +155,28 @@ class LaneDetector:
         self._draw_lookahead(working_frame, center_x, lookahead_x)
 
         return True, float(near_x - center_x)
+
+    def _recover_wide_lane(self, mask):
+        """Kalin seridin adaptif esikte ayrilan iki kenarini birlestir."""
+        height, width = mask.shape[:2]
+        vertical_size = max(3, int(height * 0.10))
+        if vertical_size % 2 == 0:
+            vertical_size += 1
+        vertical_kernel = np.ones((vertical_size, 1), dtype=np.uint8)
+        continuous = cv2.morphologyEx(
+            mask, cv2.MORPH_OPEN, vertical_kernel,
+            borderType=cv2.BORDER_CONSTANT, borderValue=0)
+
+        kernel_width = max(3, min(self.block_size, int(width * 0.25)))
+        if kernel_width % 2 == 0:
+            kernel_width -= 1
+        kernel = np.ones((1, kernel_width), dtype=np.uint8)
+        filled = cv2.morphologyEx(
+            continuous, cv2.MORPH_CLOSE, kernel,
+            borderType=cv2.BORDER_CONSTANT, borderValue=0)
+        return cv2.morphologyEx(
+            filled, cv2.MORPH_OPEN, vertical_kernel,
+            borderType=cv2.BORDER_CONSTANT, borderValue=0)
 
     def _birdseye(self, frame):
         height, width = frame.shape[:2]

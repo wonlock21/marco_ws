@@ -111,6 +111,52 @@ def test_ipm_lookahead_satirinda_serit_merkezini_bulur():
     assert detector.last_debug_frame is not None
 
 
+def test_kalin_seridin_ayrilan_kenarlari_merkeze_donusturulur():
+    frame = np.full((240, 320, 3), 180, dtype=np.uint8)
+    cv2.rectangle(frame, (190, 0), (270, 239), (100, 100, 100), -1)
+    detector = LaneDetector(
+        block_size=81,
+        adaptive_offset=20,
+        lookahead_y=150,
+        lookahead_band_half_height=4,
+    )
+
+    found, _ = detector.process(frame, center_x=160)
+
+    assert found is True
+    assert detector.last_lookahead_x == pytest.approx(230.0, abs=2.0)
+    assert np.all(detector.last_mask[150, 195:266] == 255)
+
+
+def test_ince_serit_genisletilmeden_merkezi_korunur():
+    frame = np.full((240, 320, 3), 210, dtype=np.uint8)
+    cv2.rectangle(frame, (220, 0), (244, 239), (20, 20, 20), -1)
+    detector = LaneDetector(block_size=81, lookahead_y=150)
+
+    found, _ = detector.process(frame, center_x=160)
+
+    assert found is True
+    assert detector.last_lookahead_x == pytest.approx(232.0, abs=1.0)
+
+
+def test_seride_baglanan_yatay_zemin_lekesi_merkezi_kaydirmiyor():
+    frame = np.full((240, 320, 3), 180, dtype=np.uint8)
+    cv2.rectangle(frame, (190, 0), (270, 239), (100, 100, 100), -1)
+    cv2.rectangle(frame, (70, 140), (190, 160), (105, 105, 105), -1)
+    detector = LaneDetector(
+        block_size=81,
+        adaptive_offset=20,
+        lookahead_y=150,
+        lookahead_band_half_height=5,
+    )
+
+    found, _ = detector.process(frame, center_x=160)
+
+    assert found is True
+    assert detector.last_lookahead_x == pytest.approx(230.0, abs=2.0)
+    assert np.count_nonzero(detector.last_mask[150, 70:170]) == 0
+
+
 def test_lookahead_satirini_kesmeyen_kontur_pd_olcumu_uretmez():
     frame = np.full((240, 320, 3), 210, dtype=np.uint8)
     cv2.rectangle(frame, (145, 190), (175, 239), (20, 20, 20), -1)

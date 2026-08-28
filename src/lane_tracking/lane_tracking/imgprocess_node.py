@@ -225,6 +225,8 @@ class ImgProcessNode(Node):
         self.camera_input = str(
             self.get_parameter('camera_input').value).strip().lower()
         self.camera_topic = str(self.get_parameter('camera_topic').value)
+        self.camera_compressed_topic = str(
+            self.get_parameter('camera_compressed_topic').value)
         self.camera_timeout = float(
             self.get_parameter('camera_timeout').value)
         self._last_camera_time = None
@@ -298,6 +300,16 @@ class ImgProcessNode(Node):
             self.camera_watchdog = self.create_timer(
                 min(0.1, max(0.02, self.camera_timeout * 0.5)),
                 self._camera_watchdog_callback)
+        elif self.camera_input == 'ros_compressed':
+            qos = QoSPresetProfiles.SENSOR_DATA.value
+            self.camera_subscription = self.create_subscription(
+                CompressedImage,
+                self.camera_compressed_topic,
+                self._compressed_camera_callback,
+                qos)
+            self.camera_watchdog = self.create_timer(
+                min(0.1, max(0.02, self.camera_timeout * 0.5)),
+                self._camera_watchdog_callback)
         elif self.camera_input == 'v4l2':
             self.cap = self._open_camera()
             frame_rate = float(self.get_parameter('frame_rate').value)
@@ -305,11 +317,13 @@ class ImgProcessNode(Node):
                 1.0 / frame_rate, self.timer_callback)
         else:
             raise ValueError(
-                'camera_input yalnizca ros_topic veya v4l2 olabilir')
+                'camera_input yalnizca ros_topic, ros_compressed '
+                'veya v4l2 olabilir')
 
         camera_source = (
-            self.camera_topic
-            if self.camera_input == 'ros_topic'
+            self.camera_topic if self.camera_input == 'ros_topic'
+            else self.camera_compressed_topic
+            if self.camera_input == 'ros_compressed'
             else self.get_parameter('camera_device').value)
         self.get_logger().info(
             f'Goruntu isleme hazir | durum={self.current_state.name} | '
@@ -322,6 +336,8 @@ class ImgProcessNode(Node):
         self.declare_parameter('camera_device', '/dev/video0')
         self.declare_parameter('camera_input', 'v4l2')
         self.declare_parameter('camera_topic', '/camera/image_raw')
+        self.declare_parameter(
+            'camera_compressed_topic', '/camera/image_raw/compressed')
         self.declare_parameter('camera_timeout', 0.5)
         self.declare_parameter('frame_width', 320)
         self.declare_parameter('frame_height', 240)
@@ -398,6 +414,10 @@ class ImgProcessNode(Node):
         device = str(self.get_parameter('camera_device').value)
         source = int(device) if device.isdigit() else device
         cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
+        # Bu kamera 640x480 icin yalniz MJPEG destekliyor. Formati boyuttan
+        # once secmek OpenCV'nin desteklenmeyen YUYV kipine dusmesini engeller.
+        cap.set(
+            cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,
                 int(self.get_parameter('frame_width').value))
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT,
@@ -459,6 +479,19 @@ class ImgProcessNode(Node):
         self._camera_timed_out = False
         self._process_frame(frame)
 
+    def _compressed_camera_callback(self, msg):
+        encoded = np.frombuffer(msg.data, dtype=np.uint8)
+        frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+        if frame is None:
+            self.stop_robot()
+            self.get_logger().error(
+                'Sikistirilmis kamera mesaji JPEG olarak acilamadi',
+                throttle_duration_sec=2.0)
+            return
+        self._last_camera_time = self.get_clock().now()
+        self._camera_timed_out = False
+        self._process_frame(frame)
+
     def _camera_watchdog_callback(self):
         now = self.get_clock().now()
         stale = self._last_camera_time is None
@@ -469,8 +502,12 @@ class ImgProcessNode(Node):
             self.stop_robot()
             if not self._camera_timed_out:
                 self._camera_timed_out = True
+                source_topic = (
+                    self.camera_compressed_topic
+                    if self.camera_input == 'ros_compressed'
+                    else self.camera_topic)
                 self.get_logger().warning(
-                    f'{self.camera_topic} goruntusu yok; '
+                    f'{source_topic} goruntusu yok; '
                     'dur komutu yayinlandi')
 
     def _process_frame(self, frame):
