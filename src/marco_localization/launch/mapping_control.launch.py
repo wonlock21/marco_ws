@@ -85,6 +85,16 @@ def generate_launch_description() -> LaunchDescription:
             ),
         }],
     )
+    route_editor = Node(
+        package="marco_route",
+        executable="route_editor",
+        name="route_editor",
+        output="screen",
+        parameters=[{
+            "data_root": LaunchConfiguration("data_root"),
+            "competition_profile": True,
+        }],
+    )
     demo_manager = Node(
         package="marco_demo",
         executable="demo_scenario_manager",
@@ -162,6 +172,7 @@ def generate_launch_description() -> LaunchDescription:
         front_camera,
         manager,
         localization_manager,
+        route_editor,
         demo_manager,
         buzzer_driver,
     ])

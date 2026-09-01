@@ -77,7 +77,7 @@ class SafetySupervisor(Node):
         self._cancel_clients = [self.create_client(
             CancelGoal, name + '/_action/cancel_goal') for name in (
                 '/navigate_to_pose', '/navigate_through_poses', '/follow_path',
-                '/compute_and_track_route')]
+                '/compute_and_track_route', '/spin')]
         self.create_timer(0.05, self._tick)
 
     @staticmethod

@@ -10,11 +10,17 @@ string station_id
 float32 position_tolerance    # [m]
 float32 yaw_tolerance         # [rad]
 
-# Yuk alma mi birakma mi. Catalin hangi tarafta kalacagini ve hangi kameranin
-# kullanilacagini belirler.
+# Yuk alma mi birakma mi. Islem turunu belirtir; F7C'de hareket yonu ve kamera
+# secimi bu alandan bagimsizdir. Eski docking yolu icin geriye uyumludur.
 uint8 APPROACH_PICKUP=0
 uint8 APPROACH_DROPOFF=1
 uint8 approach_type
+
+# F7C sureli arka-kamera docking sozlesmesi. line_follow_duration_s > 0 ise
+# dock server eski QR mesafe kontrolu yerine gercek /cmd_vel_lane adaptoru olur.
+float32 line_follow_duration_s
+bool reverse_motion
+string camera_source
 
 # Zaman asimi [s]. Asilirsa action iptal edilir ve gorev yonetimine hata bildirilir.
 float32 timeout
@@ -34,6 +40,8 @@ uint8 RESULT_TIMEOUT=3
 uint8 RESULT_OBSTACLE=4
 uint8 RESULT_ABORTED=5
 uint8 RESULT_CAMERA_LOST=6
+uint8 RESULT_CONTROL_INACTIVE=7
+uint8 RESULT_STOP_FAILED=8
 uint8 result_code
 
 string message
@@ -45,3 +53,9 @@ string phase
 float32 position_error        # [m]
 float32 yaw_error             # [rad]
 float32 distance_remaining    # [m]
+float32 configured_duration_s
+float32 elapsed_s
+float32 remaining_s
+bool lane_control_active
+bool camera_valid
+bool stopped

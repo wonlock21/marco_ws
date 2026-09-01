@@ -77,6 +77,20 @@ def test_ileride_saga_yatmis_serit_pozitif_yon_hatasi_uretir():
     assert detector.last_heading_error > 0.15
 
 
+def test_ust_bant_yokken_kontur_ekseni_serit_egimini_korur():
+    contour = np.array(
+        [[[90, 239]], [[130, 239]], [[180, 170]], [[150, 170]]],
+        dtype=np.int32,
+    )
+
+    centers = LaneDetector._fit_contour_axis(
+        contour, width=320, near_y=202, far_y=130)
+
+    assert centers is not None
+    near_x, far_x = centers
+    assert far_x > near_x + 25.0
+
+
 def test_yeni_oturum_onceki_kontur_konumunu_unutur():
     detector = LaneDetector()
     right = np.full((240, 320, 3), 210, dtype=np.uint8)
@@ -166,3 +180,100 @@ def test_lookahead_satirini_kesmeyen_kontur_pd_olcumu_uretmez():
 
     assert found is True
     assert detector.last_lookahead_x is None
+
+
+def test_egik_kalin_seridin_tam_govdesi_ve_orta_noktasi_kullanilir():
+    frame = np.full((240, 320, 3), 190, dtype=np.uint8)
+    lane = np.array([[120, 239], [205, 239], [270, 20], [190, 20]])
+    cv2.fillPoly(frame, [lane], (85, 85, 85))
+    detector = LaneDetector(
+        block_size=81, adaptive_offset=20,
+        lookahead_y=150, lookahead_band_half_height=4)
+
+    found, _ = detector.process(frame, center_x=160)
+
+    expected_center = 0.5 * (
+        np.interp(150, [20, 239], [190, 120])
+        + np.interp(150, [20, 239], [270, 205]))
+    assert found is True
+    assert detector.last_lookahead_x == pytest.approx(
+        expected_center, abs=4.0)
+    row = np.flatnonzero(detector.last_selected_mask[150])
+    assert row.size >= 65
+    assert float(row[0] + row[-1]) * 0.5 == pytest.approx(
+        expected_center, abs=4.0)
+
+
+def test_kisa_zemin_cizgileri_kalin_seridin_merkezini_bozmaz():
+    frame = np.full((240, 320, 3), 190, dtype=np.uint8)
+    cv2.rectangle(frame, (195, 0), (270, 239), (80, 80, 80), -1)
+    cv2.rectangle(frame, (45, 142), (195, 158), (75, 75, 75), -1)
+    cv2.rectangle(frame, (270, 95), (310, 103), (70, 70, 70), -1)
+    cv2.rectangle(frame, (20, 205), (75, 212), (65, 65, 65), -1)
+    detector = LaneDetector(
+        block_size=81, adaptive_offset=20,
+        lookahead_y=150, lookahead_band_half_height=5)
+
+    found, _ = detector.process(frame, center_x=160)
+
+    assert found is True
+    assert detector.last_lookahead_x == pytest.approx(232.5, abs=3.0)
+    assert np.count_nonzero(
+        detector.last_selected_mask[150, 45:175]) == 0
+
+
+def test_ince_adaptif_kenarlar_acilmadan_once_birlestirilir():
+    mask = np.zeros((240, 320), dtype=np.uint8)
+    mask[:, 190:192] = 255
+    mask[:, 268:270] = 255
+
+    recovered = LaneDetector(block_size=81)._recover_wide_lane(mask)
+
+    assert np.all(recovered[120, 190:270] == 255)
+
+
+def test_seride_baglanan_orta_uzunluktaki_cizgi_govdeden_atilir():
+    component = np.zeros((240, 640), dtype=np.uint8)
+    component[:, 250:371] = 255
+    component[150:166, 180:250] = 255
+
+    cleaned = LaneDetector._clean_lane_body(component)
+
+    assert np.all(cleaned[158, 250:371] == 255)
+    assert np.count_nonzero(cleaned[158, 180:245]) == 0
+
+
+def test_ince_yatay_iz_serit_sinirinda_cikinti_birakmaz():
+    component = np.zeros((240, 640), dtype=np.uint8)
+    component[:, 250:371] = 255
+    component[145:155, 238:250] = 255
+
+    cleaned = LaneDetector._clean_lane_body(component)
+
+    assert np.all(cleaned[150, 250:371] == 255)
+    assert np.count_nonzero(cleaned[150, 238:250]) == 0
+
+
+def test_uzun_bagli_leke_serit_genisligi_sayilmaz():
+    component = np.zeros((480, 640), dtype=np.uint8)
+    component[:, 300:421] = 255
+    component[90:390, 421:575] = 255
+
+    cleaned = LaneDetector._clean_lane_body(component)
+
+    assert np.all(cleaned[240, 300:421] == 255)
+    assert np.count_nonzero(cleaned[240, 430:575]) == 0
+    assert LaneDetector._band_center(cleaned, 220, 260) == pytest.approx(
+        360.0, abs=1.0)
+
+
+def test_temiz_seritte_egim_dolu_govde_bant_merkezlerinden_hesaplanir():
+    frame = np.full((240, 320, 3), 210, dtype=np.uint8)
+    lane = np.array([[120, 239], [160, 239], [220, 20], [180, 20]])
+    cv2.fillPoly(frame, [lane], (20, 20, 20))
+    detector = LaneDetector(lookahead_y=150)
+
+    found, _ = detector.process(frame, center_x=160)
+
+    assert found is True
+    assert detector.last_heading_error > 0.10

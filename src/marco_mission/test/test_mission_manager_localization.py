@@ -7,6 +7,8 @@ from rclpy.qos import (DurabilityPolicy, QoSCompatibility, QoSProfile,
                        ReliabilityPolicy, qos_check_compatible)
 from sensor_msgs.msg import LaserScan
 
+from marco_msgs.msg import QrDetection
+
 from marco_mission.mission_manager import MissionManager
 
 
@@ -56,6 +58,32 @@ def test_scan_subscription_is_compatible_with_real_ydlidar_qos():
             ydlidar_qos, scan_subscription.qos_profile)
 
         assert compatibility != QoSCompatibility.ERROR, reason
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_qr_gui_telemetry_keeps_full_detection_contract():
+    """Retain QR pose, confidence and camera for RobotStatus fields."""
+    rclpy.init()
+    node = MissionManager()
+    try:
+        detection = QrDetection()
+        detection.detected = True
+        detection.data = 'A1'
+        detection.pose_in_camera.x = 1.2
+        detection.pose_in_camera.y = -0.1
+        detection.pose_in_camera.theta = 0.2
+        detection.confidence = 0.91
+        detection.camera_frame = 'front'
+        node._on_qr(detection)
+
+        assert node._last_qr == 'A1'
+        assert node._last_qr_detected
+        assert node._last_qr_pose.x == 1.2
+        assert node._last_qr_confidence == 0.91
+        assert node._last_qr_camera == 'front'
+        assert node._last_qr_seen > 0.0
     finally:
         node.destroy_node()
         rclpy.shutdown()

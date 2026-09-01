@@ -1,0 +1,6 @@
+string field_name
+uint64 edge_id
+---
+bool success
+string message
+string package_hash

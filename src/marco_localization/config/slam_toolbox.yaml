@@ -13,8 +13,7 @@
 # - /scan BEST_EFFORT QoS ile geliyor; slam_toolbox bunu kendisi dinler.
 # - RViz'i Orange Pi uzerinde mapping sirasinda ACMA (CPU acligi /scan'i
 #   bozar). Kayit-oynat veya uzak makine kullan.
-# - pwm_bridge ile AYNI ANDA calistirilamaz: o /odom yayinlamaz ve seri
-#   portu base_driver ile paylasamaz.
+# - Teker RPM komutu, odometri ve IMU ayni base_driver seri baglantisindadir.
 
 slam_toolbox:
   ros__parameters:

@@ -31,8 +31,15 @@ marco_base_driver:
     wheel_separation: 0.460
     # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
     ticks_per_revolution: 360
-    max_wheel_speed: 0.838
-    # Encoder sayaci 0..65535 (2^16) sarar. Iki okuma arasi |Δtick| bundan
+    # /cmd_vel bu fiziksel m/s sinirinda oransal kirpilir, ardindan 0x01 icin
+    # RPM'e cevrilir. 0.100 m yaricapta 2.670353756 m/s tam 255 RPM'dir.
+    # Bu yalniz ust komut siniridir; normal surus hizlari ayri profillerde
+    # daha dusuk tutulmalidir.
+    max_wheel_speed: 2.670353756
+    # STM32'ye giden RPM hedefi icin kalibrasyon carpani. Varsayilan davranis
+    # degismez; gecici testte command_rpm_scale:=2.0 ile iki kat uygulanabilir.
+    command_rpm_scale: 1.0
+    # Encoder sayaci isaretli int32'de sarar. Iki okuma arasi |Δtick| bundan
     # buyukse cerceve atilir (UART copu / tek-kare bozulma). 3 ardısık redde
     # referans yeniden alinir (STM32 reset).
     max_tick_delta: 2000
@@ -59,10 +66,10 @@ marco_base_driver:
     # Yalnizca EKF olmadan cikplak odometri denenirken true yapilir.
     publish_tf: false
 
-    # STM32 STATE_ODOMETRY paketindeki float32 angle_x (derece), elektronik
+    # STM32 STATE_ODOMETRY paketindeki float32 imu_yaw (derece), elektronik
     # yerlesimde arac yaw acisidir ve /imu/data_raw olarak yayinlanir.
     imu_frame_id: imu_link
-    # Fiziksel sola donuste angle_x azaliyorsa -1.0 yap.
+    # Fiziksel sola donuste imu_yaw azaliyorsa -1.0 yap.
     imu_angle_sign: 1.0
     imu_yaw_stddev_deg: 3.0
     imu_yaw_rate_stddev: 0.08

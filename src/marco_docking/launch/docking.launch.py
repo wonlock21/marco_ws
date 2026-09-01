@@ -20,11 +20,13 @@ from launch_ros.actions import Node
 
 def generate_launch_description() -> LaunchDescription:
     dock_share = get_package_share_directory("marco_docking")
+    lane_share = get_package_share_directory("lane_tracking")
     params = os.path.join(dock_share, "config", "docking.yaml")
 
     mock = LaunchConfiguration("mock")
     station = LaunchConfiguration("station_id")
     scenario = LaunchConfiguration("scenario")
+    lane_tracking = LaunchConfiguration("lane_tracking")
 
     dock = Node(
         package="marco_docking",
@@ -32,6 +34,25 @@ def generate_launch_description() -> LaunchDescription:
         name="dock_server",
         output="screen",
         parameters=[params],
+    )
+
+    lane = Node(
+        package="lane_tracking",
+        executable="imgprocess",
+        name="imgprocess_node",
+        output="screen",
+        condition=IfCondition(lane_tracking),
+        parameters=[
+            os.path.join(lane_share, "config", "lane_tracking.yaml"),
+            {
+                "camera_input": "ros_topic",
+                "camera_topic": "/camera/image_raw",
+                "startup_mode": "IDLE",
+                "output_topic": "/cmd_vel_lane",
+                "show_debug_window": False,
+                "lane_end_detection_enabled": False,
+            },
+        ],
     )
 
     perception_mock = Node(
@@ -56,6 +77,11 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="false",
                 description="true: sahte /lane/offset + /qr/detection",
             ),
+            DeclareLaunchArgument(
+                "lane_tracking",
+                default_value="true",
+                description="gercek arka kamera serit cikisini IDLE baslat",
+            ),
             DeclareLaunchArgument("station_id", default_value="istasyon_A"),
             DeclareLaunchArgument(
                 "scenario",
@@ -64,6 +90,7 @@ def generate_launch_description() -> LaunchDescription:
             ),
             LogInfo(msg=["docking launch mock=", mock, " station=", station]),
             dock,
+            lane,
             perception_mock,
         ]
     )

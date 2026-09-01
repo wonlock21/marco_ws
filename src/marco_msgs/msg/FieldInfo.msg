@@ -6,4 +6,10 @@ string created_at
 bool map_ready
 bool initial_pose_ready
 bool localization_ready
+bool route_ready
+bool validation_passed
+string route_hash
+bool active
+string package_version
+string package_hash
 string message

@@ -1,0 +1,7 @@
+string field_name
+marco_msgs/StationApproachConfig config
+---
+bool success
+string message
+marco_msgs/StationApproachConfig saved_config
+string package_hash

@@ -2,6 +2,8 @@
 """GUI servisleriyle tek bir guvenli haritalama surecini yonetir."""
 
 import binascii
+import hashlib
+import json
 import math
 import os
 import re
@@ -19,6 +21,7 @@ from pathlib import Path
 
 import rclpy
 import yaml
+from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from marco_msgs.msg import LocalizationStatus, MappingStatus
 from marco_msgs.srv import SaveMapping, StartMapping
@@ -374,6 +377,14 @@ class MappingManager(Node):
         with path.open("w", encoding="utf-8") as stream:
             yaml.safe_dump(content, stream, sort_keys=False, allow_unicode=True)
 
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
     def _write_metadata(self, staging: Path, map_msg, pose_msg) -> None:
         pose = pose_msg.pose.pose
         pose_data = {
@@ -399,11 +410,58 @@ class MappingManager(Node):
         }
         self._write_yaml(staging / "mapping_pose.yaml", pose_data)
 
+        route = {
+            "type": "FeatureCollection",
+            "name": self._field_name,
+            "crs": {"type": "name", "properties": {"name": "map"}},
+            "marco": {
+                "schema": "marco.field_route",
+                "version": 2,
+                "profile": "competition",
+            },
+            "features": [],
+        }
+        with (staging / "route.geojson").open("w", encoding="utf-8") as stream:
+            json.dump(route, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            stream.write("\n")
+        self._write_yaml(
+            staging / "stations.yaml",
+            {"version": 1, "field_name": self._field_name, "nodes": []},
+        )
+
+        contract_path = (
+            Path(get_package_share_directory("marco_bringup"))
+            / "config"
+            / "vehicle_contract.yaml"
+        )
+        with contract_path.open("r", encoding="utf-8") as stream:
+            vehicle_contract = yaml.safe_load(stream) or {}
+        self._write_yaml(
+            staging / "calibration_snapshot.yaml",
+            {
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+                "source": str(contract_path),
+                "vehicle_contract": vehicle_contract,
+            },
+        )
+
         info = map_msg.info
+        artifact_names = (
+            "map.yaml",
+            "map.pgm",
+            "map.png",
+            "map.posegraph",
+            "map.data",
+            "mapping_pose.yaml",
+            "route.geojson",
+            "stations.yaml",
+            "calibration_snapshot.yaml",
+        )
         manifest = {
-            "version": 1,
+            "version": 2,
             "field_name": self._field_name,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "profile": "competition",
             "map": {
                 "yaml": "map.yaml",
                 "image": "map.pgm",
@@ -417,6 +475,16 @@ class MappingManager(Node):
                 "data": "map.data",
             },
             "mapping_pose": "mapping_pose.yaml",
+            "route": "route.geojson",
+            "stations": "stations.yaml",
+            "calibration_snapshot": "calibration_snapshot.yaml",
+            "vehicle_contract_version": str(
+                vehicle_contract.get("metadata", {}).get("version", "")
+            ),
+            "files": {
+                name: {"sha256": MappingManager._sha256(staging / name)}
+                for name in artifact_names
+            },
         }
         self._write_yaml(staging / "field.yaml", manifest)
 
@@ -490,7 +558,7 @@ class MappingManager(Node):
 
             (staging / "map.png").write_bytes(_occupancy_grid_png(map_msg))
             self._write_metadata(staging, map_msg, pose_msg)
-            staging.rename(target)
+            os.replace(staging, target)
         except Exception as error:
             self._state = MappingStatus.STATE_MAPPING
             response.success = False

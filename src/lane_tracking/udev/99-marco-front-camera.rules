@@ -1,10 +1,20 @@
 # Konftel CAM10 video aygitina yeniden numaralandirmadan bagimsiz bir ad ver.
 SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{idVendor}=="2e7e", ATTRS{idProduct}=="0862", SYMLINK+="marco_front_camera"
 
+# Sahadaki Jieli USB PHY 2.0 kameranin capture arayuzu. Aygitin ikinci
+# video4linux dugumu metadata arayuzudur ve kamera girdisi olarak kullanilmaz.
+SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{idVendor}=="1224", ATTRS{idProduct}=="2a25", SYMLINK+="marco_front_camera"
+
+# ST-Link uzerindeki VCP portunu kartin kalici seri numarasina bagla.
+SUBSYSTEM=="tty", KERNEL=="ttyACM*", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", ATTRS{serial}=="066CFF505250898367074239", SYMLINK+="marco_stm32"
+
 # CAM10, Orange Pi USB denetleyicisi tarafindan otomatik askidan uyandirilirken
 # tum USB aygiti dusurebiliyor. Video akisi boyunca gerceklesen yeniden
 # numaralandirmayi engellemek icin bu kamera icin autosuspend'i kapat.
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="2e7e", ATTR{idProduct}=="0862", TEST=="power/control", ATTR{power/control}="on"
+
+# Jieli kamera akisi sirasinda USB autosuspend kaynakli yeniden uyanmayi onle.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="1224", ATTR{idProduct}=="2a25", TEST=="power/control", ATTR{power/control}="on"
 
 # Orange Pi 6.1 vendor cekirdeginde CAM10'un USB ses arayuzu tum birlesik
 # aygiti dusuruyor. Yalniz mikrofon arayuzlerini ayir; UVC video bagli kalsin.

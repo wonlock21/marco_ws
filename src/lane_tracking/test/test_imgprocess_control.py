@@ -12,6 +12,7 @@ from lane_tracking.imgprocess_node import (
     enforce_minimum_wheel_speed,
     image_message_to_bgr,
     lane_end_confirmed,
+    schedule_lane_linear_speed,
     scale_lane_error,
 )
 
@@ -62,6 +63,42 @@ def test_pd_ilk_karede_turev_uretmez_ve_cikisi_sinirlar():
     assert error == 1.0
     assert derivative == 0.0
     assert angular == 0.10
+
+
+def test_pd_alt_ofseti_ve_serit_egimini_zit_isaretle_birlestirir():
+    angular, error, derivative = compute_pd_angular(
+        error_px=64.0,
+        half_frame_width=320.0,
+        previous_error=None,
+        dt=None,
+        kp=0.08,
+        kd=0.001,
+        max_angular_speed=0.10,
+        position_gain=1.20,
+        heading_error=0.20,
+        heading_gain=0.35,
+        center_deadband_ratio=0.0,
+    )
+
+    assert error == pytest.approx(1.20 * 0.20 - 0.35 * 0.20)
+    assert derivative == 0.0
+    assert angular == pytest.approx(0.08 * error)
+
+
+def test_pd_merkez_olu_bolgesinde_donus_uretmez():
+    angular, error, _ = compute_pd_angular(
+        error_px=3.0,
+        half_frame_width=320.0,
+        previous_error=None,
+        dt=None,
+        kp=0.08,
+        kd=0.001,
+        max_angular_speed=0.10,
+        center_deadband_ratio=0.03,
+    )
+
+    assert error == 0.0
+    assert angular == 0.0
 
 
 @pytest.mark.parametrize(
@@ -141,6 +178,15 @@ def test_duzlukte_mevcut_hiz_degismez():
     )
 
     assert linear == pytest.approx(0.060)
+
+
+def test_pd_donusu_buyudukce_ileri_hiz_azalir():
+    assert schedule_lane_linear_speed(
+        0.052360, 0.020944, 0.0, 0.045530) == pytest.approx(0.052360)
+    assert schedule_lane_linear_speed(
+        0.052360, 0.020944, 0.022765, 0.045530) == pytest.approx(0.036652)
+    assert schedule_lane_linear_speed(
+        0.052360, 0.020944, 0.045530, 0.045530) == pytest.approx(0.020944)
 
 
 def test_merkez_ve_yon_hatasi_lineer_birlesir():

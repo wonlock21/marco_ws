@@ -4,8 +4,8 @@
   <name>marco_docking</name>
   <version>0.1.0</version>
   <description>
-    Hassas yanasma: DockToStation action server.
-    /lane/offset + /qr/detection → /cmd_vel_dock (twist_mux).
+    Hassas yanasma: DockToStation action server. Gercek serit komutunu sureli
+    arka-kamera geri docking icin /cmd_vel_dock guvenlik zincirine uyarlar.
   </description>
   <maintainer email="marco@marmara.edu.tr">MarCO Yazilim Ekibi</maintainer>
   <license>Apache-2.0</license>
@@ -13,6 +13,9 @@
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>marco_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>tf2_msgs</depend>
   <depend>ros_gz_interfaces</depend>
   <depend>rcl_interfaces</depend>
@@ -20,6 +23,7 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>lane_tracking</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

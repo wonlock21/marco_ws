@@ -15,13 +15,19 @@ def generate_launch_description() -> LaunchDescription:
                          'phase10_route.geojson')
     source = LaunchConfiguration('task_source')
     test_lift = LaunchConfiguration('test_only_lift')
+    qr_adapter = LaunchConfiguration('qr_reader_adapter')
     return LaunchDescription([
         DeclareLaunchArgument('task_source', default_value='plc',
                               description='plc (production) or mock_plc (simulation)'),
         DeclareLaunchArgument('manual_task_enabled', default_value='true'),
         DeclareLaunchArgument('simulate_steps', default_value='false'),
         DeclareLaunchArgument('graph_file', default_value=graph),
+        DeclareLaunchArgument('require_active_field', default_value='false'),
         DeclareLaunchArgument('test_only_lift', default_value='false'),
+        DeclareLaunchArgument('qr_reader_adapter', default_value='true'),
+        Node(package='marco_mission', executable='qr_reader_adapter',
+             name='qr_reader_adapter', output='screen',
+             condition=IfCondition(qr_adapter)),
         Node(package='marco_mission', executable='mock_plc', name='mock_plc',
              output='screen',
              condition=IfCondition(PythonExpression(["'", source,
@@ -35,5 +41,7 @@ def generate_launch_description() -> LaunchDescription:
                  'simulate_steps': LaunchConfiguration('simulate_steps'),
                  'manual_task_enabled': LaunchConfiguration('manual_task_enabled'),
                  'graph_file': LaunchConfiguration('graph_file'),
+                 'require_active_field':
+                     LaunchConfiguration('require_active_field'),
              }]),
     ])
