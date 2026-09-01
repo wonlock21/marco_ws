@@ -15,10 +15,10 @@ Ornekler:
   ros2 launch marco_navigation route.launch.py \\
       sahte:=true lidar:=true harita:=nav_test baslangic:=true
 
-  # Gercek mod: graf zorunlu (demo fallback YOK)
+  # Gercek mod: aktif saha paketinden mutlak graf yolu zorunlu
   ros2 launch marco_navigation route.launch.py \\
       sahte:=false lidar:=true harita:=nav_test \\
-      graf:=gercek_saha.geojson baslangic:=true
+      graf:=/home/orangepi/marco_data/fields/saha/route.geojson baslangic:=true
 
   # Dugum ID ile rota (smoke):
   ros2 run marco_navigation rota_hesapla.py --start 0 --goal 8
@@ -83,6 +83,24 @@ def _check_graph(graph_file: str) -> None:
         )
 
 
+def _runtime_graph(graph_file: str, fake: bool) -> str:
+    """Enrich canonical field graphs without mutating the hashed field package."""
+    if fake:
+        return graph_file
+    from marco_route.graph_model import FieldGraph
+
+    with open(graph_file, encoding="utf-8") as stream:
+        content = json.load(stream)
+    graph = FieldGraph.from_geojson(
+        content, os.path.basename(os.path.dirname(graph_file))
+    )
+    runtime_file = "/tmp/marco_active_route_runtime.geojson"
+    with open(runtime_file, "w", encoding="utf-8") as stream:
+        json.dump(graph.to_geojson(), stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+    return runtime_file
+
+
 def _resolve_graph(context, nav_share: str) -> str:
     """Gercek modda bos/eksik graf → net hata. Demo fallback yalniz sahte:=true."""
     graphs_dir = os.path.join(nav_share, "graphs")
@@ -91,22 +109,29 @@ def _resolve_graph(context, nav_share: str) -> str:
 
     if not raw:
         if not fake:
-            available = ", ".join(_list_graphs(graphs_dir)) or "(yok)"
             raise RuntimeError(
-                "Gercek modda rota grafi zorunlu (graf:=...). "
-                "Bos graf ile demo_rota.geojson sessizce acilmaz; "
-                "hareket baslamadan duruldu. "
-                f"Ornek: graf:=gercek_saha.geojson | mevcut: {available}. "
-                "Demo fallback yalniz sahte:=true / test modunda."
+                "Gercek modda aktif saha paketinin mutlak rota yolu zorunlu "
+                "(graf:=/…/fields/<saha>/route.geojson). Paketlenmis test "
+                "graflari production modunda kullanilamaz."
             )
         raw = _DEMO_GRAPH
 
+    if not fake and not os.path.isabs(raw):
+        raise RuntimeError(
+            "Gercek modda graf mutlak bir aktif saha paketi yolu olmali; "
+            "share/graphs altindaki goreli test graflari reddedildi."
+        )
     graph_file = raw
     if not graph_file.endswith(".geojson"):
         graph_file += ".geojson"
     if not os.path.isabs(graph_file):
         graph_file = os.path.join(graphs_dir, graph_file)
     graph_file = os.path.abspath(graph_file)
+    if not fake and os.path.commonpath((graph_file, graphs_dir)) == graphs_dir:
+        raise RuntimeError(
+            "Gercek modda marco_navigation/share/graphs altindaki test "
+            "graflari kullanilamaz; once saha paketini dogrulayip etkinlestirin."
+        )
 
     if not os.path.isfile(graph_file):
         available = ", ".join(_list_graphs(graphs_dir)) or "(yok)"
@@ -129,7 +154,8 @@ def _kur(context, *args, **kwargs):
     bt_xml = os.path.join(
         nav_share, "behavior_trees", "navigate_route_wait.xml"
     )
-    graph_file = _resolve_graph(context, nav_share)
+    graph_source = _resolve_graph(context, nav_share)
+    graph_file = _runtime_graph(graph_source, _sahte_mi(context))
 
     params_file = "/tmp/marco_nav2_route_params.yaml"
     _rpp_compose().compose_nav2_params_file(
@@ -228,15 +254,31 @@ def _kur(context, *args, **kwargs):
         output="screen",
     )
 
+    route_guard = Node(
+        package="marco_route",
+        executable="route_guard",
+        name="route_guard",
+        output="screen",
+        parameters=[{
+            "graph_file": graph_file,
+            "warning_threshold_m": 0.05,
+            "slowdown_threshold_m": 0.08,
+            "stop_threshold_m": 0.10,
+            "slowdown_speed_mps": 0.06,
+        }],
+    )
+
     return [
         LogInfo(msg=f"Route BT: {bt_xml}"),
-        LogInfo(msg=f"Route graf: {graph_file}"),
+        LogInfo(msg=f"Route graf kaynagi: {graph_source}"),
+        LogInfo(msg=f"Route runtime grafi: {graph_file}"),
         LogInfo(msg=f"Nav2 params: {params_file}"),
         amcl,
         nav2,
         route_server,
         lifecycle_route,
         speed_limit_manager,
+        route_guard,
     ]
 
 
@@ -266,9 +308,9 @@ def generate_launch_description() -> LaunchDescription:
                 "graf",
                 default_value="",
                 description=(
-                    "GeoJSON yolu; goreli ise share/graphs/ altinda aranir. "
-                    "Bos: yalniz sahte:=true iken demo_rota.geojson. "
-                    "sahte:=false iken zorunlu — eksik/bos graf hata ile durur."
+                    "GeoJSON yolu. Goreli share/graphs yolu yalniz sahte:=true "
+                    "test modunda kabul edilir. Gercek modda aktif saha "
+                    "paketinden mutlak yol zorunludur."
                 ),
             ),
             OpaqueFunction(function=_kur),

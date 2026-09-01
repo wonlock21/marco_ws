@@ -63,9 +63,6 @@ def check(root: Path) -> None:
     base = _read_yaml(
         root / 'src/marco_base/config/base_driver.yaml'
     )['marco_base_driver']['ros__parameters']
-    pwm = _read_yaml(
-        root / 'src/marco_base/config/pwm_bridge.yaml'
-    )['marco_pwm_bridge']['ros__parameters']
     lane = _read_yaml(
         root / 'src/lane_tracking/config/lane_tracking.yaml'
     )['imgprocess_node']['ros__parameters']
@@ -79,14 +76,6 @@ def check(root: Path) -> None:
     _close(base['wheel_separation'],
            drive['odometry_effective_wheel_separation_m'],
            'odometri etkin teker araligi')
-    _close(pwm['wheel_radius'], drive['wheel_radius_m'],
-           'PWM bridge wheel radius')
-    _close(pwm['wheel_separation'],
-           drive['odometry_effective_wheel_separation_m'],
-           'PWM bridge teker araligi')
-    _close(pwm['ticks_per_revolution'],
-           drive['encoder_ticks_per_revolution'],
-           'PWM bridge encoder tick/tur')
     _close(lane['wheel_separation'],
            drive['odometry_effective_wheel_separation_m'],
            'serit takip teker araligi')

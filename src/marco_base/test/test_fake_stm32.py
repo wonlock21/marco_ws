@@ -12,6 +12,7 @@ import math
 from marco_base import protocol as p
 from marco_base.fake_stm32 import WATCHDOG_TIMEOUT, FakeStm32
 from marco_base.odometry import DifferentialOdometry
+from marco_base.odometry import wheel_speed_to_rpm
 
 WHEEL_RADIUS = 0.100
 WHEEL_SEPARATION = 0.460
@@ -35,9 +36,9 @@ def make_fake(**kwargs) -> FakeStm32:
 
 def command(fake: FakeStm32, left: float, right: float, enabled: bool = True) -> None:
     fake.write(
-        p.encode_wheel_velocity(
-            left_mm_s=int(round(left * 1000)),
-            right_mm_s=int(round(right * 1000)),
+        p.encode_wheel_rpm(
+            left_rpm=int(round(wheel_speed_to_rpm(left, WHEEL_RADIUS))),
+            right_rpm=int(round(wheel_speed_to_rpm(right, WHEEL_RADIUS))),
             enabled=enabled,
         )
     )
@@ -266,21 +267,3 @@ def test_catal_komutu_durum_bildirir():
     status = [p.decode_status(payload) for mid, payload in frames if mid is p.MsgId.STATE_STATUS]
     assert status[-1].fork_state == 2
     assert p.StatusFlag.LIMIT_SWITCH_UP in status[-1].flags
-
-
-def test_pwm_komutu_tick_uretir():
-    """Acik dongu PWM yolu da motoru hareket ettirmeli."""
-    fake = make_fake(pwm_full_scale=255.0)
-    now = 0.0
-    next_command = 0.0
-    end = 2.0
-    while now < end:
-        if now >= next_command:
-            # 150/255 * 0.838 ≈ 0.49 m/s hedef
-            fake.write(p.encode_motor_pwm(150, 150, True))
-            next_command = now + COMMAND_PERIOD
-        fake.update(now)
-        now += STEP
-
-    assert fake.left_ticks > 0
-    assert abs(fake.left_ticks - fake.right_ticks) <= 1

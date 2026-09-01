@@ -1,0 +1,7 @@
+string field_name
+---
+bool success
+string message
+marco_msgs/FieldNode[] nodes
+marco_msgs/FieldEdge[] edges
+marco_msgs/FieldPackageStatus status

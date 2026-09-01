@@ -12,15 +12,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# Encoder sayaci 2^16'da sarar (0..65535). Kumulatif int32 yerine dar aralik
-# kullanilir; float'a cevrilen ara degerlerde hassasiyet kaybi olmaz ve STM32
-# sayaci sinira ulasinca sifirdan devam eder.
-_TICK_SPAN = 1 << 16
-_TICK_HALF = 1 << 15
-
-# timestamp_us hâlâ uint32; tasma hesabı ayrı tutulur.
-_UINT32_SPAN = 1 << 32
-_UINT32_HALF = 1 << 31
+# Yeni STM32 protokolunde encoder sayaci yonlu, kumulatif int32'dir.
+_TICK_BITS = 32
+_TICK_SPAN = 1 << _TICK_BITS
+_TICK_HALF = 1 << (_TICK_BITS - 1)
 
 # Tek örneklemede kabul edilen en büyük tick artımı.
 # ~0.84 m/s × 0.5 s / 1.745 mm/tick ≈ 240; 2000 bol pay bırakır.
@@ -32,8 +27,8 @@ _DEFAULT_MAX_CONSECUTIVE_REJECTS = 3
 def tick_delta(previous: int, current: int, span: int = _TICK_SPAN) -> int:
     """Iki kumulatif sayac degeri arasindaki farki tasmayi hesaba katarak dondurur.
 
-    Varsayılan span 2^16'dır: 65535'ten sonra sayaç 0'a döner. Host tarafı
-    bu sarmayı en kısa işaretli fark olarak çözer (−32768 .. 32767).
+    Varsayilan span 2^32'dir. Host int32 sarmasini en kisa isaretli fark
+    olarak cozer; boylece 2147483647 -> -2147483648 gecisi kayip uretmez.
     """
     half = span >> 1
     delta = (current - previous) % span
@@ -42,19 +37,21 @@ def tick_delta(previous: int, current: int, span: int = _TICK_SPAN) -> int:
     return delta
 
 
-def timestamp_delta(previous: int, current: int) -> int:
-    """uint32 mikrosaniye sayaci icin isaretli fark."""
-    delta = current - previous
-    if delta > _UINT32_HALF:
-        delta -= _UINT32_SPAN
-    elif delta < -_UINT32_HALF:
-        delta += _UINT32_SPAN
+def timestamp_delta(previous: int, current: int, bits: int = 64) -> int:
+    """uint32/uint64 mikrosaniye sayaci icin isaretli fark."""
+    if bits not in (32, 64):
+        raise ValueError("timestamp bits yalnizca 32 veya 64 olabilir")
+    span = 1 << bits
+    half = span >> 1
+    delta = (current - previous) % span
+    if delta > half:
+        delta -= span
     return delta
 
 
 def wrap_ticks(value: int) -> int:
-    """Sayaci [0, 65535] araligina indirger."""
-    return value & (_TICK_SPAN - 1)
+    """Sayaci C int32 araligina indirger."""
+    return ((int(value) + _TICK_HALF) % _TICK_SPAN) - _TICK_HALF
 
 
 @dataclass
@@ -95,7 +92,7 @@ class DifferentialOdometry:
         if max_tick_delta >= _TICK_HALF:
             raise ValueError(
                 f"max_tick_delta {_TICK_HALF}'den kucuk olmali "
-                "(uint16 sarmayla karismasin)"
+                "(int32 sarmayla karismasin)"
             )
 
         self.wheel_separation = wheel_separation
@@ -110,6 +107,7 @@ class DifferentialOdometry:
 
         self._prev_ticks: tuple[int, int] | None = None
         self._prev_timestamp_us: int | None = None
+        self._prev_timestamp_bits: int | None = None
         self._reject_streak = 0
         self.rejected_frames = 0
 
@@ -122,6 +120,7 @@ class DifferentialOdometry:
         left_ticks: int,
         right_ticks: int,
         timestamp_us: int,
+        timestamp_bits: int = 64,
     ) -> bool:
         """Yeni bir odometri cercevesi isler.
 
@@ -133,15 +132,25 @@ class DifferentialOdometry:
         left_ticks = wrap_ticks(left_ticks)
         right_ticks = wrap_ticks(right_ticks)
 
-        if self._prev_ticks is None or self._prev_timestamp_us is None:
+        if timestamp_bits not in (32, 64):
+            raise ValueError("timestamp_bits yalnizca 32 veya 64 olabilir")
+
+        if (
+            self._prev_ticks is None
+            or self._prev_timestamp_us is None
+            or self._prev_timestamp_bits != timestamp_bits
+        ):
             self._prev_ticks = (left_ticks, right_ticks)
             self._prev_timestamp_us = timestamp_us
+            self._prev_timestamp_bits = timestamp_bits
             self._reject_streak = 0
             return False
 
         d_left_ticks = tick_delta(self._prev_ticks[0], left_ticks)
         d_right_ticks = tick_delta(self._prev_ticks[1], right_ticks)
-        dt_us = timestamp_delta(self._prev_timestamp_us, timestamp_us)
+        dt_us = timestamp_delta(
+            self._prev_timestamp_us, timestamp_us, bits=timestamp_bits
+        )
 
         if (
             abs(d_left_ticks) > self.max_tick_delta
@@ -153,12 +162,14 @@ class DifferentialOdometry:
                 # STM32 reset / uzun kopukluk: yeni referans al, mesafe atma.
                 self._prev_ticks = (left_ticks, right_ticks)
                 self._prev_timestamp_us = timestamp_us
+                self._prev_timestamp_bits = timestamp_bits
                 self._reject_streak = 0
             return False
 
         self._reject_streak = 0
         self._prev_ticks = (left_ticks, right_ticks)
         self._prev_timestamp_us = timestamp_us
+        self._prev_timestamp_bits = timestamp_bits
 
         # Zaman geriye gitmis veya durmus: STM32 yeniden baslamis olabilir.
         # Mesafeyi yine isleriz ama hiz hesaplamayiz, cunku dt guvenilmez.
@@ -205,6 +216,20 @@ class DifferentialOdometry:
 def _normalize_angle(angle: float) -> float:
     """Aciyi (-pi, pi] araligina indirger."""
     return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def wheel_speed_to_rpm(speed_m_s: float, wheel_radius: float) -> float:
+    """Dogrusal teker hizini [m/s] teker devrine [RPM] cevirir."""
+    if wheel_radius <= 0.0:
+        raise ValueError("wheel_radius pozitif olmali")
+    return speed_m_s * 60.0 / (2.0 * math.pi * wheel_radius)
+
+
+def wheel_rpm_to_speed(rpm: float, wheel_radius: float) -> float:
+    """Teker devrini [RPM] dogrusal teker hizina [m/s] cevirir."""
+    if wheel_radius <= 0.0:
+        raise ValueError("wheel_radius pozitif olmali")
+    return rpm * (2.0 * math.pi * wheel_radius) / 60.0
 
 
 def twist_to_wheel_speeds(

@@ -8,7 +8,12 @@ from geometry_msgs.msg import Twist
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSPresetProfiles
+from rclpy.qos import (
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
+    QoSProfile,
+    QoSReliabilityPolicy,
+)
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
 
@@ -63,6 +68,18 @@ def enforce_minimum_wheel_speed(
     required_linear = float(minimum_wheel_speed) + (
         abs(float(angular_speed)) * float(wheel_separation) * 0.5)
     return max(float(linear_speed), required_linear)
+
+
+def schedule_lane_linear_speed(
+        cruise_speed, minimum_speed, angular_speed, max_angular_speed):
+    """Donus buyudukce ortak ileri hizi lineer olarak azalt."""
+    cruise = max(0.0, float(cruise_speed))
+    minimum = max(0.0, min(cruise, float(minimum_speed)))
+    if max_angular_speed <= 0.0:
+        return cruise
+    turn_ratio = max(0.0, min(
+        1.0, abs(float(angular_speed)) / float(max_angular_speed)))
+    return cruise - (cruise - minimum) * turn_ratio
 
 
 def combine_lane_errors(
@@ -148,12 +165,19 @@ def image_message_to_bgr(msg):
 def compute_pd_angular(
         error_px, half_frame_width, previous_error, dt, kp, kd,
         max_angular_speed, previous_derivative=0.0,
-        derivative_alpha=0.25):
-    """Compute bounded PD steering from camera-minus-lane pixel error."""
+        derivative_alpha=0.25, position_gain=1.0, heading_error=0.0,
+        heading_gain=0.0, center_deadband_ratio=0.0):
+    """Compute bounded PD steering from lateral position and lane heading."""
     if half_frame_width <= 0.0 or max_angular_speed <= 0.0:
         return 0.0, 0.0, 0.0
-    error = max(-1.0, min(
+    position_error = max(-1.0, min(
         1.0, float(error_px) / float(half_frame_width)))
+    error = max(-1.0, min(
+        1.0,
+        float(position_gain) * position_error
+        - float(heading_gain) * float(heading_error),
+    ))
+    error = apply_deadband(error, center_deadband_ratio)
     raw_derivative = 0.0
     if previous_error is not None and dt is not None and 0.001 <= dt <= 0.25:
         raw_derivative = (error - float(previous_error)) / float(dt)
@@ -293,20 +317,25 @@ class ImgProcessNode(Node):
         self.cap = None
         self.timer = None
         self.camera_subscription = None
+        latest_frame_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE,
+        )
         if self.camera_input == 'ros_topic':
-            qos = QoSPresetProfiles.SENSOR_DATA.value
             self.camera_subscription = self.create_subscription(
-                Image, self.camera_topic, self._camera_callback, qos)
+                Image, self.camera_topic, self._camera_callback,
+                latest_frame_qos)
             self.camera_watchdog = self.create_timer(
                 min(0.1, max(0.02, self.camera_timeout * 0.5)),
                 self._camera_watchdog_callback)
         elif self.camera_input == 'ros_compressed':
-            qos = QoSPresetProfiles.SENSOR_DATA.value
             self.camera_subscription = self.create_subscription(
                 CompressedImage,
                 self.camera_compressed_topic,
                 self._compressed_camera_callback,
-                qos)
+                latest_frame_qos)
             self.camera_watchdog = self.create_timer(
                 min(0.1, max(0.02, self.camera_timeout * 0.5)),
                 self._camera_watchdog_callback)
@@ -515,6 +544,7 @@ class ImgProcessNode(Node):
 
         height, width, _ = frame.shape
         center_x = width // 2
+        analysis_frame = frame.copy()
         cv2.line(frame, (center_x, 0), (center_x, height), (255, 0, 0), 2)
 
         if self.current_state == ProcessState.IDLE:
@@ -535,7 +565,8 @@ class ImgProcessNode(Node):
                     self.qr_linear_speed, -error * self.kp_qr)
         elif self.current_state == ProcessState.LANE_TRACKING:
             self._draw_state(frame, 'SERIT TAKIBI', (0, 255, 0))
-            found, error = self.lane_tracker.process(frame, center_x)
+            found, error = self.lane_tracker.process(
+                analysis_frame, center_x)
             if found:
                 if self.lane_control_mode == 'pd_lookahead':
                     lane_x = self.lane_tracker.last_lookahead_x
@@ -567,7 +598,10 @@ class ImgProcessNode(Node):
         dt = None
         if self._pd_previous_time is not None:
             dt = (now - self._pd_previous_time).nanoseconds * 1e-9
-        angular, normalized_error, derivative = compute_pd_angular(
+        position_error = max(-1.0, min(
+            1.0, float(error) / max(1.0, float(half_frame_width))))
+        heading_error = self.lane_tracker.last_heading_error
+        target_angular, control_error, derivative = compute_pd_angular(
             error_px=error,
             half_frame_width=half_frame_width,
             previous_error=self._pd_previous_error,
@@ -577,12 +611,22 @@ class ImgProcessNode(Node):
             max_angular_speed=self.max_angular_speed,
             previous_derivative=self._pd_derivative,
             derivative_alpha=self.pd_derivative_alpha,
+            position_gain=self.lane_offset_gain,
+            heading_error=heading_error,
+            heading_gain=self.lane_heading_gain,
+            center_deadband_ratio=self.lane_center_deadband_ratio,
         )
-        self._pd_previous_error = normalized_error
+        self._pd_previous_error = control_error
         self._pd_previous_time = now
         self._pd_derivative = derivative
 
-        linear_speed = max(0.0, self.lane_linear_speed)
+        angular = self._filter_lane_steering(target_angular)
+        linear_speed = schedule_lane_linear_speed(
+            self.lane_linear_speed,
+            self.lane_min_linear_speed,
+            angular,
+            self.max_angular_speed,
+        )
         half_track = self.wheel_separation * 0.5
         left_target = linear_speed - angular * half_track
         right_target = linear_speed + angular * half_track
@@ -591,10 +635,12 @@ class ImgProcessNode(Node):
         self.last_lane_command = (linear_speed, angular)
         self.get_logger().info(
             f'[SERIT PD] lookahead_hata={error:+.1f}px '
-            f'({normalized_error:+.1%}) | dt='
+            f'({position_error:+.1%}) | egim={heading_error:+.1%} | '
+            f'birlesik={control_error:+.1%} | dt='
             f'{dt if dt is not None else 0.0:.4f}s | '
-            f'P={self.pd_kp * normalized_error:+.4f} | '
+            f'P={self.pd_kp * control_error:+.4f} | '
             f'D={self.pd_kd * derivative:+.4f} | '
+            f'hedef_w={target_angular:+.3f} filtre_w={angular:+.3f} | '
             f'cmd_vel: v={linear_speed:.3f} w={angular:+.3f} rad/s | '
             f'teker hedef sol={left_target * 1000.0:+.0f} '
             f'sag={right_target * 1000.0:+.0f} mm/s',
@@ -613,6 +659,20 @@ class ImgProcessNode(Node):
         twist_msg.angular.z = float(angular_z)
         self.pub_cmd_vel.publish(twist_msg)
 
+    def _filter_lane_steering(self, target_angular):
+        alpha = max(0.0, min(1.0, self.lane_steering_alpha))
+        releasing = (
+            abs(target_angular) < abs(self.filtered_lane_angular)
+            or target_angular * self.filtered_lane_angular < 0.0
+        )
+        if releasing:
+            release_alpha = max(
+                0.0, min(1.0, self.lane_steering_release_alpha))
+            alpha = max(alpha, release_alpha)
+        self.filtered_lane_angular += alpha * (
+            target_angular - self.filtered_lane_angular)
+        return self.filtered_lane_angular
+
     def publish_lane_movement(self, error, half_frame_width):
         normalized_error, scaled_error, _ = scale_lane_error(
             error, half_frame_width, self.max_angular_speed,
@@ -627,27 +687,13 @@ class ImgProcessNode(Node):
                 self.max_angular_speed,
             )
         )
-        alpha = max(0.0, min(1.0, self.lane_steering_alpha))
-        releasing = (
-            abs(target_angular) < abs(self.filtered_lane_angular)
-            or target_angular * self.filtered_lane_angular < 0.0
+        self._filter_lane_steering(target_angular)
+        linear_speed = schedule_lane_linear_speed(
+            self.lane_linear_speed,
+            self.lane_min_linear_speed,
+            self.filtered_lane_angular,
+            self.max_angular_speed,
         )
-        if releasing:
-            release_alpha = max(
-                0.0, min(1.0, self.lane_steering_release_alpha))
-            alpha = max(alpha, release_alpha)
-        self.filtered_lane_angular += alpha * (
-            target_angular - self.filtered_lane_angular)
-
-        turn_ratio = (
-            abs(self.filtered_lane_angular) / self.max_angular_speed
-            if self.max_angular_speed > 0.0 else 0.0
-        )
-        turn_ratio = max(0.0, min(1.0, turn_ratio))
-        min_speed = max(
-            0.0, min(self.lane_linear_speed, self.lane_min_linear_speed))
-        linear_speed = self.lane_linear_speed - (
-            self.lane_linear_speed - min_speed) * turn_ratio
         linear_speed = enforce_minimum_wheel_speed(
             linear_speed, self.filtered_lane_angular,
             self.wheel_separation, self.lane_min_wheel_speed)
@@ -668,7 +714,7 @@ class ImgProcessNode(Node):
             f'birlesik={combined_error:+.1%} | '
             f'hedef_w={target_angular:+.3f} rad/s | '
             f'filtre_w={self.filtered_lane_angular:+.3f} rad/s '
-            f'(alpha={alpha:.2f}) | '
+            f'(alpha={self.lane_steering_alpha:.2f}) | '
             f'cmd_vel: v={linear_speed:.3f} m/s '
             f'w={self.filtered_lane_angular:+.3f} rad/s | '
             f'teker hedef sol={left_target * 1000.0:+.0f} '
@@ -737,14 +783,14 @@ class ImgProcessNode(Node):
         if detection_frame is None:
             detection_frame = frame
         mask_bgr = cv2.cvtColor(
-            self.lane_tracker.last_mask, cv2.COLOR_GRAY2BGR)
+            self.lane_tracker.last_selected_mask, cv2.COLOR_GRAY2BGR)
         label = (
             'IPM ALGILAMA'
             if self.lane_tracker.ipm_enabled else 'ALGILAMA')
         cv2.putText(
             detection_frame, label, (10, detection_frame.shape[0] - 12),
             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
-        cv2.putText(mask_bgr, 'ADAPTIF MASKE', (10, 22),
+        cv2.putText(mask_bgr, 'KONTROL MASKESI', (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
         return cv2.hconcat([detection_frame, mask_bgr])
 
@@ -766,7 +812,7 @@ class ImgProcessNode(Node):
         if self.pub_debug_image.get_subscription_count() == 0:
             return
         ok, encoded = cv2.imencode(
-            '.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            '.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
         if not ok:
             return
         msg = CompressedImage()

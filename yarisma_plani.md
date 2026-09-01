@@ -195,6 +195,15 @@ Graf düğümleri yalnız `name/x/y` içeremez. En az şu alanlar gereklidir:
 - `id`, `name`, `role`, `x`, `y`, `yaw`.
 - `role`: `WAIT`, `PICKUP_APPROACH`, `PICKUP_DOCK`, `DROPOFF_APPROACH`, `DROPOFF_DOCK`, `GATE_Q5`, `QR_TRIGGER`, `TRANSIT`, gerekirse `CHARGE`.
 - `station_id`: `A1..A3`, `B1..B3`, `q1..q9`, `D1..D6` eşleşmesi.
+- Her A/B istasyonu için `approach_qr_id`, `dock_heading_yaw`, ölçülmüş
+  `line_follow_duration_s` ve ilk sürümde `turn_direction: left|right`
+  tutulmalıdır; ileride güvenli otomatik seçim eklenecekse `auto` açıkça
+  sürümlenmelidir.
+- `line_follow_duration_s` kodda sabitlenemez. GUI'den istasyon bazında
+  düzenlenip saha paketine kalıcı yazılır; son ölçüm zamanı ve kullanılan
+  şerit takip hız profiliyle birlikte doğrulanır.
+- QR kaydı yalnız istasyon ilişkisini taşır. QR kimliğine kalıcı olarak
+  `180 derece dön` gibi bir hareket aksiyonu bağlanamaz.
 - İzin verilen yüklülük: boş, yüklü veya her ikisi.
 - İzin verilen hareket yönü ve yükün arkada kalma kuralı.
 - Kenar yönü, hız limiti, dönüş yarıçapı ve kapı geçiş olayı.
@@ -210,23 +219,33 @@ Referans akış:
 ```text
 BOOT/PREFLIGHT
   → WAITING_FOR_TASK
-  → EMPTY_ROUTE_TO_A_APPROACH
-  → QR_A_VERIFY
-  → DOCK_A
+  → EMPTY_ROUTE_TO_A_APPROACH (Nav2)
+  → APPROACHING_STATION_A
+  → QR_A_VERIFY (target_station + mission_state + QR_ID)
+  → TURN_FOR_REVERSE_DOCK_A (180 derece, güvenli yön)
+  → LINE_FOLLOW_DOCK_A (arka kamera, geri hareket, A süresi)
+  → STOP_AND_VERIFY_A
+  → PICKUP_READY
   → LIFT_LOAD
-  → LOADED_ROUTE_TO_B
-      → (yol q5 içeriyorsa) GATE_NOTIFY → GATE_WAIT → GATE_PASS
-  → QR_B_VERIFY
-  → DOCK_B
+  → EXITING_STATION_A (şerit kapalı, ileri Nav2)
+  → LOADED_ROUTE_TO_B (Nav2)
+      → (izinli kapı kenarı öncesi) GATE_NOTIFY → GATE_WAIT → GATE_PASS
+  → APPROACHING_STATION_B
+  → QR_B_VERIFY (target_station + mission_state + QR_ID)
+  → TURN_FOR_REVERSE_DOCK_B (180 derece, güvenli yön)
+  → LINE_FOLLOW_DOCK_B (arka kamera, geri hareket, B süresi)
+  → STOP_AND_VERIFY_B
+  → DROPOFF_READY
   → DROP_LOAD
-  → RETURN_ROUTE
-      → (dönüş q5 içeriyorsa) GATE_NOTIFY → GATE_WAIT → GATE_PASS
+  → EXITING_STATION_B (şerit kapalı, ileri Nav2)
+  → RETURN_ROUTE (Nav2)
+      → (izinli kapı kenarı öncesi) GATE_NOTIFY → GATE_WAIT → GATE_PASS
   → WAIT_POSITION
   → TASK_COMPLETE_NOTIFY
   → WAITING_FOR_TASK
 ```
 
-Her durum; giriş koşulu, timeout, tekrar deneme, güvenli duruş, PLC mesajı, GUI metni ve kalıcı olay kaydıyla tanımlanmalıdır. Aynı görev veya kapı izni tekrarlı geldiğinde çift kaldırma/indirme ya da izinsiz hareket olmamalıdır.
+Her durum; giriş koşulu, timeout, tekrar deneme, güvenli duruş, PLC mesajı, GUI metni ve kalıcı olay kaydıyla tanımlanmalıdır. Aynı görev veya kapı izni tekrarlı geldiğinde çift kaldırma/indirme ya da izinsiz hareket olmamalıdır. İstasyon QR tetikleyicisi yalnız `APPROACHING_STATION` durumunda ve QR kimliği güncel hedef istasyonla eşleştiğinde bir kez kurulmalıdır. `EXITING_STATION` durumunda aynı QR yeniden görülse bile dönüş veya şerit takibi tetiklenmemelidir. Süre sayacı QR algılandığında veya dönüş başladığında değil, 180° dönüş başarıyla bittikten ve geri şerit kontrolü gerçekten aktif olduğuna dair onay alındıktan sonra başlatılır. Süre dolunca şerit kontrolü kapatılır, sıfır hız yayımlanıp aracın durduğu doğrulanır ve ancak bundan sonra `PICKUP_READY` veya `DROPOFF_READY` durumuna geçilir.
 
 ## 6. Faz planı
 
@@ -234,14 +253,16 @@ Fazların kabul kapıları zorunludur. Bir faz “çalışıyor gibi göründü�
 
 ### F0 — Resmî sürüm, finalist durumu ve mühendislik temeli
 
-**Güncel ilerleme (22.08.2026):** 14/14 paket derlendi; Faz 0 araç sözleşmesi
-PASS. Dokunulmamış kaynakla ROS test kaydı 72 testte 1 error/0 failure/5 skip;
-tek error, ayrı çalışma alanı olan `lane_tracking` paketinin bu WSL ortamında
-`pyopencl` olmadan test toplayamamasıdır. Flutter analiz temiz ve Flutter test
-sonucu 50 PASS/1 canlı rosbridge testi SKIP. `0.460 m` sözleşmesi otomatik teste
-bağlandı. Fiziksel ölçüm, firmware, cihaz envanteri, e-stop/mod truth table,
-final lojistiği ve PLC dış bağımlılığı açık olduğu için Faz 0’ın tamamı henüz
-kapanmış değildir. Ayrıntı: `FAZ0_SOZLESME.md`.
+**Güncel ilerleme (29.08.2026, commit `a011d98`):** Çalışma ağacı temizken
+14/14 paket `colcon build --symlink-install` ile derlendi. ROS test sonucu
+118 test, 0 error, 0 failure ve 5 skip; araç sözleşmesi denetimi PASS. İlk testte
+ROS log dizininin salt okunur olmasından kaynaklanan iki ortam hatası,
+`ROS_LOG_DIR=/tmp/marco_f0_ros_logs` ile tekrarlandığında 10 PASS/1 skip oldu.
+`0.460 m` bütün denetlenen yazılım tüketicilerinde tutarlıdır; ancak sözleşme
+hâlâ `provisional_pending_stm32_revalidation` durumundadır. Fiziksel ölçüm,
+firmware sonrası araç testi, cihaz envanteri, e-stop/mod gerçek donanım kabulü,
+final lojistiği ve gerçek PLC/lift bağımlılığı açık olduğu için Faz 0
+henüz kapanmamıştır.
 
 **Süre:** 22–23 Ağustos  
 **Öncelik:** P0  
@@ -249,26 +270,37 @@ kapanmış değildir. Ayrıntı: `FAZ0_SOZLESME.md`.
 
 Yapılacaklar:
 
-1. Finalistlik video aşamasıyla doğrulandı; takım giriş bilgilerini, final ulaşım/kurulum saatini ve saha test hakkını resmî kanaldan ayrıca doğrula.
-2. V1.1’i proje arşivine sürüm/hash bilgisiyle kaydet; mail grubu ve yarışma sayfası için günlük değişiklik kontrol sorumlusu ata.
-3. Güncel commit’te temiz `colcon build` ve tüm uygun `colcon test` çalıştır; sonuçları tarihli artefakt olarak sakla.
-4. Fiziksel robotu ölç: gövde, toplam çatal boyu, en, yükseklik, minimum dönüş zarfı, ağırlık, 5 kg yüklü ağırlık merkezi.
-5. Teker çapı, etkin teker aralığı, encoder CPR/tick, motor yönleri ve yaw işaretini yeniden ölç.
-6. LiDAR, ön/arka kamera, taban, teker ve çatal TF’lerini fiziksel referans noktalarından ölç.
-7. Donanım listesi çıkar: cihaz yolu, USB kimliği/udev, seri numarası, yedek parça, güç hattı ve sigorta.
-8. `0.460 m` fiziksel değeri kanonik kabul et; STM32 firmware düzeltmesinden sonra düz sürüş/dönüş deneyiyle doğrula, eski `0.421 m` sözleşme ve belgelerini kontrollü biçimde güncellemeden odometri/lokalizasyon ayarını dondurma.
-9. Flutter deposu bulundu; onun ROS sözleşme sürümünü kaydet. Henüz gelmeyen PLC protokol dokümanı için dış bağımlılık sahibi/takip tarihi belirle ve çalışan lift donanımının ROS action/telemetri arayüzünü belgele.
-10. Zorunlu özellikler için sahiplik ve günlük entegrasyon saati belirle.
+- [x] Finalistlik video aşamasıyla doğrulandı.
+- [ ] Takım giriş bilgilerini, final ulaşım/kurulum saatini ve saha test hakkını resmî kanaldan ayrıca doğrula.
+- [ ] V1.1’i proje arşivine sürüm/hash bilgisiyle kaydet; mail grubu ve yarışma sayfası için günlük değişiklik kontrol sorumlusu ata.
+- [x] Güncel commit’te temiz `colcon build` ve tüm uygun `colcon test` çalıştır; sonuçları tarihli artefakt olarak sakla. (29.08.2026: 14/14 paket; 118 test, 0 error, 0 failure, 5 skip.)
+- [ ] Fiziksel robotu ölç: gövde, toplam çatal boyu, en, yükseklik, minimum dönüş zarfı, ağırlık, 5 kg yüklü ağırlık merkezi.
+- [ ] Teker çapı, etkin teker aralığı, encoder CPR/tick, motor yönleri ve yaw işaretini yeniden ölç.
+- [ ] LiDAR, ön/arka kamera, taban, teker ve çatal TF’lerini fiziksel referans noktalarından ölç.
+- [ ] Donanım listesi çıkar: cihaz yolu, USB kimliği/udev, seri numarası, yedek parça, güç hattı ve sigorta.
+- [x] `0.460 m` değerini kanonik yazılım sözleşmesine geçir ve bütün denetlenen tüketicilerde tekleştir. (Araç sözleşmesi denetimi PASS.)
+- [ ] STM32 firmware düzeltmesinden sonra `0.460 m` değerini düz sürüş/dönüş deneyiyle doğrulamadan odometri/lokalizasyon ayarını dondurma.
+- [x] Flutter deposunun ve çalışan arayüzün varlığı doğrulandı.
+- [ ] Flutter–ROS sözleşme sürümünü kaydet; PLC protokol dokümanı için dış bağımlılık sahibi/takip tarihi belirle ve çalışan lift donanımının ROS action/telemetri arayüzünü belgele.
+- [ ] Zorunlu özellikler için sahiplik ve günlük entegrasyon saati belirle.
 
 Kabul kapısı:
 
-- Temiz build ve test raporu var.
-- Araç sözleşmesi denetimi sıfır hata veriyor.
-- Tüm fiziksel ölçüler imzalı ölçüm formunda.
-- Güncel şartname ve finalistlik doğrulanmış; final lojistiği kayıt altındadır.
-- Flutter–ROS sürüm eşleşmesi bilinir; PLC protokolü gelene kadar wire alanları uydurulmaz; lift için çalışan donanımdan action sonucuna kadar arayüz tanımlıdır.
+- [x] Temiz build ve test raporu var.
+- [x] Araç sözleşmesi denetimi sıfır hata veriyor.
+- [ ] Tüm fiziksel ölçüler imzalı ölçüm formunda.
+- [ ] Güncel şartname ve finalistlik doğrulanmış; final lojistiği kayıt altındadır.
+- [ ] Flutter–ROS sürüm eşleşmesi bilinir; PLC protokolü gelene kadar wire alanları uydurulmaz; lift için çalışan donanımdan action sonucuna kadar arayüz tanımlıdır.
 
 ### F1 — Fiziksel taban, lift ve güvenlik omurgası
+
+**Güncel ilerleme (29.08.2026):** Gerçek STM32 bağlantısı ve düşük hızlı komut
+yolu çalıştırıldı. Karttan gelen 24 baytlık odometri paketi ham olarak yakalandı;
+ROS çözücüsü 16/20/24 bayt paketleri açık biçimde destekleyecek şekilde
+düzeltildi ve 48 ilgili test geçti. Bir saniyelik ileri sürüşte sol encoder
+`+119`, sağ encoder `-74` değişti; sağ encoder işareti ile teker hız farkı
+kanıtlandı fakat kalibrasyon tamamlanmadı. Yük/lift bağlı olmadığı ve güncel
+IMU'lu STM32 kaynağı elde olmadığı için Faz 1 kabul kapısı açıktır.
 
 **Süre:** 24–26 Ağustos  
 **Bağımlılık:** F0  
@@ -276,15 +308,18 @@ Kabul kapısı:
 
 Yapılacaklar:
 
-1. STM32–ROS paket formatını, sayaç taşmasını, yeniden bağlanmayı, CRC hatasını ve 200 ms watchdog’u doğrula.
-2. Sol/sağ teker yönü, encoder işareti, m/tick ve etkin teker aralığını kalibre et.
-3. Boş ve 5 kg yüklü hâlde motor PID/feed-forward ve düşük hız kararlılığını ayrı ölç.
-4. Çalışan lift/limit donanımını temel alarak gerçek `LiftLoad` action sunucusu sözleşmesini sabitle: hedef seviye, timeout, limit switch, yük var/yok, overcurrent, iptal ve sonuç kodları.
-5. Yük alma/bırakma mekanizmasını 5 kg ile en az 30 çevrim mekanik teste tabi tut; düşme ve sürüklenmeyi kaydet.
-6. E-stop’un teker ve lift güç/komut zincirini kestiğini fiziksel olarak test et; yazılım düğümü kapanmasına bağımlı olmasın.
-7. Fiziksel mod anahtarının truth table’ını yaz: otomatik, manuel, geçiş anı, bilinmeyen/bayat sinyal.
-8. Tüm hareket launch’larını tek güvenlik zincirine bağlama işi için envanter çıkar; yarışmada kullanılmayacak bypass launch’larını üretimden karantinaya al.
-9. Maksimum hız, ivme, açısal hız ve frenleme mesafesini boş/yüklü profil olarak belirle.
+- [x] Gerçek STM32 seri bağlantısını ve ROS'tan düşük hızlı teker komutu yolunu doğrula.
+- [x] Gerçek 24 bayt odometri paketini yakala; ROS çözücüsünde 16/20/24 bayt uyumluluğunu ve CRC birim testlerini doğrula.
+- [ ] Sayaç taşmasını gerçek donanımda; yeniden bağlanmayı, CRC hata davranışını ve 200 ms watchdog’u uçtan uca doğrula.
+- [x] Sol/sağ encoder işaretini gerçek ileri sürüşte ölçerek uyuşmazlığı kanıtla.
+- [ ] Encoder işaretini düzelt; m/tick ve etkin teker aralığını kalibre et.
+- [ ] Boş ve 5 kg yüklü hâlde motor PID/feed-forward ve düşük hız kararlılığını ayrı ölç.
+- [ ] Çalışan lift/limit donanımını temel alarak gerçek `LiftLoad` action sunucusu sözleşmesini sabitle: hedef seviye, timeout, limit switch, yük var/yok, overcurrent, iptal ve sonuç kodları.
+- [ ] Yük alma/bırakma mekanizmasını 5 kg ile en az 30 çevrim mekanik teste tabi tut; düşme ve sürüklenmeyi kaydet.
+- [ ] E-stop’un teker ve lift güç/komut zincirini kestiğini fiziksel olarak test et; yazılım düğümü kapanmasına bağımlı olmasın.
+- [ ] Fiziksel mod anahtarının truth table’ını yaz: otomatik, manuel, geçiş anı, bilinmeyen/bayat sinyal.
+- [ ] Tüm hareket launch’larını tek güvenlik zincirine bağlama işi için envanter çıkar; yarışmada kullanılmayacak bypass launch’larını üretimden karantinaya al.
+- [ ] Maksimum hız, ivme, açısal hız ve frenleme mesafesini boş/yüklü profil olarak belirle.
 
 Kabul kapısı:
 
@@ -297,21 +332,32 @@ Kabul kapısı:
 
 ### F2 — Sensör, TF, haritalama ve lokalizasyon
 
+**Güncel ilerleme (29.08.2026):** Faz 1 encoder/PID kabulü açık kalmak
+koşuluyla, hareketsiz yapılabilen TF, LiDAR, kamera ve harita yaşam döngüsü
+kontrollerine paralel başlanmıştır. Encoder–IMU EKF, hareketli SLAM ve AMCL
+hassasiyet kabulü STM32 düzeltmesine kadar bloke kabul edilir. Gerçek donanım
+URDF ağacı ve araç sözleşmesi geçti. Harita paketi üretimi, lokalizasyon için
+yeniden doğrulanması ve SLAM–AMCL karşılıklı dışlama kararları beş otomatik
+testle doğrulandı; gerçek düğüm/TF kapanış testi donanım bağlıyken yapılacaktır.
+
 **Süre:** 27–29 Ağustos  
 **Bağımlılık:** F1  
 **Amaç:** Haritadan bağımsız tekrar kurulabilen sensör geometrisi ve şartname toleransını destekleyen lokalizasyon.
 
 Yapılacaklar:
 
-1. `base_footprint → base_link → laser/camera/fork` TF zincirini ölçülen sözleşmeye göre doğrula.
-2. LiDAR scan açısı, ters/ayna yönü, kör bölgeler, çatal/yük yansıması ve speckle filtresini test et.
-3. Ön ve gerekiyorsa arka kamerada desteklenen gerçek çözünürlük/FPS/pixel formatı sabitle; intrinsic ve distortion kalibrasyonu yap.
-4. Encoder odometrisi ile STM32 yaw birleşiminin covariance, zaman damgası ve işaretlerini doğrula.
-5. SLAM sırasında loop closure, koridor paralelliği, harita çözünürlüğü ve yeniden açma davranışını ölç.
-6. Harita kaydında PGM/YAML/PNG, posegraph, başlangıç pozu ve metadata’nın atomik üretildiğini test et.
-7. Mapping ile AMCL’nin aynı anda çalışmadığını; geçişte eski TF/node kalmadığını doğrula.
-8. AMCL başlangıç pozu, kidnapped robot, LiDAR kesintisi ve odometri sapması deneyleri yap.
-9. Zeminde ölçülmüş referans işaretlerinde gerçek poz–AMCL poz farkını raporla.
+- [x] URDF'yi gerçek donanım kipinde üretip XML/ağaç bütünlüğünü ve yazılım içi araç sözleşmesini doğrula. (29.08.2026: `check_urdf` PASS, araç sözleşmesi PASS.)
+- [ ] `base_footprint → base_link → laser/camera/fork` TF zincirini ölçülen sözleşmeye göre doğrula.
+- [ ] LiDAR scan açısı, ters/ayna yönü, kör bölgeler, çatal/yük yansıması ve speckle filtresini test et.
+- [ ] Ön ve gerekiyorsa arka kamerada desteklenen gerçek çözünürlük/FPS/pixel formatı sabitle; intrinsic ve distortion kalibrasyonu yap.
+- [ ] Encoder odometrisi ile STM32 yaw birleşiminin covariance, zaman damgası ve işaretlerini doğrula. *(STM32 düzeltmesini bekliyor.)*
+- [ ] SLAM sırasında loop closure, koridor paralelliği, harita çözünürlüğü ve yeniden açma davranışını ölç. *(Hareketli kabul STM32 düzeltmesini bekliyor.)*
+- [ ] Harita kaydında PGM/YAML/PNG, posegraph, başlangıç pozu ve metadata’nın atomik üretildiğini test et.
+- [x] Harita kaydetme yazılım akışında PGM/YAML/PNG, posegraph/data, başlangıç pozu ve metadata sözleşmesini; başarısız kayıtta kısmi saha dizininin görünmediğini otomatik test et. (29.08.2026: 5 test PASS; gerçek SLAM servisiyle uçtan uca tekrar açık.)
+- [ ] Mapping ile AMCL’nin aynı anda çalışmadığını; geçişte eski TF/node kalmadığını doğrula.
+- [x] Mapping ve lokalizasyon yöneticilerinin birbirini iki yönde de reddettiğini otomatik test et. (29.08.2026: karar kilitleri PASS; eski TF/node çalışma zamanı kontrolü açık.)
+- [ ] AMCL başlangıç pozu, kidnapped robot, LiDAR kesintisi ve odometri sapması deneyleri yap. *(Hassasiyet kabulü STM32 düzeltmesini bekliyor.)*
+- [ ] Zeminde ölçülmüş referans işaretlerinde gerçek poz–AMCL poz farkını raporla. *(STM32 düzeltmesini bekliyor.)*
 
 Kabul kapısı:
 
@@ -328,23 +374,23 @@ Kabul kapısı:
 
 Yapılacaklar:
 
-1. Saha listesi, oluşturma, kaydetme, silmeden arşivleme, doğrulama ve atomik aktivasyon servislerini tanımla.
-2. Robotun güncel lokalize pozunu GUI’den semantik düğüm olarak kaydet: bekleme, A yaklaşım/dock, B yaklaşım/dock, q1–q9, D1–D6, q5, QR trigger.
-3. Her düğümde x/y yanında yaw, rol, istasyon, yük/yön kuralı ve yaklaşma modu kaydet.
-4. Kenar ekleme/silme, yönlü/çift yönlü geçiş, hız limiti ve kapı olayı tanımla.
-5. Harita koordinatına tıklama ile “robot pozunu kaydetme” yöntemlerini birlikte sun; istasyon yaw’ında sayısal ince ayar sağla.
-6. Dokuz A×B görevi ve bekleme dönüşleri için gerekli yönlü erişilebilirlik matrisini validator’da kontrol et.
-7. q5’ten geçen her kenarın kapı olayı taşıdığını, izinsiz alternatif kestirme bulunmadığını denetle.
-8. Yüklü kenarlarda yükün hareket yönünün tersinde kalmasını statik olarak doğrula.
-9. Aktif saha paketi değişirken Nav2/lokalizasyonun güvenli durup doğru map/graf ile yeniden açılmasını sağla.
-10. Demo/test graph’larının üretim profiline yanlışlıkla seçilmesini engelle.
+- [x] Saha listesi, oluşturma, kaydetme, silmeden arşivleme, doğrulama ve atomik aktivasyon servislerini tanımla.
+- [x] Robotun güncel lokalize pozunu GUI’den semantik düğüm olarak kaydet: bekleme, A yaklaşım/dock, B yaklaşım/dock, q1–q9, D1–D6, q5, QR trigger.
+- [x] Her düğümde x/y yanında yaw, rol, istasyon, yük/yön kuralı ve yaklaşma modu kaydet.
+- [x] Kenar ekleme/silme, yönlü/çift yönlü geçiş, hız limiti ve kapı olayı tanımla.
+- [x] Harita koordinatına tıklama ile “robot pozunu kaydetme” yöntemlerini birlikte sun; istasyon yaw’ında sayısal ince ayar sağla.
+- [x] Dokuz A×B görevi ve bekleme dönüşleri için gerekli yönlü erişilebilirlik matrisini validator’da kontrol et.
+- [x] q5’ten geçen her kenarın kapı olayı taşıdığını, izinsiz alternatif kestirme bulunmadığını denetle.
+- [x] Yüklü kenarlarda yükün hareket yönünün tersinde kalmasını statik olarak doğrula.
+- [x] Aktif saha paketi değişirken Nav2/lokalizasyonun güvenli durup doğru map/graf ile yeniden açılmasını sağla.
+- [x] Demo/test graph’larının üretim profiline yanlışlıkla seçilmesini engelle.
 
 Kabul kapısı:
 
-- Sıfırdan bir örnek alan, yalnız kullanıcı arayüzü kullanılarak 45 dakika içinde haritalanıp rotalanır.
-- Validator dokuz A×B görevinin tümünü, gidiş/dönüş q5 durumlarını ve yük yönünü geçer.
-- Eksik yaw, yinelenen ad, harita dışı düğüm, kopuk kenar ve yanlış q5 olayı aktivasyonu engeller.
-- Aktif paket hash’i GUI ve robot durumunda görünür; yarım yazılmış dosya aktif olamaz.
+- [ ] Sıfırdan bir örnek alan, yalnız kullanıcı arayüzü kullanılarak 45 dakika içinde haritalanıp rotalanır. *(Fiziksel araç kabulü bekleniyor.)*
+- [x] Validator dokuz A×B görevinin tümünü, gidiş/dönüş q5 durumlarını ve yük yönünü geçer.
+- [x] Eksik yaw, yinelenen ad, harita dışı düğüm, kopuk kenar ve yanlış q5 olayı aktivasyonu engeller.
+- [x] Aktif paket hash’i GUI ve robot durumunda görünür; yarım yazılmış dosya aktif olamaz.
 
 ### F4 — Yarışma GUI’si ve çevrimdışı ağ
 
@@ -352,7 +398,16 @@ Kabul kapısı:
 **Bağımlılık:** F0 arayüz erişimi, F3 sözleşmeleri  
 **Amaç:** Şartnamenin rota hazırlama ve izleme gereksinimlerini iki cihazlı, internetsiz yapıda karşılamak.
 
-Mevcut Flutter tabanı `/mnt/c/Users/emre/desktop/liftant_v2_bitirme` dizinindedir. Kaynak incelemesine göre rosbridge yeniden bağlantısı, `/robot_status` bayatlık kilidi, fiziksel manuel mod olmadan `/cmd_vel_manual` reddi, mapping/lokalizasyon akışı, node/route sayfaları ve “GELEN/GÖNDERİLEN” PLC özet alanları vardır. Buna karşılık node/route sayfaları ROS kalıcı backend’i olmadığı için yerel draft/stub kullanır; lift kontrolü bilinçli olarak pasiftir; PLC alanlarının gerçek veri kaynağı ve zaman damgalı mesaj geçmişi henüz yoktur.
+Mevcut Flutter tabanı `/mnt/c/Users/emre/desktop/liftant_v2_bitirme` dizinindedir. Kaynak incelemesine göre rosbridge yeniden bağlantısı, `/robot_status` bayatlık kilidi, mapping/lokalizasyon akışı, node/route sayfaları ve “GELEN/GÖNDERİLEN” PLC özet alanları vardır. Buna karşılık fiziksel mod anahtarı henüz araçta yoktur; node/route sayfaları ROS kalıcı backend’i olmadığı için yerel draft/stub kullanır; lift kontrolü bilinçli olarak pasiftir; PLC alanlarının gerçek veri kaynağı ve zaman damgalı mesaj geçmişi henüz yoktur.
+
+**31 Ağustos uygulama durumu:**
+
+- [x] `/robot_status` 5 Hz tek GUI telemetrisi olarak görev durumu, görev süresi, operatör açıklaması, poz/lokalizasyon, rota, güvenlik, batarya, PLC özeti, aktif saha paketi ve son QR'ın tam poz/güven/kamera bilgilerini yayımlıyor.
+- [x] PC ve mobil istemcinin ortak kullanacağı rosbridge bağlantısı `9090` portunda mevcut.
+- [x] Yeni ROS mesaj sözleşmesi derlendi; `marco_msgs` ve `marco_mission` doğrulamasında 15 test toplandı, 14 test geçti ve 1 telif testi atlandı.
+- [ ] Fiziksel mod anahtarı araçta henüz bulunmadığı için manuel komutların donanım sinyaliyle kilitlenmesi bilinçli olarak ertelendi. Anahtar takılana kadar bu madde uygulanmayacak.
+- [ ] Gerçek PLC protokolü/F7 tamamlanınca zaman damgalı RX/TX mesaj geçmişi ve dışa aktarma kaynağı eklenecek; GUI sahte PLC geçmişi üretmeyecek.
+- [ ] İnternetsiz iki cihaz, GUI yeniden başlatma ve 60 dakikalık saha kabul testleri fiziksel olarak yapılacak.
 
 GUI’de zorunlu alanlar:
 
@@ -370,8 +425,8 @@ Yapılacaklar:
 
 1. Mevcut Flutter deposunu ROS release sürecine bağla; kirli çalışma ağacını kullanıcı değişikliklerini kaybetmeden envanterle, kabul edilen GUI commit/build kimliğini kaydet ve API/ROS sözleşmesini testle.
 2. Tek yarışma dashboard’u oluştur; navigasyon sırasında müdahale gerektiren geliştirme ekranlarını kapat.
-3. Manuel sürüş denetimini yalnız fiziksel anahtar manuel sinyali tazeyken etkinleştir; GUI butonu tek başına yetki vermesin.
-4. Otomatik kipte manuel topic yayını olsa bile robot tarafında ikinci kez reddet.
+3. Fiziksel mod anahtarı takıldıktan sonra manuel sürüş denetimini yalnız anahtarın manuel sinyali tazeyken etkinleştir; GUI butonu tek başına yetki vermesin.
+4. Fiziksel mod anahtarı takıldıktan sonra otomatik kipte manuel topic yayını olsa bile robot tarafında ikinci kez reddet.
 5. ROS bridge bağlantısı kopunca güvenli ve açık hata göster; eski veriyi canlıymış gibi gösterme.
 6. Yalnız robot ve kontrol PC ile, internet/DNS/NTP olmadan, resmî Wi‑Fi benzeri ağda çalıştır.
 7. Robot ve PC MAC adreslerini, statik isim/IP planını ve saat senkronizasyon yöntemini hazırla.
@@ -419,16 +474,27 @@ Kabul kapısı:
 
 Yapılacaklar:
 
-1. Görev yöneticisinin tekil `NavigateToPose` yerine semantik rota/graf yürütme sözleşmesini kullanmasını sağla.
-2. Rota maliyetinde mesafe, süre, yük durumu, dönüş maliyeti, q5 bekleme ve izin verilmeyen yönleri dikkate al.
-3. Düğüm yaw’ını hedef pozda uygula; her hedefi sıfır yaw ile çağırma.
+1. [x] Görev yöneticisinin tekil `NavigateToPose` yerine semantik rota/graf yürütme sözleşmesini kullanmasını sağla.
+2. [x] Rota maliyetinde mesafe, süre, yük durumu, dönüş maliyeti, q5 bekleme ve izin verilmeyen yönleri dikkate al.
+3. [x] Düğüm yaw’ını hedef pozda uygula; her hedefi sıfır yaw ile çağırma.
 4. RPP’yi düz, dar dönüş, ileri, geri, boş ve yüklü profillerde kalibre et.
-5. Aktif rota geometrisine en yakın nokta/projeksiyon üzerinden zaman eşlemeli cross-track error üret.
-6. Sapma için davranış bandı tanımla: örneğin `5 cm` uyarı, `8 cm` hız azaltma, `10 cm` güvenli duruş/yeniden değerlendirme. Kesin eşikler fiziksel sonuçla sabitlenir.
-7. Ani köşe kestirmeyi ve global yeniden planlamanın tanımlı rotadan kaçmasını engelle; engelden dolaşmak yerine güvenli bekle.
-8. q5 kenar giriş/çıkış olayını rota yürütmeden üret; yalnız “pickup sonrası bir kez” varsayımına bağlama.
-9. Yüklü harekette yalnız izinli yönleri seç; yük robotun hareket yönünün arkasında kalmalı.
-10. Sapma, seçilen yol, edge id, hız limiti ve duruş nedenini bag/GUI’ye yayımla.
+5. [x] Aktif rota geometrisine en yakın nokta/projeksiyon üzerinden zaman eşlemeli cross-track error üret.
+6. [x] Sapma için davranış bandı tanımla: `5 cm` uyarı, `8 cm` hız azaltma, `10 cm` güvenli duruş/yeniden değerlendirme. Kesin eşikler fiziksel sonuçla sabitlenecek.
+7. [x] Ani köşe kestirmeyi ve global yeniden planlamanın tanımlı rotadan kaçmasını engelle; engelden dolaşmak yerine güvenli bekle.
+8. [x] q5 kenar giriş/çıkış olayını rota yürütmeden üret; yalnız “pickup sonrası bir kez” varsayımına bağlama.
+9. [x] Yüklü harekette yalnız izinli yönleri seç; yük robotun hareket yönünün arkasında kalmalı.
+10. [x] Sapma, seçilen yol, edge id, hız limiti ve duruş nedenini bag/GUI’ye yayımla.
+
+**1 Eylül ROS uygulama durumu:** `route_guard`, Nav2'nin seçtiği yolu ve
+`map -> base_footprint` pozunu izleyerek `/route/cross_track_error`,
+`/route/selected_path`, `/route/active_edge`, `/route/next_node`,
+`/route/state` ve `/route/events` üretir. Sapma limiti hız yöneticisiyle
+birleştirilir; duruş bandında yüksek öncelikli güvenlik sıfırı yayımlanır.
+Görev yöneticisinin yük durumu Route Server'daki uygunsuz kenarları dinamik
+olarak kapatır ve onay gelmeden yeni `ComputeRoute -> FollowPath` yürütmesi
+başlatılmaz. `PenaltyScorer`, düğüm yaw'ından hesaplanan dönüş maliyetini ve q5
+bekleme cezasını mesafe/süre maliyetine ekler. Yalnız 4 numaralı fiziksel RPP
+kalibrasyonu açık bırakılmıştır.
 
 Kabul kapısı:
 
@@ -467,10 +533,158 @@ Kabul kapısı:
 - PLC kopma/tekrar/yeniden bağlanma testlerinde tehlikeli hareket veya çift bildirim etkisi yok.
 - 5 kg yük üç ardışık uçtan uca görevde düşmeden taşınır.
 
+### F7A — İstasyon–QR sözleşmesi ve durumla yetkilendirilmiş tetikleme
+
+**Süre:** F7 sonrasında 0.5 gün
+**Bağımlılık:** F3, F5, F7
+**Amaç:** Ön QR okuyucusunu donanımdan bağımsız bir ROS sözleşmesine bağlamak ve QR'ın tek başına hareket başlatmasını engellemek.
+
+**Durum (2 Eylül):** ROS altyapısı tamamlandı. Saha-paketi ayar servisleri,
+donanımdan bağımsız QR mesajı/adaptörü, hedef+state+QR kapısı, tazelik,
+debounce, tek-sefer tüketim ve `RobotStatus` görünürlüğü eklendi. Flutter
+ekranı, gerçek QR okuyucu sürücüsü ve altı istasyonun fiziksel kabul ölçümü
+bekliyor; dönüş ve süreli şerit kontrolü F7B/F7C kapsamındadır.
+
+Donanım sözleşmesi:
+
+- Araçta önde ayrı bir QR okuyucu, arkada şerit takibi için tek kamera vardır.
+- QR okuyucu için bir donanım adaptörü oluşturulur. Donanıma özgü veri önce
+  `/qr_reader/qr_detection` üzerinde en az `qr_id`, `valid`, zaman damgası ve
+  mümkünse güven/hata bilgisiyle yayımlanır; adaptör bunu üretim sisteminin
+  kanonik `QrDetection` sözleşmesine dönüştürür.
+- Arka kamera QR okuyucu yerine kullanılmaz; ön QR okuyucu şerit kontrolü üretmez.
+
+Yapılacaklar:
+
+1. Saha paketinde her A/B istasyonu ile yaklaşım QR'ını eşleştir:
+   `A1→q2`, `A2→q3`, `A3→q4`, `B1→q9`, `B2→q8`, `B3→q7` örnek saha
+   eşleşmesidir; kimlikler kodda sabitlenmez, GUI/ROS saha verisinden okunur.
+2. GUI'nin istasyon için `approach_qr_id`, `dock_heading_yaw`,
+   `line_follow_duration_s` ve `turn_direction: left|right|auto`
+   düzenleyebileceği servis ve doğrulama sözleşmesini tanımla; değerleri saha
+   paketinde kalıcı sakla. Süre pozitif, sonlu ve belirlenen güvenli üst sınır
+   içinde olmalıdır.
+3. Tetikleme koşulunu yalnız
+   `target_station + mission_state=APPROACHING_STATION + QR_ID` eşleşmesi
+   olarak uygula.
+4. QR tazelik, geçerlilik, debounce ve aynı yaklaşım oturumu içinde tek sefer
+   tüketim kuralı ekle. Yanlış, bayat veya tekrar QR hiçbir hareket üretmez.
+5. Süreli geri yanaşma başlayınca QR tetikleyicisini tüket. Lift tamamlanıp
+   durum `EXITING_STATION` olduğunda aynı QR tekrar okunsa bile yok say.
+6. Yeni bir istasyon yaklaşımı başladığında yalnız o hedef için yeniden armed ol.
+7. Armed/disarmed, beklenen/okunan QR ve red nedenini GUI/olay kaydına yayımla.
+
+Kabul kapısı:
+
+- Altı A/B eşleşmesinin tamamı saha paketinden yüklenir; kodda istasyon adına
+  bağlı `if q2` benzeri karar bulunmaz.
+- Altı istasyonun her biri için GUI'den farklı süre kaydedilip yeniden
+  okunduğu ve süre değişikliğinin yalnız ilgili istasyonu etkilediği doğrulanır.
+- Doğru QR yalnız doğru hedef ve doğru state'te bir kez tetikler.
+- Yanlış hedef, normal Nav2 geçişi, `EXITING_STATION`, tekrar okuma ve bayat QR
+  testlerinin hiçbirinde dönüş veya şerit komutu oluşmaz.
+
+### F7B — Güvenli 180° dönüş ve Nav2’den docking’e atomik devir
+
+**Süre:** F7A sonrasında 1 gün
+**Bağımlılık:** F6, F7A
+**Amaç:** Doğrulanmış istasyon QR'ından sonra robotu güvenli yönde 180° çevirip kontrolü geri yanaşma sistemine tek sahipli olarak devretmek.
+
+**Durum (2 Eylül):** ROS altyapısı tamamlandı. Nav2, istasyona ait QR/yaklaşım
+düğümünde başarıyla bitip ölçülen hız sabit sıfır olmadan dönüş başlamaz.
+`left/right` yönündeki dönüş Nav2 `/spin` action ile mevcut costmap ve güvenlik
+zincirinden yürütülür; hedef yön saha paketindeki `dock_heading_yaw` değeridir.
+Dönüş boyunca STM32 IMU verisi, IMU+encoder `/odometry/filtered`, AMCL/TF,
+engel, e-stop, timeout ve action tek-sahipliği denetlenir. `auto`, iki costmap
+yayı karşılaştırılmadığı sürece güvenli biçimde reddedilir. Gerçek araçta altı
+istasyon için ≤3° kabul testi ve dönüş yönü kalibrasyonu bekliyor.
+
+Yapılacaklar:
+
+1. Nav2 yaklaşım hedefinin başarıyla tamamlandığını ve çıkış hızının sıfır
+   olduğunu doğrulamadan dönüş başlatma.
+2. İlk sürümde saha paketindeki `turn_direction: left|right` değerini kullan;
+   `auto` seçeneğini ancak iki aday dönüş yayı costmap/ayak iziyle kontrol
+   edilip güvenli olan yön deterministik seçilebiliyorsa etkinleştir.
+3. 180° dönüşü açık bir manevra/action olarak yürüt; hedef yaw, açısal tolerans,
+   timeout, engel, lokalizasyon kaybı ve iptal sonuçlarını ayrı kodla bildir.
+4. Dönüş sırasında Nav2 yol takibini ve şerit komutunu yetkisiz bırak; yalnız
+   manevra kaynağı ana güvenlik zincirinden geçsin.
+5. Dönüş hedef toleransına girmeden `LINE_FOLLOW_DOCKING` durumuna geçme.
+6. Güvenli dönüş yayı yoksa veya dönüş tamamlanamazsa robot durmuş kalsın;
+   otomatik ters yöne ikinci deneme açık bir politika olmadan yapılmasın.
+7. İstasyon kimliğinden bağımsız aynı state/action akışını bütün A/B noktalarında kullan.
+
+Kabul kapısı:
+
+- Altı istasyon yaklaşımının her birinde seçilen yönde tekrarlanabilir 180°
+  dönüş ve hedef tasarım bandı `≤3°` yaw hatası gösterilir.
+- Nav2, dönüş ve docking arasında aynı anda iki sıfır-dışı hız kaynağı yoktur.
+- Engel, timeout, e-stop ve AMCL/TF kaybında docking başlamaz ve araç güvenli durur.
+
+### F7C — Arka kamera ile geri docking, tamamlama ve ileri Nav2 çıkışı
+
+**Süre:** F7B sonrasında 1 gün
+**Bağımlılık:** F5, F7, F7B
+**Amaç:** Bütün alma ve bırakma istasyonlarına yalnız arka kamera/geri şerit takibiyle yanaşmak; işlemden sonra şeridi kullanmadan ileri Nav2’ye dönmek.
+
+**Durum (2 Eylül):** ROS entegrasyonu tamamlandı. Gerçek şerit takip düğümü
+tek ortak arka kamera topic'ini IDLE durumda dinler; görev yöneticisi dönüşten
+sonra istasyonun `line_follow_duration_s` değerini docking action'a aktarır.
+Action, güncel kamera karesi + `/lane_tracking/active` + dönüş sonrasında
+üretilmiş sıfır-dışı `/cmd_vel_lane` görülmeden monotonik sayacı başlatmaz.
+Şerit komutu ters hareket için sınırlandırılıp yalnız `/cmd_vel_dock` üzerinden
+güvenlik zincirine girer. Süre sonunda şerit `STOP` edilir ve filtreli odometri
+sabit sıfır göstermeden `PICKUP_READY/DROPOFF_READY` ile lift'e geçilmez.
+Kamera, şerit komutu/aktiflik, IMU+encoder odometri, AMCL/TF, engel, e-stop ve
+iptal kayıpları ayrı fail-safe sonuçlardır. Altı istasyonun süre kalibrasyonu,
+`reverse_angular_sign` yön kontrolü ve fiziksel ±7.5 cm/±5° kabulü bekliyor.
+
+Yapılacaklar:
+
+1. `pickup/dropoff` işlem türünü hareket yönü ve kamera seçiminden ayır. Hem A
+   hem B docking için hareket `reverse`, algı kaynağı `rear_camera` olmalıdır.
+2. FAZ 5'te üretilen gerçek şerit çıktısını bir docking action/adaptörüne bağla;
+   algoritmayı görev yöneticisine veya launch dosyasına kopyalama.
+3. Görev yöneticisi hedef istasyonun `line_follow_duration_s` değerini aktif
+   saha paketinden okur. Sayaç yalnız 180° dönüş tamamlandıktan, şerit takip
+   action/control isteği kabul edildikten ve geri şerit kontrolünün aktifliği
+   doğrulandıktan sonra monotonik saatle başlatılır.
+4. Tanımlı süre boyunca geri şerit kontrolü çalışır. Süre dolunca kontrol
+   iptal/durdurulur, `/cmd_vel_dock` sıfırlanır ve ölçülen hızın sıfıra indiği
+   doğrulanır; ardından pickup için `PICKUP_READY`, dropoff için
+   `DROPOFF_READY` durumuna geçilip lift başlatılır.
+5. Sürenin dolması sensör arızasını başarıya çeviremez. Şerit/kamera bayatlığı,
+   şerit kaybı, engel, e-stop, lokalizasyon kaybı, action reddi veya iptali
+   süre içinde ayrı hata sonucu ve sıfır hız üretmelidir.
+6. Lift sonucu ve yük var/yok doğrulandıktan sonra state'i
+   `EXITING_STATION` yap, şerit kontrolünü disarm et ve ileri yöndeki izinli
+   rota kenarında Nav2'yi doğrudan başlat.
+7. Çıkışta süreyi veya şerit takibini kullanma ve yaklaşım QR'ını yeniden
+   aksiyona bağlama.
+   İleri Nav2 devri palet/istasyon costmap geometrisinde güvenli başlamalıdır.
+8. Şerit komutunu yalnız `/cmd_vel_dock` üzerinden; Nav2, manuel ve docking
+   kaynaklarını tek sahipli mux/güvenlik zincirinden geçir.
+9. Hedef istasyon, ayarlı/geçen/kalan süre, arka kamera/şerit geçerliliği,
+   kontrol aktifliği, duruş doğrulaması ve hata nedenini GUI/RobotStatus/olay
+   kaydına aktar.
+
+Kabul kapısı:
+
+- A1–A3 ve B1–B3 için genel aynı kod yolunda
+  `Nav2 → QR doğrula → 180° → geri şerit aktif → istasyon süresi → sıfır hız → PICKUP_READY/DROPOFF_READY → lift → ileri Nav2`
+  sırası doğrulanır.
+- Çıkış sırasında aynı QR yeniden görülse bile dönüş veya şerit takibi başlamaz.
+- Her istasyon süresi en az üç fiziksel geri yanaşma ölçümünden belirlenir;
+  aynı sabit hız profiliyle tekrarlandığında şartname kabul sınırı
+  `±7.5 cm/±5°` aşılmaz. Süre/hız profili değişirse yeniden kalibre edilir.
+- Fiziksel testte bütün A/B istasyonlarında ileri Nav2 çıkışı yük/paletle
+  çarpışmadan başlar ve yük hareket yönünün arkasında kalır.
+
 ### F8 — Emniyet, arıza enjeksiyonu ve kurtarma matrisi
 
-**Süre:** 13–14 Eylül  
-**Bağımlılık:** F1–F7  
+**Süre:** 14–15 Eylül
+**Bağımlılık:** F1–F7C
 **Amaç:** Her tekil arızanın güvenli, görünür ve mümkünse devam edilebilir davranışa dönüşmesi.
 
 Zorunlu testler:
@@ -503,7 +717,7 @@ Kabul kapısı:
 
 ### F9 — 60 dakikalık harita ve rota hazırlama provası
 
-**Süre:** 14–15 Eylül  
+**Süre:** 15 Eylül
 **Bağımlılık:** F2–F4, F6  
 **Amaç:** İkinci aşamaya geçiş kapısı olan saha hazırlığını baskı altında tamamlamak.
 
@@ -613,13 +827,16 @@ Yerlilik/özgünlük için kod, elektronik, mekanik ve algoritma kanıtlarını 
 | 3–7 Eylül | F5 gerçek QR/çizgi/docking | istasyon toleransı |
 | 7–10 Eylül | F6 route yürütme/guard | 10 cm rota kabulü |
 | 10–13 Eylül | F7 gerçek PLC/lift/tam FSM | ilk tam görev |
-| 13–14 Eylül | F8 arıza matrisi | safety kabulü |
-| 14–15 Eylül | F9 iki 60 dk prova | saha hazırlık kabulü |
+| 13 Eylül | F7A istasyon–QR/state sözleşmesi | yanlış/tekrar QR hareket üretmiyor |
+| 13–14 Eylül | F7B güvenli 180° dönüş ve kontrol devri | tek hız sahibiyle dönüş kabulü |
+| 14 Eylül | F7C geri şerit docking ve ileri Nav2 çıkışı | altı istasyon entegrasyonu |
+| 14–15 Eylül | F8 arıza matrisi | safety kabulü |
+| 15 Eylül | F9 iki 60 dk prova | saha hazırlık kabulü |
 | 15–16 Eylül | F10 üç tam görev | yarışma kabulü |
 | 16–17 Eylül | F11 release freeze/lojistik | imzalı final release |
 | 18–20 Eylül | Yarışma finali | yalnız kontrollü hotfix |
 
-Kritik yol: `F0 → F1 → F2 → F3 → F5 → F6 → F7 → F8 → F9 → F10 → F11`.
+Kritik yol: `F0 → F1 → F2 → F3 → F5 → F6 → F7 → F7A → F7B → F7C → F8 → F9 → F10 → F11`.
 
 F4 kısmen paralel yürüyebilir. F12 kritik yolda değildir. Bir P0 blokeri hedef tarihinden iki gün fazla sarkarsa opsiyonel işler kapatılır ve ekip tam zamanlı kritik yola döner.
 

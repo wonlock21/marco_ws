@@ -14,9 +14,7 @@ Surerek haritalamak icin AYRI terminal:
 Haritayi kaydetmek (ayri terminal):
   ros2 run marco_localization harita_kaydet.sh [isim]
 
-pwm_bridge ile AYNI ANDA CALISTIRILAMAZ. pwm_bridge /odom yayinlamaz ve
-seri portu base_driver ile paylasamaz. Mapping oncesi:
-  pkill -f 'pwm[_bridge]|marco_pwm'
+Teker RPM komutu, odometri ve IMU tek base_driver seri baglantisindan tasinir.
 """
 
 import os

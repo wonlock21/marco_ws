@@ -21,7 +21,9 @@ def generate_launch_description():
 
     camera_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(lane_share, 'launch', 'front_camera.launch.py')),
+            os.path.join(
+                lane_share, 'launch',
+                'front_camera_compressed.launch.py')),
         launch_arguments={
             'camera': LaunchConfiguration('camera'),
             'web_stream': LaunchConfiguration('web_stream'),
@@ -66,7 +68,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'camera', default_value='/dev/marco_front_camera'),
         DeclareLaunchArgument(
-            'camera_input', default_value='ros_topic'),
+            'camera_input', default_value='ros_compressed'),
         DeclareLaunchArgument(
             'camera_topic', default_value='/camera/image_raw'),
         DeclareLaunchArgument(

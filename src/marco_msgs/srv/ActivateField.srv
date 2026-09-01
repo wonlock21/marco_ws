@@ -1,0 +1,7 @@
+string field_name
+string expected_hash
+---
+bool success
+string message
+marco_msgs/ActiveField active_field
+marco_msgs/FieldPackageStatus status

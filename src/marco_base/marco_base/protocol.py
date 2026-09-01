@@ -22,10 +22,9 @@ _CRC_LEN = 2
 class MsgId(IntEnum):
     """Mesaj kimlikleri. 0x80 ve uzeri STM32'den gelen mesajlardir."""
 
-    CMD_WHEEL_VELOCITY = 0x01
+    CMD_WHEEL_RPM = 0x01
     CMD_FORK = 0x02
     CMD_SAFETY = 0x03
-    CMD_MOTOR_PWM = 0x04
     CMD_HEARTBEAT = 0x05
 
     STATE_ODOMETRY = 0x81
@@ -57,16 +56,24 @@ class SafetyCommand(IntEnum):
 
 
 # Payload yapilari. '<' hizalama dolgusunu kapatir; STM32 tarafiyla bayt bayt uyumlu.
-_FMT_WHEEL_VELOCITY = "<hhB"   # left_mm_s, right_mm_s, flags
-_FMT_MOTOR_PWM = "<hhB"        # left_pwm, right_pwm, flags
+_FMT_WHEEL_RPM = "<hhB"        # left_rpm, right_rpm, flags
 _FMT_FORK = "<BH"              # action, timeout_ms
 _FMT_SAFETY = "<B"             # command
-_FMT_ODOMETRY_LEGACY = "<Iiihh"  # IMU eklenmeden onceki 16 baytlik paket
-_FMT_ODOMETRY = "<Iiihhf"      # onceki alanlar + angle_x_deg (float32)
+_FMT_ODOMETRY_LEGACY = "<Iiihh"  # uint32 zaman damgali eski 16 baytlik paket
+_FMT_ODOMETRY_NO_IMU = "<Qiihh"  # uint64 zaman damgali, IMU'suz 20 bayt
+_FMT_ODOMETRY = "<Qiihhf"         # uint64 zaman + alanlar + IMU yaw (24 bayt)
 _FMT_STATUS = "<IHHhhbB"       # timestamp_us, flags, battery_mv, cur_l, cur_r, temp_c, fork_state
 
 ODOMETRY_LEGACY_PAYLOAD_LEN = struct.calcsize(_FMT_ODOMETRY_LEGACY)  # 16
-ODOMETRY_PAYLOAD_LEN = struct.calcsize(_FMT_ODOMETRY)  # 20
+ODOMETRY_NO_IMU_PAYLOAD_LEN = struct.calcsize(_FMT_ODOMETRY_NO_IMU)  # 20
+ODOMETRY_PAYLOAD_LEN = struct.calcsize(_FMT_ODOMETRY)  # 24
+ODOMETRY_SUPPORTED_PAYLOAD_LENS = frozenset(
+    (
+        ODOMETRY_LEGACY_PAYLOAD_LEN,
+        ODOMETRY_NO_IMU_PAYLOAD_LEN,
+        ODOMETRY_PAYLOAD_LEN,
+    )
+)
 STATUS_PAYLOAD_LEN = struct.calcsize(_FMT_STATUS)      # 14
 
 
@@ -97,24 +104,16 @@ def encode(msg_id: MsgId, payload: bytes = b"") -> bytes:
 
 # --- Komut kodlayicilari (Orange Pi -> STM32) ---
 
-def encode_wheel_velocity(left_mm_s: int, right_mm_s: int, enabled: bool) -> bytes:
+def encode_wheel_rpm(left_rpm: int, right_rpm: int, enabled: bool) -> bytes:
+    """Isaretli teker hedeflerini tam sayi RPM olarak kodlar."""
     return encode(
-        MsgId.CMD_WHEEL_VELOCITY,
-        struct.pack(_FMT_WHEEL_VELOCITY, int(left_mm_s), int(right_mm_s), 1 if enabled else 0),
-    )
-
-
-def encode_motor_pwm(left_pwm: int, right_pwm: int, enabled: bool) -> bytes:
-    """Ham PWM komutu. STM32 PID'i devreye almaz, degeri surucuye dogrudan yazar.
-
-    Alan tipi int16: bugun host tarafi 0..150 arasi gonderiyor ama isaret geri
-    yonu, genislik ise ileride 0..255 veya 0..1000'e cikilmasini protokolu
-    degistirmeden mumkun kilar. Kablo formati sabit kaldigi surece aralik
-    degisikligi yalnizca bir parametre degisikligidir.
-    """
-    return encode(
-        MsgId.CMD_MOTOR_PWM,
-        struct.pack(_FMT_MOTOR_PWM, int(left_pwm), int(right_pwm), 1 if enabled else 0),
+        MsgId.CMD_WHEEL_RPM,
+        struct.pack(
+            _FMT_WHEEL_RPM,
+            int(left_rpm),
+            int(right_rpm),
+            1 if enabled else 0,
+        ),
     )
 
 
@@ -139,7 +138,8 @@ class OdometryFrame:
     right_ticks: int
     left_mm_s: int
     right_mm_s: int
-    angle_x_deg: float | None = None
+    imu_yaw_deg: float | None = None
+    timestamp_bits: int = 64
 
 
 @dataclass(frozen=True)
@@ -156,19 +156,19 @@ class StatusFrame:
 def encode_odometry(f: OdometryFrame) -> bytes:
     """Yalnizca sahte STM32 ve testler icin; gercek firmware bunu C'de uretir.
 
-    Tick alanlari kabloda int32 kalir ama deger her zaman [0, 65535] araligindadir
-    (2^16 sarma). Host decode sirasinda da maskeler.
+    Tick alanlari kabloda yonlu, kumulatif int32'dir. Sahte STM32 de gercek
+    firmware ile ayni sarmayi kullanir; 16 bite daraltma yapilmaz.
     """
     return encode(
         MsgId.STATE_ODOMETRY,
         struct.pack(
             _FMT_ODOMETRY,
-            f.timestamp_us & 0xFFFFFFFF,
-            f.left_ticks & 0xFFFF,
-            f.right_ticks & 0xFFFF,
+            f.timestamp_us & 0xFFFFFFFFFFFFFFFF,
+            _signed_int32(f.left_ticks),
+            _signed_int32(f.right_ticks),
             f.left_mm_s,
             f.right_mm_s,
-            0.0 if f.angle_x_deg is None else float(f.angle_x_deg),
+            0.0 if f.imu_yaw_deg is None else float(f.imu_yaw_deg),
         ),
     )
 
@@ -189,15 +189,9 @@ def encode_status(f: StatusFrame) -> bytes:
     )
 
 
-def decode_wheel_velocity(payload: bytes) -> tuple[int, int, bool]:
-    """(left_mm_s, right_mm_s, enabled) dondurur."""
-    left, right, flags = struct.unpack(_FMT_WHEEL_VELOCITY, payload)
-    return left, right, bool(flags & 1)
-
-
-def decode_motor_pwm(payload: bytes) -> tuple[int, int, bool]:
-    """(left_pwm, right_pwm, enabled) dondurur."""
-    left, right, flags = struct.unpack(_FMT_MOTOR_PWM, payload)
+def decode_wheel_rpm(payload: bytes) -> tuple[int, int, bool]:
+    """(left_rpm, right_rpm, enabled) dondurur."""
+    left, right, flags = struct.unpack(_FMT_WHEEL_RPM, payload)
     return left, right, bool(flags & 1)
 
 
@@ -214,33 +208,47 @@ def decode_safety(payload: bytes) -> SafetyCommand:
 def decode_odometry(payload: bytes) -> OdometryFrame:
     """STATE_ODOMETRY cozer.
 
-    Yeni kanonik boyut 20 bayttir: eski 16 baytlik odometri alanlarinin
-    sonuna derece cinsinden float32 ``angle_x`` eklenmistir. Gecis sirasinda
-    eski 16 baytlik ve padding'li 24 baytlik firmware de kabul edilir fakat
-    IMU alani ``None`` olur.
+    Yeni kanonik boyut 24 bayttir: uint64 zaman damgasi, iki int32 encoder
+    sayaci, iki int16 teker hizi ve derece cinsinden float32 ``imu_yaw``.
+    Gecis sirasinda uint64 zaman damgali IMU'suz 20 bayt ve daha eski uint32
+    zaman damgali 16 bayt da kabul edilir.
     """
-    if len(payload) < ODOMETRY_LEGACY_PAYLOAD_LEN:
+    if len(payload) not in ODOMETRY_SUPPORTED_PAYLOAD_LENS:
         raise ValueError(
-            f"odometry payload {len(payload)} bayt, en az "
-            f"{ODOMETRY_LEGACY_PAYLOAD_LEN} gerekli"
+            f"odometry payload {len(payload)} bayt; desteklenen boyutlar "
+            f"{sorted(ODOMETRY_SUPPORTED_PAYLOAD_LENS)}"
         )
     if len(payload) == ODOMETRY_PAYLOAD_LEN:
-        ts, left, right, left_mm_s, right_mm_s, angle_x_deg = (
+        ts, left, right, left_mm_s, right_mm_s, imu_yaw_deg = (
             struct.unpack_from(_FMT_ODOMETRY, payload)
         )
+        timestamp_bits = 64
+    elif len(payload) == ODOMETRY_NO_IMU_PAYLOAD_LEN:
+        ts, left, right, left_mm_s, right_mm_s = struct.unpack_from(
+            _FMT_ODOMETRY_NO_IMU, payload
+        )
+        imu_yaw_deg = None
+        timestamp_bits = 64
     else:
         ts, left, right, left_mm_s, right_mm_s = struct.unpack_from(
             _FMT_ODOMETRY_LEGACY, payload
         )
-        angle_x_deg = None
+        imu_yaw_deg = None
+        timestamp_bits = 32
     return OdometryFrame(
         ts,
-        left & 0xFFFF,
-        right & 0xFFFF,
+        left,
+        right,
         left_mm_s,
         right_mm_s,
-        angle_x_deg,
+        imu_yaw_deg,
+        timestamp_bits,
     )
+
+
+def _signed_int32(value: int) -> int:
+    """Bir Python tamsayisini C int32 kablo araligina sarar."""
+    return ((int(value) + (1 << 31)) % (1 << 32)) - (1 << 31)
 
 
 def decode_status(payload: bytes) -> StatusFrame:

@@ -1,0 +1,5 @@
+---
+bool success
+string message
+marco_msgs/ActiveField active_field
+marco_msgs/FieldPackageStatus status

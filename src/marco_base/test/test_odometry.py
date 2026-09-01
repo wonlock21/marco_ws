@@ -11,7 +11,10 @@ import pytest
 from marco_base.odometry import (
     DifferentialOdometry,
     tick_delta,
+    timestamp_delta,
     twist_to_wheel_speeds,
+    wheel_rpm_to_speed,
+    wheel_speed_to_rpm,
     wrap_ticks,
 )
 
@@ -127,7 +130,7 @@ def test_kare_parkur_baslangica_doner():
     assert kapanma_hatasi < 0.005, f"kapanma hatasi {kapanma_hatasi:.4f} m"
 
 
-# --- Tick tasmasi (2^16) ---
+# --- Tick tasmasi (isaretli int32) ---
 
 def test_tick_delta_normal():
     assert tick_delta(100, 150) == 50
@@ -135,28 +138,38 @@ def test_tick_delta_normal():
 
 
 def test_tick_delta_pozitif_tasma():
-    """65535 civarindan 0'a sarma: gercek fark kucuk pozitif olmali."""
-    assert tick_delta(65530, 10) == 16
+    """int32 ust sinirindan alt sinira sarma kayip uretmemeli."""
+    assert tick_delta(2_147_483_640, -2_147_483_640) == 16
 
 
 def test_tick_delta_negatif_tasma():
-    """Geri giderken 0'dan 65535'e sarma."""
-    assert tick_delta(10, 65530) == -16
+    """Geri giderken int32 alt sinirindan ust sinira sarma."""
+    assert tick_delta(-2_147_483_640, 2_147_483_640) == -16
 
 
 def test_wrap_ticks_aralik():
-    assert wrap_ticks(65536) == 0
-    assert wrap_ticks(-1) == 65535
-    assert wrap_ticks(70000) == 4464
+    assert wrap_ticks(65536) == 65536
+    assert wrap_ticks(-1) == -1
+    assert wrap_ticks(2_147_483_648) == -2_147_483_648
 
 
 def test_tasma_pozu_bozmaz():
     odom = make_odom()
-    odom.update(65500, 65500, 0)
-    odom.update(100, 100, 1_000_000)  # +136 tick sarma
+    odom.update(2_147_483_600, 2_147_483_600, 0)
+    odom.update(-2_147_483_560, -2_147_483_560, 1_000_000)
 
     assert odom.state.x == pytest.approx(136 * odom.meters_per_tick, rel=1e-6)
     assert abs(odom.state.theta) < 1e-9
+
+
+def test_uint64_timestamp_32_bit_sinirinda_sarmaz():
+    previous = (1 << 32) - 5
+    current = (1 << 32) + 15
+    assert timestamp_delta(previous, current, bits=64) == 20
+
+
+def test_legacy_uint32_timestamp_sarmasi():
+    assert timestamp_delta((1 << 32) - 5, 15, bits=32) == 20
 
 
 def test_asiri_sicrama_filtrelenir():
@@ -212,6 +225,17 @@ def test_twist_oransal_kirpma_yonu_korur():
     assert left / right == pytest.approx(1.77 / 2.23, rel=1e-6)
 
 
+def test_teker_hizi_rpm_donusumu():
+    rpm = wheel_speed_to_rpm(0.1, 0.1)
+    assert rpm == pytest.approx(9.5492966)
+    assert wheel_rpm_to_speed(rpm, 0.1) == pytest.approx(0.1)
+
+
+def test_rpm_isareti_fiziksel_yonu_korur():
+    assert wheel_speed_to_rpm(-0.1, 0.1) < 0.0
+    assert wheel_rpm_to_speed(-10.0, 0.1) < 0.0
+
+
 def test_gecersiz_parametre_reddedilir():
     with pytest.raises(ValueError):
         DifferentialOdometry(0.0, WHEEL_SEPARATION, TICKS_PER_REV)
@@ -219,4 +243,8 @@ def test_gecersiz_parametre_reddedilir():
         DifferentialOdometry(0.1, WHEEL_SEPARATION, 0)
     with pytest.raises(ValueError):
         DifferentialOdometry(
-            0.1, WHEEL_SEPARATION, TICKS_PER_REV, max_tick_delta=40000)
+            0.1,
+            WHEEL_SEPARATION,
+            TICKS_PER_REV,
+            max_tick_delta=1 << 31,
+        )

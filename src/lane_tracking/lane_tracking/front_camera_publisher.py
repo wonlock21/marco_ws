@@ -27,7 +27,7 @@ class FrontCameraPublisher(Node):
         self.declare_parameter('frame_id', 'camera_link')
         self.declare_parameter(
             'compressed_topic', '/camera/image_raw/compressed')
-        self.declare_parameter('jpeg_quality', 80)
+        self.declare_parameter('jpeg_quality', 75)
         self.declare_parameter('reconnect_interval', 1.0)
 
         self.device = str(self.get_parameter('video_device').value)
@@ -50,7 +50,7 @@ class FrontCameraPublisher(Node):
         image_qos = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=1,
-            reliability=QoSReliabilityPolicy.RELIABLE,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
             durability=QoSDurabilityPolicy.VOLATILE,
         )
         self.publisher = self.create_publisher(

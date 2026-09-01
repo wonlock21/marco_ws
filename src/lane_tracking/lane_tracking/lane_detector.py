@@ -60,6 +60,7 @@ class LaneDetector:
         self.lookahead_band_half_height = max(
             1, int(lookahead_band_half_height))
         self.last_mask = None
+        self.last_raw_mask = None
         self.last_selected_mask = None
         self.last_debug_frame = None
         self.last_lookahead_x = None
@@ -86,13 +87,14 @@ class LaneDetector:
             mask = adaptive_dark_mask_cpu(
                 working_frame, value_max=self.value_max,
                 block_size=self.block_size, offset=self.adaptive_offset)
+        self.last_raw_mask = mask
         mask = self._recover_wide_lane(mask)
-        self.last_mask = mask
 
         contours, _ = cv2.findContours(
             mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         selected = self._select_contour(contours, width, height)
         if selected is None:
+            self.last_mask = np.zeros_like(mask)
             self.last_selected_mask = np.zeros_like(mask)
             self.last_heading_error = 0.0
             self.last_confidence = 0.0
@@ -102,20 +104,33 @@ class LaneDetector:
 
         selected_mask = np.zeros_like(mask)
         cv2.drawContours(selected_mask, [selected], -1, 255, -1)
+        selected_mask = self._clean_lane_body(selected_mask)
+        clean_contours, _ = cv2.findContours(
+            selected_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if clean_contours:
+            selected = max(clean_contours, key=cv2.contourArea)
+        self.last_mask = selected_mask
         self.last_selected_mask = selected_mask
-        near_x = self._band_center(
+        band_near_x = self._band_center(
             selected_mask, int(height * 0.72), height)
-        far_x = self._band_center(
+        band_far_x = self._band_center(
             selected_mask, int(height * 0.40), int(height * 0.68))
 
         moments = cv2.moments(selected)
         contour_x = (
             float(moments['m10'] / moments['m00'])
             if moments['m00'] > 0.0 else float(center_x))
-        if near_x is None:
-            near_x = contour_x
-        if far_x is None:
-            far_x = contour_x
+        near_y = int(height * 0.84)
+        far_y = int(height * 0.54)
+        fitted_centers = self._fit_contour_axis(
+            selected, width, near_y, far_y)
+        if band_near_x is not None and band_far_x is not None:
+            near_x, far_x = band_near_x, band_far_x
+        elif fitted_centers is not None:
+            near_x, far_x = fitted_centers
+        else:
+            near_x = band_near_x if band_near_x is not None else contour_x
+            far_x = band_far_x if band_far_x is not None else contour_x
 
         lookahead_y = max(0, min(height - 1, self.lookahead_y))
         lookahead_x = self._band_center(
@@ -136,8 +151,6 @@ class LaneDetector:
         area_score = min(1.0, area / max(1.0, width * height * 0.08))
         self.last_confidence = 0.65 * height_score + 0.35 * area_score
 
-        near_y = int(height * 0.84)
-        far_y = int(height * 0.54)
         cv2.drawContours(working_frame, [selected], -1, (0, 220, 0), 2)
         cv2.circle(
             working_frame, (int(round(near_x)), near_y),
@@ -153,30 +166,99 @@ class LaneDetector:
             (center_x, near_y), (int(round(near_x)), near_y),
             (255, 255, 0), 2)
         self._draw_lookahead(working_frame, center_x, lookahead_x)
+        cv2.line(
+            working_frame, (int(center_x), 0),
+            (int(center_x), height - 1), (255, 0, 0), 2)
 
         return True, float(near_x - center_x)
 
     def _recover_wide_lane(self, mask):
         """Kalin seridin adaptif esikte ayrilan iki kenarini birlestir."""
-        height, width = mask.shape[:2]
-        vertical_size = max(3, int(height * 0.10))
-        if vertical_size % 2 == 0:
-            vertical_size += 1
-        vertical_kernel = np.ones((vertical_size, 1), dtype=np.uint8)
-        continuous = cv2.morphologyEx(
-            mask, cv2.MORPH_OPEN, vertical_kernel,
-            borderType=cv2.BORDER_CONSTANT, borderValue=0)
-
+        _, width = mask.shape[:2]
+        # Adaptif esik, genis ve tek renkli seridin ortasini bos birakabilir.
+        # Once iki ince kenari birlestiriyoruz. Acma bundan once yapilirsa
+        # 1-2 piksellik gercek serit kenarlari da gurultu gibi silinir.
         kernel_width = max(3, min(self.block_size, int(width * 0.25)))
         if kernel_width % 2 == 0:
             kernel_width -= 1
         kernel = np.ones((1, kernel_width), dtype=np.uint8)
         filled = cv2.morphologyEx(
-            continuous, cv2.MORPH_CLOSE, kernel,
+            mask, cv2.MORPH_CLOSE, kernel,
             borderType=cv2.BORDER_CONSTANT, borderValue=0)
         return cv2.morphologyEx(
-            filled, cv2.MORPH_OPEN, vertical_kernel,
+            filled, cv2.MORPH_OPEN,
+            np.ones((3, 3), dtype=np.uint8),
             borderType=cv2.BORDER_CONSTANT, borderValue=0)
+
+    @staticmethod
+    def _clean_lane_body(component_mask):
+        """Serit govdesini doldur, kisa yatay leke cikintilarini ayikla."""
+        height, width = component_mask.shape[:2]
+        rows = []
+        for y in range(height):
+            xs = np.flatnonzero(component_mask[y])
+            if xs.size:
+                rows.append((y, int(xs[0]), int(xs[-1])))
+        if len(rows) < max(8, int(height * 0.12)):
+            return component_mask
+
+        widths = np.asarray(
+            [right - left + 1 for _, left, right in rows], dtype=np.float32)
+        # Bagli zemin lekesi goruntunun uzun bir bolumunde seridi genisletebilir.
+        # Medyan bu durumda lekenin genisligini "normal" kabul eder. Alt
+        # yuzdelik, gercek seridin en az bir temiz dikey parcasi kaldigi surece
+        # govde genisligini korur.
+        typical_width = float(np.percentile(widths, 30.0))
+        if typical_width <= 0.0:
+            return component_mask
+
+        # Zemindeki kisa cizgiler seride baglandiginda yalnizca birkac satiri
+        # asiri genisletir. Satir genisligi medyanindan sapan bu satirlari
+        # atip iki serit kenarini kalan satirlardan yeniden kuruyoruz.
+        max_width = min(
+            width * 0.45,
+            max(typical_width * 1.35, typical_width + 10.0))
+        min_width = max(2.0, typical_width * 0.35)
+        valid = [
+            row for row, row_width in zip(rows, widths)
+            if min_width <= float(row_width) <= max_width
+        ]
+        # Uzun bir leke satirlarin yaridan fazlasini bozsa bile ust/alt temiz
+        # parcalar eksen ve genisligi yeniden kurmak icin yeterlidir.
+        if len(valid) < max(8, int(height * 0.12)):
+            return component_mask
+
+        ys = np.asarray([row[0] for row in valid], dtype=np.float32)
+        lefts = np.asarray([row[1] for row in valid], dtype=np.float32)
+        rights = np.asarray([row[2] for row in valid], dtype=np.float32)
+        all_y = np.arange(int(ys[0]), int(ys[-1]) + 1, dtype=np.float32)
+        left_interp = np.interp(all_y, ys, lefts)
+        right_interp = np.interp(all_y, ys, rights)
+
+        # Kisa yatay derz/zemin izleri birkac ardışık satir boyunca serit
+        # kenarini disari cekebilir. Daha uzun uzamsal medyan, bu darbeleri
+        # temizlerken seridin yavas degisen egimini korur.
+        smooth_window = min(31, len(all_y))
+        if smooth_window >= 3:
+            if smooth_window % 2 == 0:
+                smooth_window -= 1
+            half = smooth_window // 2
+
+            def rolling_median(values):
+                padded = np.pad(values, (half, half), mode='edge')
+                windows = np.lib.stride_tricks.sliding_window_view(
+                    padded, smooth_window)
+                return np.median(windows, axis=1).astype(np.float32)
+
+            left_interp = rolling_median(left_interp)
+            right_interp = rolling_median(right_interp)
+
+        result = np.zeros_like(component_mask)
+        for y_value, left, right in zip(all_y, left_interp, right_interp):
+            x0 = max(0, min(width - 1, int(round(left))))
+            x1 = max(x0, min(width - 1, int(round(right))))
+            result[int(y_value), x0:x1 + 1] = 255
+        return result
 
     def _birdseye(self, frame):
         height, width = frame.shape[:2]
@@ -227,15 +309,21 @@ class LaneDetector:
                     or y + h < minimum_bottom):
                 continue
 
-            candidate_x = x + w * 0.5
+            bottom_start = max(y, int(height * 0.72))
+            candidate_mask = np.zeros((height, width), dtype=np.uint8)
+            cv2.drawContours(candidate_mask, [contour], -1, 255, -1)
+            candidate_x = self._band_center(
+                candidate_mask, bottom_start, height)
+            if candidate_x is None:
+                continue
             continuity_penalty = 0.0
             if self._previous_center_x is not None:
                 jump = (
                     abs(candidate_x - self._previous_center_x)
                     / max(1, width))
-                if jump > 0.45:
+                if jump > 0.22:
                     continue
-                continuity_penalty = jump * 4.0
+                continuity_penalty = jump * 7.0
 
             area_score = area / max(1.0, width * height)
             height_score = h / max(1.0, height)
@@ -253,3 +341,22 @@ class LaneDetector:
         if xs.size == 0:
             return None
         return float(np.median(xs))
+
+    @staticmethod
+    def _fit_contour_axis(contour, width, near_y, far_y):
+        """Secili seridin ana eksenini uydurup iki y satirindaki x'i bul."""
+        points = np.asarray(contour, dtype=np.float32).reshape(-1, 2)
+        if points.shape[0] < 2:
+            return None
+        vx, vy, x0, y0 = cv2.fitLine(
+            points, cv2.DIST_L2, 0, 0.01, 0.01).reshape(-1)
+        if abs(float(vy)) < 1e-3:
+            return None
+
+        slope = float(vx) / float(vy)
+
+        def x_at(y):
+            value = float(x0) + (float(y) - float(y0)) * slope
+            return max(0.0, min(float(width - 1), value))
+
+        return x_at(near_y), x_at(far_y)

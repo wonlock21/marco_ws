@@ -44,11 +44,10 @@ class FakeStm32:
         slip_factor: float = 0.0,
         wheel_scale_error_left: float = 0.0,
         wheel_scale_error_right: float = 0.0,
-        pwm_full_scale: float = 255.0,
     ) -> None:
+        self.wheel_radius = wheel_radius
         self.wheel_separation = wheel_separation
         self.max_wheel_speed = max_wheel_speed
-        self.pwm_full_scale = pwm_full_scale
         self.motor_time_constant = motor_time_constant
         self.odometry_period = odometry_period
         self.status_period = status_period
@@ -100,15 +99,14 @@ class FakeStm32:
             self._handle(msg_id, payload)
 
     def _handle(self, msg_id: p.MsgId, payload: bytes) -> None:
-        if msg_id is p.MsgId.CMD_WHEEL_VELOCITY:
-            left_mm_s, right_mm_s, enabled = p.decode_wheel_velocity(payload)
+        if msg_id is p.MsgId.CMD_WHEEL_RPM:
+            left_rpm, right_rpm, enabled = p.decode_wheel_rpm(payload)
             self._last_command_at = self._now
-            self._apply_velocity_command(left_mm_s / 1000.0, right_mm_s / 1000.0, enabled)
-
-        elif msg_id is p.MsgId.CMD_MOTOR_PWM:
-            left_pwm, right_pwm, enabled = p.decode_motor_pwm(payload)
-            self._last_command_at = self._now
-            self._apply_pwm_command(left_pwm, right_pwm, enabled)
+            self._apply_velocity_command(
+                left_rpm * (2.0 * math.pi * self.wheel_radius) / 60.0,
+                right_rpm * (2.0 * math.pi * self.wheel_radius) / 60.0,
+                enabled,
+            )
 
         elif msg_id is p.MsgId.CMD_HEARTBEAT:
             self._last_command_at = self._now
@@ -143,21 +141,6 @@ class FakeStm32:
         else:
             self._target_left = 0.0
             self._target_right = 0.0
-
-    def _apply_pwm_command(self, left_pwm: int, right_pwm: int, enabled: bool) -> None:
-        """Ham PWM komutunu acik dongu olarak uygular.
-
-        Gercek firmware PWM'i dogrudan surucu koprusune yazar; PID devrede
-        degildir. Taklit bunu PWM'i yuksuz devirle dogrusal olceklendirerek
-        modeller. Dogrusallik yaklasiktir -- gercek motorda olu bolge vardir ve
-        hiz yuk altinda duser -- ama acik dongunun asil zaafini dogru yansitir:
-        komut ile gerceklesen hiz arasinda hicbir garanti yoktur.
-
-        Bu yuzden PWM modunda odometri komutun teyidi degil, tek olcum
-        kaynagidir; STATE_ODOMETRY yine de yayinlanir.
-        """
-        scale = self.max_wheel_speed / self.pwm_full_scale
-        self._apply_velocity_command(left_pwm * scale, right_pwm * scale, enabled)
 
     def _stop_motors(self) -> None:
         self._motors_enabled = False
@@ -196,13 +179,13 @@ class FakeStm32:
             out += p.encode_odometry(
                 p.OdometryFrame(
                     timestamp_us=self._timestamp_us(),
-                    left_ticks=self._wrap_uint16(self.left_ticks),
-                    right_ticks=self._wrap_uint16(self.right_ticks),
+                    left_ticks=self.left_ticks,
+                    right_ticks=self.right_ticks,
                     left_mm_s=int(round(self._actual_left * 1000.0)),
                     right_mm_s=int(round(self._actual_right * 1000.0)),
-                    # Gercek firmware paketindeki angle_x, arac duzlemindeki
+                    # Gercek firmware paketindeki imu_yaw, arac duzlemindeki
                     # donus acisi olarak kullaniliyor.
-                    angle_x_deg=math.degrees(self.true_theta),
+                    imu_yaw_deg=math.degrees(self.true_theta),
                 )
             )
 
@@ -308,12 +291,7 @@ class FakeStm32:
 
     def _timestamp_us(self) -> int:
         elapsed = self._now - (self._started_at or self._now)
-        return int(elapsed * 1_000_000) & 0xFFFFFFFF
-
-    @staticmethod
-    def _wrap_uint16(value: int) -> int:
-        """Sayaci 2^16'da sarar (0..65535); protokol ve gercek firmware ayni."""
-        return value & 0xFFFF
+        return int(elapsed * 1_000_000) & 0xFFFFFFFFFFFFFFFF
 
 
 class FakeStm32Transport:

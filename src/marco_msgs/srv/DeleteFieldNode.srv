@@ -1,0 +1,8 @@
+string field_name
+uint64 node_id
+bool delete_connected_edges
+---
+bool success
+string message
+uint32 deleted_edge_count
+string package_hash

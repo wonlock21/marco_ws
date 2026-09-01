@@ -26,7 +26,6 @@ setup(
     entry_points={
         'console_scripts': [
             'base_driver = marco_base.base_driver:main',
-            'pwm_bridge = marco_base.pwm_bridge:main',
         ],
     },
 )

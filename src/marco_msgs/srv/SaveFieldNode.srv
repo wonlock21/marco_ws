@@ -1,0 +1,7 @@
+string field_name
+marco_msgs/FieldNode node
+---
+bool success
+string message
+marco_msgs/FieldNode saved_node
+string package_hash

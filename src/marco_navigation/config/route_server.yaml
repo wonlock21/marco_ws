@@ -35,7 +35,7 @@ route_server:
     GeoJsonGraphFileLoader:
       plugin: "nav2_route::GeoJsonGraphFileLoader"
 
-    edge_cost_functions: ["DistanceScorer", "CostmapScorer", "TimeScorer", "DynamicEdgesScorer"]
+    edge_cost_functions: ["DistanceScorer", "CostmapScorer", "TimeScorer", "PenaltyScorer", "DynamicEdgesScorer"]
     DistanceScorer:
       plugin: "nav2_route::DistanceScorer"
       weight: 1.0
@@ -53,12 +53,18 @@ route_server:
       weight: 1.0
       speed_tag: "abs_speed_limit"
       max_vel: 0.50
+    # graph_model, dugum yaw'indan donus maliyetini ve q5 bekleme suresini
+    # planning_penalty metadata'sina yazar.
+    PenaltyScorer:
+      plugin: "nav2_route::PenaltyScorer"
+      weight: 1.0
+      penalty_tag: "planning_penalty"
     DynamicEdgesScorer:
       plugin: "nav2_route::DynamicEdgesScorer"
 
-    # AdjustSpeedLimit: ComputeAndTrackRoute kenar gecislerinde
-    # abs_speed_limit → /route_speed_limit. speed_limit_manager bu ham olayi
-    # tek sahip olarak /speed_limit'e aktarir. ReroutingService yok.
+    # AdjustSpeedLimit ComputeAndTrackRoute kullanan araclar icin korunur.
+    # Uretim ComputeRoute -> FollowPath zincirinde route_guard aktif kenarin
+    # abs_speed_limit degerini ayni /route_speed_limit konusuna yazar.
     operations: ["AdjustSpeedLimit"]
     AdjustSpeedLimit:
       plugin: "nav2_route::AdjustSpeedLimit"

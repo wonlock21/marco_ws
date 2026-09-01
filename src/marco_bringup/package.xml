@@ -13,6 +13,7 @@
   <exec_depend>marco_description</exec_depend>
   <exec_depend>marco_docking</exec_depend>
   <exec_depend>marco_mission</exec_depend>
+  <exec_depend>marco_route</exec_depend>
   <exec_depend>marco_safety</exec_depend>
   <exec_depend>lane_tracking</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>

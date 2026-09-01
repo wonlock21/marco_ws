@@ -26,36 +26,38 @@ imgprocess_node:
     # kenarlara -1..+1 normalize edilerek max_angular_speed'e olceklenir.
     kp_lane: 0.00030
     qr_linear_speed: 0.10
-    # PD look-ahead modunda sabit ortak hizdir. 0.079 m/s ve 0.460 m teker
-    # araligi, asagidaki acisal sinirla teker hedeflerini 58..100 mm/s tutar.
-    lane_linear_speed: 0.079
-    lane_min_linear_speed: 0.015
+    # 200 mm teker capinda 4 RPM = 0.041888 m/s. base_driver cmd_vel'i teker
+    # RPM hedeflerine cevirerek STM32'ye yollar; PWM komutu gonderilmez.
+    lane_linear_speed: 0.041888
+    # Donus buyudukce ortak hiz lineer azalir; tam donuste 2 RPM'e iner.
+    lane_min_linear_speed: 0.010000
     # Dusuk geciren filtre: kucuk deger daha yumusak, fakat daha gec tepki verir.
-    lane_steering_alpha: 0.35
+    lane_steering_alpha: 0.65
     # Onceki sert donusu merkezde tasimamak icin azaltma/yon degisiminde hizli
     # sondurme. Yalniz hedef acisal hiz kuculurken devreye girer.
-    lane_steering_release_alpha: 0.60
-    # Tam kamera genisliginde lineer kontrol. 0.01, 640 px goruntude merkez
-    # cevresinde yaklasik +/-3 px gibi dar bir olu bolge birakir.
-    lane_center_deadband_ratio: 0.03
+    lane_steering_release_alpha: 0.70
+    # Tam kamera genisliginde lineer kontrol. 0.015, 640 px goruntude merkez
+    # cevresinde yaklasik +/-5 px gibi dar bir olu bolge birakir.
+    lane_center_deadband_ratio: 0.0005
     # Serit denetleyici modu:
     # - pd_lookahead: IPM look-ahead hatasindan gercek PD kontrol
     # - offset_heading: alt bant yanal ofset + ust bant yon bilgisi
     # - legacy: onceki merkezlenmis hata + yon birlestirme mantigi
     lane_control_mode: pd_lookahead
     # Yanal ofset agirligi. Buyudukce arac merkeze daha istekli doner.
-    lane_offset_gain: 0.55
+    lane_offset_gain: 10.00
     # Ust banttaki serit yonunun agirligi. Buyudukce donus daha erken baslar.
-    lane_heading_gain: 0.75
+    lane_heading_gain: 10.00
     # Normalize look-ahead hatasi icin PD: angular = Kp*e + Kd*de/dt.
     # Integral terimi bilerek yoktur. D terimi kamera gurultusune karsi
     # derivative_alpha ile yumusatilir; dt ROS saatinden hesaplanir.
-    lane_pd_kp: 0.050
-    lane_pd_kd: 0.020
-    lane_pd_derivative_alpha: 0.25
-    # Yaklasik 30 FPS'te 100 ms'lik tekil algilama kayiplarini tolere eder;
-    # dorduncu kayip karede motor komutu guvenli bicimde sifirlanir.
-    lane_loss_hold_frames: 3
+    # Alt bolge ofseti ve uydurulan serit egimi birlesik PD hatasini olusturur.
+    lane_pd_kp: 0.020
+    lane_pd_kd: 0.000
+    lane_pd_derivative_alpha: 0.10
+    # Tek karelik algilama kaybinda son komutu tutar; ikinci kayip karede
+    # motor komutu guvenli bicimde sifirlanir.
+    lane_loss_hold_frames: 1
     # En az 0.5 s gorulmus seridin 0.3 s boyunca kaybolmasi serit sonudur.
     # Tek karelik golge/parlama kayiplari donus baslatmaz.
     lane_end_min_seen_frames: 15
@@ -72,16 +74,19 @@ imgprocess_node:
     lane_ipm_enabled: true
     lane_ipm_source_points: [0.050, 0.950, 0.224, 0.050, 0.654, 0.050, 0.848, 0.950]
     lane_ipm_destination_points: [0.20, 1.00, 0.20, 0.00, 0.80, 0.00, 0.80, 1.00]
-    # 480 px yukseklikte IPM goruntusundeki ileriye bakma satiri.
+    # Alt bolgedeki yanal sapmayi dogrudan duzeltmek icin 480 px IPM
+    # goruntusunde lookahead satiri araca yakin bolgeye alinmistir.
     lane_lookahead_y: 280
-    lane_lookahead_band_half_height: 5
-    # Gercek motorlar yaklasik 50 mm/s altinda statik surtunmeyi asamiyor.
-    # Donuste ortak ileri hiz, yavas teker bu esigin altina dusmeyecek kadar
-    # otomatik yukseltilir. wheel_separation base_driver ile ayni olmalidir.
+    # Tek satir/zemin lekesi kaynakli merkez sicramalarini dikey ortalamayla azalt.
+    lane_lookahead_band_half_height: 30
+    # Yeni RPM kapali cevriminde eski 50-55 PWM kalkis ofseti uygulanmaz.
+    # wheel_separation base_driver ile ayni olmalidir.
     lane_min_wheel_speed: 0.000
     wheel_separation: 0.460
-    # (100 - 58) mm/s / 0.460 m = 0.091304 rad/s.
-    max_angular_speed: 0.091304
+    # P kazanci kucuk/orta hatada tam sayi RPM farkini erken olusturur. Daha
+    # dusuk acisal sinir ise ekran kenarinda pivot benzeri 0/4 yerine yaklasik
+    # 1/3 RPM ile daha yumusak manevra yaptirir.
+    max_angular_speed: 0.065000
 
 turnaround_node:
   ros__parameters:

@@ -21,3 +21,21 @@ dock_server:
     longitudinal_tolerance_m: 0.05
     front_camera_frame: camera_front_optical_frame
     rear_camera_frame: camera_rear_optical_frame
+    # Tek fiziksel kamera robotun arkasindadir; usb_cam bu ortak topic'i acar.
+    rear_camera_topic: /camera/image_raw
+    lane_command_topic: /cmd_vel_lane
+    lane_active_topic: /lane_tracking/active
+    task_command_topic: /task_command
+    filtered_odom_topic: /odometry/filtered
+    lane_command_timeout_s: 0.30
+    lane_active_timeout_s: 0.50
+    activation_timeout_s: 2.0
+    zero_command_timeout_s: 0.40
+    odom_timeout_s: 0.50
+    stop_timeout_s: 3.0
+    stop_settle_s: 0.40
+    stop_linear_tolerance: 0.01
+    stop_angular_tolerance: 0.03
+    # Arka kamera + geri hareket icin direksiyon isareti. Fiziksel kabulte
+    # arac seritten ters yone kacarsa yalniz bu deger +1.0 yapilmalidir.
+    reverse_angular_sign: -1.0

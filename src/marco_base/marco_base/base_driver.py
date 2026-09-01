@@ -3,7 +3,7 @@
 Sorumluluklari:
   /cmd_vel  -> ters kinematik -> tekerlek hiz komutu -> UART
   UART      -> encoder tick   -> odometri            -> /odom, /joint_states
-  UART      -> angle_x        -> IMU yaw              -> /imu/data_raw
+  UART      -> imu_yaw        -> IMU yaw              -> /imu/data_raw
   UART      -> durum bayrak   -> /base/estop, /base/manual_mode, /base/battery
 
 Bilincli olarak DAHIL EDILMEYENLER:
@@ -33,7 +33,13 @@ from tf2_ros import TransformBroadcaster
 
 from . import protocol as p
 from .fake_stm32 import FakeStm32, FakeStm32Transport
-from .odometry import DifferentialOdometry, timestamp_delta, twist_to_wheel_speeds
+from .odometry import (
+    DifferentialOdometry,
+    timestamp_delta,
+    twist_to_wheel_speeds,
+    wheel_rpm_to_speed,
+    wheel_speed_to_rpm,
+)
 from .transport import SerialTransport
 
 HEARTBEAT_PERIOD = 0.1
@@ -50,6 +56,11 @@ class BaseDriver(Node):
         self.wheel_separation = self.get_parameter("wheel_separation").value
         self.wheel_radius = self.get_parameter("wheel_radius").value
         self.max_wheel_speed = self.get_parameter("max_wheel_speed").value
+        self.command_rpm_scale = float(
+            self.get_parameter("command_rpm_scale").value
+        )
+        if not math.isfinite(self.command_rpm_scale) or self.command_rpm_scale <= 0.0:
+            raise ValueError("command_rpm_scale sonlu ve 0'dan buyuk olmali")
         self.cmd_timeout = self.get_parameter("cmd_vel_timeout").value
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
@@ -71,7 +82,7 @@ class BaseDriver(Node):
 
         self._parser = p.FrameParser()
         self._target = (0.0, 0.0)
-        self._last_sent_target = (0.0, 0.0)
+        self._last_sent_target_rpm = (0, 0)
         self._last_command_enabled = False
         self._last_cmd_time = self.get_clock().now()
         self._last_heartbeat = 0.0
@@ -79,7 +90,7 @@ class BaseDriver(Node):
         self._status: p.StatusFrame | None = None
         self._odom_frames_received = 0
         self._odom_len_warned = False
-        self._imu_previous: tuple[int, float] | None = None
+        self._imu_previous: tuple[int, float, int] | None = None
         self._imu_invalid_warned = False
         self._wheel_csv_file = None
         self._wheel_csv_writer = None
@@ -125,7 +136,7 @@ class BaseDriver(Node):
             f"marco_base_driver hazir | {source} | "
             f"teker aras\u0131={self.wheel_separation:.3f} m | "
             f"metre/tick={self.odometry.meters_per_tick * 1000:.4f} mm | "
-            f"IMU={self.imu_frame} angle_x->yaw {self.imu_angle_sign:+.0f} | "
+            f"IMU={self.imu_frame} imu_yaw isareti {self.imu_angle_sign:+.0f} | "
             f"TF yayini={'acik' if self.publish_tf else 'kapali (EKF yayinlayacak)'}"
         )
 
@@ -142,7 +153,10 @@ class BaseDriver(Node):
         self.declare_parameter("wheel_separation", 0.460)
         self.declare_parameter("ticks_per_revolution", 360)
         self.declare_parameter("max_wheel_speed", 0.838)
-        # Encoder 2^16'da sarar. Tek orneklemede bundan buyuk |Δtick| islenmez.
+        # Gecici saha kalibrasyonu icin komut RPM carpani. Normal kullanimda
+        # 1.0 kalir; testte --ros-args -p command_rpm_scale:=2.0 verilebilir.
+        self.declare_parameter("command_rpm_scale", 1.0)
+        # Encoder int32'de sarar. Tek orneklemede bundan buyuk |Δtick| islenmez.
         self.declare_parameter("max_tick_delta", 2000)
         self.declare_parameter("max_consecutive_tick_rejects", 3)
 
@@ -222,8 +236,10 @@ class BaseDriver(Node):
                 "ros_time_s",
                 "stm32_timestamp_us",
                 "command_enabled",
-                "target_left_mm_s",
-                "target_right_mm_s",
+                "target_left_rpm",
+                "target_right_rpm",
+                "target_left_equivalent_mm_s",
+                "target_right_equivalent_mm_s",
                 "measured_left_mm_s",
                 "measured_right_mm_s",
                 "error_left_mm_s",
@@ -273,14 +289,26 @@ class BaseDriver(Node):
             or p.StatusFlag.MODE_MANUAL in self._status.flags
         )
 
+        # Guvenlik bayragi etkinken sayisal hedef de sifirlanir. Boylece STM32
+        # enable bitini uygulamasa bile hareket komutu tasinmaz.
+        if blocked:
+            left, right = 0.0, 0.0
+
+        left_rpm = int(round(
+            wheel_speed_to_rpm(left, self.wheel_radius) * self.command_rpm_scale
+        ))
+        right_rpm = int(round(
+            wheel_speed_to_rpm(right, self.wheel_radius) * self.command_rpm_scale
+        ))
+
         self._transport.write(
-            p.encode_wheel_velocity(
-                left_mm_s=int(round(left * 1000.0)),
-                right_mm_s=int(round(right * 1000.0)),
+            p.encode_wheel_rpm(
+                left_rpm=left_rpm,
+                right_rpm=right_rpm,
                 enabled=not blocked,
             )
         )
-        self._last_sent_target = (left, right)
+        self._last_sent_target_rpm = (left_rpm, right_rpm)
         self._last_command_enabled = not blocked
 
         now = self._now_seconds()
@@ -303,6 +331,10 @@ class BaseDriver(Node):
         for msg_id, payload in self._parser.feed(data):
             try:
                 if msg_id is p.MsgId.STATE_ODOMETRY:
+                    if len(payload) not in p.ODOMETRY_SUPPORTED_PAYLOAD_LENS:
+                        raise ValueError(
+                            f"desteklenmeyen odometri boyutu: {len(payload)}"
+                        )
                     if (
                         len(payload) != p.ODOMETRY_PAYLOAD_LEN
                         and not self._odom_len_warned
@@ -310,9 +342,8 @@ class BaseDriver(Node):
                         self._odom_len_warned = True
                         self.get_logger().warn(
                             f"STM32 odometri {len(payload)} bayt gonderiyor "
-                            f"(protokol {p.ODOMETRY_PAYLOAD_LEN}). "
-                            "Eski odometri alinir fakat IMU kullanilamaz; "
-                            "elektronik ekibi 20 baytlik pakete cekmeli."
+                            f"(IMU'lu protokol {p.ODOMETRY_PAYLOAD_LEN}). "
+                            "Odometri alinir fakat bu pakette IMU kullanilamaz."
                         )
                     self._on_odometry(p.decode_odometry(payload))
                 elif msg_id is p.MsgId.STATE_STATUS:
@@ -320,7 +351,8 @@ class BaseDriver(Node):
             except (struct.error, ValueError) as exc:
                 self.get_logger().warn(
                     f"protokol uyumsuzlugu msg=0x{int(msg_id):02X} "
-                    f"len={len(payload)} (beklenen odom={p.ODOMETRY_PAYLOAD_LEN}, "
+                    f"len={len(payload)} (desteklenen odom="
+                    f"{sorted(p.ODOMETRY_SUPPORTED_PAYLOAD_LENS)}, "
                     f"status={p.STATUS_PAYLOAD_LEN}): {exc} | "
                     f"payload={payload[:32].hex()}"
                 )
@@ -331,6 +363,7 @@ class BaseDriver(Node):
             left_ticks=frame.left_ticks,
             right_ticks=frame.right_ticks,
             timestamp_us=frame.timestamp_us,
+            timestamp_bits=frame.timestamp_bits,
         )
         self._odom_frames_received += 1
         stamp = self.get_clock().now().to_msg()
@@ -345,8 +378,13 @@ class BaseDriver(Node):
     def _record_wheel_measurement(self, frame: p.OdometryFrame) -> None:
         """Hedef ve STM32 olculen teker hizlarini logla."""
         now = self._now_seconds()
-        target_left = int(round(self._last_sent_target[0] * 1000.0))
-        target_right = int(round(self._last_sent_target[1] * 1000.0))
+        target_left_rpm, target_right_rpm = self._last_sent_target_rpm
+        target_left = int(round(wheel_rpm_to_speed(
+            target_left_rpm, self.wheel_radius
+        ) * 1000.0))
+        target_right = int(round(wheel_rpm_to_speed(
+            target_right_rpm, self.wheel_radius
+        ) * 1000.0))
         measured_left = int(frame.left_mm_s)
         measured_right = int(frame.right_mm_s)
         error_left = target_left - measured_left
@@ -359,8 +397,10 @@ class BaseDriver(Node):
                     "ros_time_s": f"{now:.6f}",
                     "stm32_timestamp_us": frame.timestamp_us,
                     "command_enabled": int(self._last_command_enabled),
-                    "target_left_mm_s": target_left,
-                    "target_right_mm_s": target_right,
+                    "target_left_rpm": target_left_rpm,
+                    "target_right_rpm": target_right_rpm,
+                    "target_left_equivalent_mm_s": target_left,
+                    "target_right_equivalent_mm_s": target_right,
                     "measured_left_mm_s": measured_left,
                     "measured_right_mm_s": measured_right,
                     "error_left_mm_s": error_left,
@@ -383,36 +423,49 @@ class BaseDriver(Node):
             self._last_wheel_log_time = now
             self.get_logger().info(
                 "[TEKER OLCUM] "
-                f"hedef sol={target_left:+d} sag={target_right:+d} mm/s | "
+                f"hedef sol={target_left_rpm:+d} sag={target_right_rpm:+d} RPM "
+                f"(karsilik {target_left:+d}/{target_right:+d} mm/s) | "
                 f"olculen sol={measured_left:+d} sag={measured_right:+d} mm/s | "
                 f"hata sol={error_left:+d} sag={error_right:+d} mm/s | "
                 f"aktif={self._last_command_enabled}"
             )
 
     def _publish_imu(self, frame: p.OdometryFrame, stamp) -> None:
-        """Firmware angle_x alanini ROS ENU yaw mesaji olarak yayinla."""
-        if frame.angle_x_deg is None:
+        """Firmware imu_yaw alanini ROS ENU yaw mesaji olarak yayinla."""
+        if frame.imu_yaw_deg is None:
             return
-        angle_deg = float(frame.angle_x_deg)
+        angle_deg = float(frame.imu_yaw_deg)
         if not math.isfinite(angle_deg):
             if not self._imu_invalid_warned:
                 self._imu_invalid_warned = True
-                self.get_logger().warn("STM32 angle_x NaN/Inf; IMU mesaji reddedildi")
+                self.get_logger().warn("STM32 imu_yaw NaN/Inf; IMU mesaji reddedildi")
             return
 
         yaw = math.radians(angle_deg) * self.imu_angle_sign
         yaw = math.atan2(math.sin(yaw), math.cos(yaw))
         yaw_rate = 0.0
         if self._imu_previous is not None:
-            previous_stamp, previous_yaw = self._imu_previous
-            dt_us = timestamp_delta(previous_stamp, frame.timestamp_us)
+            previous_stamp, previous_yaw, previous_bits = self._imu_previous
+            dt_us = (
+                timestamp_delta(
+                    previous_stamp,
+                    frame.timestamp_us,
+                    bits=frame.timestamp_bits,
+                )
+                if previous_bits == frame.timestamp_bits
+                else 0
+            )
             if dt_us > 0:
                 delta = math.atan2(
                     math.sin(yaw - previous_yaw),
                     math.cos(yaw - previous_yaw),
                 )
                 yaw_rate = delta / (dt_us * 1e-6)
-        self._imu_previous = (frame.timestamp_us, yaw)
+        self._imu_previous = (
+            frame.timestamp_us,
+            yaw,
+            frame.timestamp_bits,
+        )
 
         msg = Imu()
         msg.header.stamp = stamp
@@ -581,7 +634,7 @@ class BaseDriver(Node):
             # UART tamponu/tek-kare kaybi ihtimaline karsi kapanista birden
             # fazla devre-disinda sifir komutu gonderilir.
             for _ in range(5):
-                self._transport.write(p.encode_wheel_velocity(0, 0, False))
+                self._transport.write(p.encode_wheel_rpm(0, 0, False))
             self._transport.close()
         except OSError:
             pass

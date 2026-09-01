@@ -1,0 +1,11 @@
+string field_name
+float64 pixel_x
+float64 pixel_y
+float64 screen_yaw
+---
+bool success
+string message
+geometry_msgs/Pose2D pose
+bool inside_map
+uint32 map_width
+uint32 map_height

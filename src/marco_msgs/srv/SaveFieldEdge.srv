@@ -1,0 +1,7 @@
+string field_name
+marco_msgs/FieldEdge edge
+---
+bool success
+string message
+marco_msgs/FieldEdge saved_edge
+string package_hash

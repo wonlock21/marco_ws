@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'mock_plc = marco_mission.mock_plc:main',
             'mission_manager = marco_mission.mission_manager:main',
+            'qr_reader_adapter = marco_mission.qr_reader_adapter:main',
             'test_lift_server = marco_mission.test_lift_server:main',
             'phase10_test_interfaces = marco_mission.phase10_test_interfaces:main',
             'phase10_acceptance = marco_mission.phase10_acceptance:main',

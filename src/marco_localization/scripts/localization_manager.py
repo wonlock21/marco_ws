@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Kaydedilmis saha haritasi ile tek bir AMCL surecini yonetir."""
 
+import json
 import math
 import os
 import re
@@ -24,6 +25,7 @@ from marco_msgs.srv import (
     SaveDemoRoutePoint,
     StartLocalization,
 )
+from marco_route.field_store import FieldStore, StoreError
 from nav_msgs.msg import OccupancyGrid
 from rclpy.executors import ExternalShutdownException
 from rclpy.duration import Duration
@@ -226,6 +228,7 @@ class LocalizationManager(Node):
                 with manifest.open("r", encoding="utf-8") as stream:
                     metadata = yaml.safe_load(stream) or {}
                 created_at = metadata.get("created_at", "")
+                info.package_version = str(metadata.get("version", ""))
                 if isinstance(created_at, str):
                     info.created_at = created_at
                 else:
@@ -243,6 +246,44 @@ class LocalizationManager(Node):
             info.initial_pose_ready = True
         except ValueError as error:
             issues.append(str(error))
+
+        route_file = field_dir / "route.geojson"
+        stations_file = field_dir / "stations.yaml"
+        info.route_ready = (
+            route_file.is_file()
+            and not route_file.is_symlink()
+            and route_file.resolve().parent == field_dir
+            and stations_file.is_file()
+            and not stations_file.is_symlink()
+            and stations_file.resolve().parent == field_dir
+        )
+        validation_file = field_dir / "validation.json"
+        store = FieldStore(self._data_root())
+        current_hash = ""
+        active_matches = False
+        try:
+            current_hash = store.package_hash(field_dir.name)
+            info.package_hash = current_hash
+            active = store.read_active()
+            active_matches = bool(
+                active
+                and active.get("field_name") == field_dir.name
+                and active.get("package_hash") == current_hash
+            )
+        except StoreError as error:
+            issues.append(str(error))
+        if validation_file.is_file() and not validation_file.is_symlink():
+            try:
+                with validation_file.open("r", encoding="utf-8") as stream:
+                    validation = json.load(stream)
+                info.validation_passed = bool(
+                    validation.get("valid", False)
+                    and validation.get("package_hash") == current_hash
+                )
+                info.route_hash = str(validation.get("package_hash", ""))
+            except (OSError, json.JSONDecodeError, AttributeError) as error:
+                issues.append(f"validation.json okunamadi: {error}")
+        info.active = active_matches and info.validation_passed
 
         info.localization_ready = info.map_ready and info.initial_pose_ready
         if issues:

@@ -1,7 +1,9 @@
 # Orange Pi 5 ↔ STM32 UART Haberleşme Protokolü
 
-**Sürüm:** 0.4 · **Tarih:** 10.08.2026 · **Hazırlayan:** Yazılım / Navigasyon
-**Değişiklikler:** `STATE_ODOMETRY` sonuna float32 `angle_x` eklendi (20 bayt)
+**Sürüm:** 0.6 · **Tarih:** 31.08.2026 · **Hazırlayan:** Yazılım / Navigasyon
+**Değişiklikler:** `0x01` hedef birimi işaretli RPM olarak kesinleştirildi.
+`STATE_ODOMETRY` uint64 zaman damgası ve IMU yaw ile 24 bayttır; IMU'suz
+uint64 geçiş paketi 20 bayt olarak desteklenmeye devam eder.
 
 Bu belge Orange Pi üzerinde çalışan ROS 2 katmanı ile STM32 alt seviye kontrolcüsü
 arasındaki seri haberleşmeyi tanımlar. Protokolü navigasyon ekibi belirler çünkü
@@ -49,21 +51,21 @@ periyotta telafi edilir (bkz. §4.1).
 
 ## 3. Orange Pi → STM32 Mesajları
 
-### 3.1 `0x01` CMD_WHEEL_VELOCITY — 50 Hz
+### 3.1 `0x01` CMD_WHEEL_RPM — 50 Hz
 
-Kinematik dönüşümü (`/cmd_vel` → tekerlek hızları) **Orange Pi yapar**. STM32 yalnızca
-her tekerlek için ayrı PID koşturur. Bu ayrım, tekerlek ekseni arası mesafe gibi
-kalibrasyon parametrelerinin ROS tarafında kalmasını sağlar; STM32 firmware'ini
-yeniden derlemeden kalibrasyon yapılabilir.
+Kinematik dönüşümü (`/cmd_vel` → tekerlek RPM hedefleri) **Orange Pi yapar**.
+Tekerlek ekseni arası mesafe ve yarıçap kalibrasyonu ROS tarafında tutulur.
 
 | Ofset | Tip | Alan | Birim |
 |---|---|---|---|
-| 0 | int16 | `left_target` | mm/s, ileri pozitif |
-| 2 | int16 | `right_target` | mm/s, ileri pozitif |
+| 0 | int16 | `left_target_rpm` | RPM, fiziksel ileri pozitif |
+| 2 | int16 | `right_target_rpm` | RPM, fiziksel ileri pozitif |
 | 4 | uint8 | `flags` | bit0 = motorlar etkin |
 
-Sınır: ±838 mm/s (12 V'ta 80 RPM, 200 mm tekerlek). STM32 bu değeri aşan komutları
-kırpmalı ve durum mesajında `FLAG_CMD_CLAMPED` kaldırmalıdır.
+Sınır: ±80 RPM (200 mm tekerlekte yaklaşık ±838 mm/s). STM32 bu değeri aşan
+komutları kırpmalı ve durum mesajında `FLAG_CMD_CLAMPED` kaldırmalıdır. ROS
+`RPM = m/s × 60 / (2πr)` dönüşümünü uygular; 0.100 m yarıçapta 0.1 m/s yaklaşık
+9.55 RPM'dir ve kabloda en yakın tam sayı olan 10 gönderilir.
 
 ### 3.2 `0x02` CMD_FORK — olay bazlı
 
@@ -82,23 +84,7 @@ Limit switch tetiklendiğinde STM32 hareketi kendi kesmelidir; Orange Pi'den ona
 
 Yazılımsal acil duruş, donanımsal e-stop butonunun **yerine geçmez**, ona eklenir.
 
-### 3.4 `0x04` CMD_MOTOR_PWM — 50 Hz (açık döngü)
-
-Şerit takibi gibi kamera kapalı döngülü yollar için. STM32 **PID çalıştırmaz**;
-değeri sürücü köprüsüne doğrudan yazar. `CMD_WHEEL_VELOCITY` ile aynı anda
-gelmemelidir — host yalnızca birini kullanır (`base_driver` veya `pwm_bridge`).
-
-| Ofset | Tip | Alan | Birim |
-|---|---|---|---|
-| 0 | int16 | `left_pwm` | ham PWM, ileri pozitif |
-| 2 | int16 | `right_pwm` | ham PWM, ileri pozitif |
-| 4 | uint8 | `flags` | bit0 = motorlar etkin |
-
-Alan tipi `int16`: bugün host 0..150 gönderir; işaret geri yönü, genişlik ise
-ileride 0..255 veya 0..1000'e çıkılmasını protokolü değiştirmeden mümkün kılar.
-Firmware timer ARR değeri ile ölçek eşleşmesi STM32 tarafının işidir.
-
-### 3.5 `0x05` CMD_HEARTBEAT — 10 Hz
+### 3.4 `0x05` CMD_HEARTBEAT — 10 Hz
 
 Boş yük. Bkz. §5 watchdog.
 
@@ -112,18 +98,20 @@ Bu, protokolün en kritik mesajıdır. Odometrinin tamamı buradan türetilir.
 
 | Ofset | Tip | Alan | Birim |
 |---|---|---|---|
-| 0 | uint32 | `timestamp_us` | STM32 açılışından beri geçen mikrosaniye |
-| 4 | int32 | `left_ticks` | **işaretli, yönlü ve kümülatif** encoder tick sayacı |
-| 8 | int32 | `right_ticks` | **işaretli, yönlü ve kümülatif** encoder tick sayacı |
-| 12 | int16 | `left_speed` | mm/s, STM32'nin ölçtüğü anlık hız |
-| 14 | int16 | `right_speed` | mm/s |
-| 16 | float32 | `angle_x` | derece; araç düzlemindeki göreli yaw |
+| 0 | uint64 | `timestamp_us` | STM32 açılışından beri geçen mikrosaniye |
+| 8 | int32 | `left_ticks` | **işaretli, yönlü ve kümülatif** encoder tick sayacı |
+| 12 | int32 | `right_ticks` | **işaretli, yönlü ve kümülatif** encoder tick sayacı |
+| 16 | int16 | `left_speed` | işaretli mm/s, fiziksel ileri pozitif |
+| 18 | int16 | `right_speed` | işaretli mm/s, fiziksel ileri pozitif |
+| 20 | float32 | `imu_yaw` | derece; araç düzlemindeki göreli yaw |
 
-**Kanonik payload boyutu: 20 bayt.** Kablo düzeni Python `struct` gösterimiyle
-`<Iiihhf` şeklindedir. Host geçiş süresince eski 16 baytlık paketi odometri için
-kabul eder; ancak o pakette IMU verisi olmadığı için `/imu/data_raw` yayınlanmaz.
+**Kanonik payload boyutu: 24 bayt.** Kablo düzeni Python `struct` gösterimiyle
+`<Qiihhf` şeklindedir. Host, IMU'suz fakat uint64 zaman damgalı 20 baytlık
+`<Qiihh` geçiş paketini odometri için güvenle kabul eder; bu pakette
+`/imu/data_raw` yayınlanmaz. Eski uint32 zaman damgalı 16 baytlık `<Iiihh`
+paket yalnızca geriye uyumluluk içindir.
 
-`angle_x`, STM32'nin derece cinsinden verdiği dönüş açısıdır. Orange Pi bunu
+`imu_yaw`, STM32'nin derece cinsinden verdiği dönüş açısıdır. Orange Pi bunu
 `imu_link` çerçevesinde ROS ENU yaw quaternion'una dönüştürür; EKF ilk örneği
 göreli sıfır kabul eder. Fiziksel sola dönüşte işaret tersse
 `imu_angle_sign: -1.0` kullanılır.
@@ -153,6 +141,8 @@ nihai çıktısıdır; ROS tarafında yeniden dördül ×4 uygulanmaz. 0.100 m t
 için katsayı yaklaşık 1.745 mm/tick'tir.
 
 Yön kuralı: robot ileri giderken her iki sayaç da **artar**, geri giderken azalır.
+Ölçülen hız alanları aynı yön kuralını kullanır: ileri pozitif, geri negatif,
+dururken sıfırdır.
 
 ### 4.2 `0x82` STATE_STATUS — 10 Hz
 
@@ -187,7 +177,7 @@ konumdayken uzaktan manuel komutlar uygulanmamalıdır.
 
 ## 5. Watchdog ve Güvenlik
 
-STM32, **200 ms** boyunca `CMD_WHEEL_VELOCITY`, `CMD_MOTOR_PWM` veya `CMD_HEARTBEAT`
+STM32, **200 ms** boyunca `CMD_WHEEL_RPM` veya `CMD_HEARTBEAT`
 almazsa motorları kontrollü şekilde durdurmalı ve `WATCHDOG_TRIGGERED` bayrağını
 kaldırmalıdır. Orange Pi çökmesi, ROS düğümünün ölmesi veya kablo kopması durumunda
 araç serbest kalmamalıdır.
