@@ -1,17 +1,15 @@
 # Faz 0 kanonik arac sozlesmesi.
 #
-# 22.08.2026 karari: fiziksel ve odometri teker araligi 0.460 m. Onceki
-# 0.421 m degeri, duzeltilmekte olan STM32 verisiyle uretilmis tarihsel bir
-# kalibrasyon sonucuydu. Firmware duzeltmesinden sonra 0.460 m yeniden saha
-# kabulune girecek; kabul tamamlanana kadar deger "provisional" durumundadir.
+# Geometrik teker araligi 0.460 m'dir. Encoder odometrisinin etkin araligi,
+# 03.09.2026 iki yonlu fiziksel 360 derece testiyle 0.433 m kalibre edildi.
 metadata:
-  version: "2026-09-02-f0"
-  status: provisional_pending_stm32_revalidation
+  version: "2026-09-03-f0"
+  status: calibrated_two_direction_turn_test
 drive:
   wheel_radius_m: 0.100
   encoder_ticks_per_revolution: 360
   geometric_wheel_separation_m: 0.460
-  odometry_effective_wheel_separation_m: 0.460
+  odometry_effective_wheel_separation_m: 0.433
 geometry:
   footprint: [[0.50, 0.35], [0.50, -0.35], [-1.20, -0.35], [-1.20, 0.35]]
   lidar_base_link_xyz_m: [0.270, 0.000, 0.200]

@@ -75,7 +75,8 @@
     aci hizi (v_sag - v_sol) / wheel_separation oldugu icin bu hata her donusu
     %11.5 eksik saydiriyordu: gercek 101.7 derecelik donus 90 derece olarak
     raporlanir. Sartnamenin +/-5 derece yon toleransi tek donuste asilirdi.
-    base_driver.yaml ile birlikte guncellendi.
+    Bu deger fiziksel model icindir. Encoder odometrisi base_driver.yaml'daki
+    saha kalibrasyonlu etkin wheel_separation degerini kullanir.
 
     Tahrik uniteleri yayli: 4 adet 3 mm telli, Ø20 mm sarimli, 75 mm serbest
     boy helezon yay, akssin uzerinde. CAD'de teker zeminden 11.5 mm yukarida

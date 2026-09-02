@@ -87,7 +87,7 @@ imgprocess_node:
     # Yeni RPM kapali cevriminde eski 50-55 PWM kalkis ofseti uygulanmaz.
     # wheel_separation base_driver ile ayni olmalidir.
     lane_min_wheel_speed: 0.000
-    wheel_separation: 0.460
+    wheel_separation: 0.433
     # P kazanci kucuk/orta hatada tam sayi RPM farkini erken olusturur. Daha
     # dusuk acisal sinir ise ekran kenarinda pivot benzeri 0/4 yerine yaklasik
     # 1/3 RPM ile daha yumusak manevra yaptirir.
