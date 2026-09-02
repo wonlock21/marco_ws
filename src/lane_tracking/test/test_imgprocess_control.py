@@ -11,9 +11,12 @@ from lane_tracking.imgprocess_node import (
     compute_pd_angular,
     enforce_minimum_wheel_speed,
     image_message_to_bgr,
+    lane_end_alignment_valid,
     lane_end_confirmed,
+    lane_tracking_demand,
     schedule_lane_linear_speed,
     scale_lane_error,
+    shape_lane_control_error,
 )
 
 
@@ -29,6 +32,12 @@ def test_ros_bgr8_mesaji_opencv_karesine_cevrilir():
 
     assert frame.shape == (1, 2, 3)
     assert np.array_equal(frame[0, 1], [4, 5, 6])
+
+
+def test_serit_sonu_yalniz_hizali_aracta_kurulur():
+    assert lane_end_alignment_valid(0.10, 0.08, 0.20, 0.18)
+    assert not lane_end_alignment_valid(0.30, 0.08, 0.20, 0.18)
+    assert not lane_end_alignment_valid(0.10, 0.25, 0.20, 0.18)
 
 
 def test_pd_ros_dt_ile_p_ve_d_terimi_uretir():
@@ -153,6 +162,12 @@ def test_deadband_merkezde_sifir_kenarda_lineer_artar():
     assert apply_deadband(-0.10, 0.01) == pytest.approx(-(0.10 - 0.01) / 0.99)
 
 
+def test_merkez_kazanci_dis_bolgede_tam_otoriteyi_korur():
+    assert shape_lane_control_error(0.30, 0.60, 0.55) == pytest.approx(0.165)
+    assert shape_lane_control_error(-0.60, 0.60, 0.55) == pytest.approx(-0.33)
+    assert shape_lane_control_error(1.0, 0.60, 0.55) == pytest.approx(1.0)
+
+
 def test_donuste_yavas_teker_kalkis_esiginin_altina_dusmez():
     angular = 0.040
     separation = 0.460
@@ -187,6 +202,18 @@ def test_pd_donusu_buyudukce_ileri_hiz_azalir():
         0.052360, 0.020944, 0.022765, 0.045530) == pytest.approx(0.036652)
     assert schedule_lane_linear_speed(
         0.052360, 0.020944, 0.045530, 0.045530) == pytest.approx(0.020944)
+
+
+def test_hiz_plani_birbirini_iptal_eden_serit_hatalarini_korur():
+    demand = lane_tracking_demand(
+        position_error=0.14,
+        heading_error=0.15,
+        position_gain=2.0,
+        heading_gain=4.0,
+        control_error=-0.32,
+    )
+
+    assert demand == pytest.approx(0.60)
 
 
 def test_merkez_ve_yon_hatasi_lineer_birlesir():

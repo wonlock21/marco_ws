@@ -1,7 +1,8 @@
 # Orange Pi 5 ↔ STM32 UART Haberleşme Protokolü
 
-**Sürüm:** 0.6 · **Tarih:** 31.08.2026 · **Hazırlayan:** Yazılım / Navigasyon
-**Değişiklikler:** `0x01` hedef birimi işaretli RPM olarak kesinleştirildi.
+**Sürüm:** 0.7 · **Tarih:** 02.09.2026 · **Hazırlayan:** Yazılım / Navigasyon
+**Değişiklikler:** `0x01` teker hedefleri, düşük hızlı diferansiyel düzeltmelerin
+küsuratını korumak için IEEE-754 `float32` RPM olarak güncellendi.
 `STATE_ODOMETRY` uint64 zaman damgası ve IMU yaw ile 24 bayttır; IMU'suz
 uint64 geçiş paketi 20 bayt olarak desteklenmeye devam eder.
 
@@ -58,14 +59,17 @@ Tekerlek ekseni arası mesafe ve yarıçap kalibrasyonu ROS tarafında tutulur.
 
 | Ofset | Tip | Alan | Birim |
 |---|---|---|---|
-| 0 | int16 | `left_target_rpm` | RPM, fiziksel ileri pozitif |
-| 2 | int16 | `right_target_rpm` | RPM, fiziksel ileri pozitif |
-| 4 | uint8 | `flags` | bit0 = motorlar etkin |
+| 0 | float32 | `left_target_rpm` | RPM, fiziksel ileri pozitif |
+| 4 | float32 | `right_target_rpm` | RPM, fiziksel ileri pozitif |
+| 8 | uint8 | `flags` | bit0 = motorlar etkin |
 
-Sınır: ±80 RPM (200 mm tekerlekte yaklaşık ±838 mm/s). STM32 bu değeri aşan
+Payload uzunluğu **9 bayt**, byte sırası little-endian'dır. NaN/Inf değerler
+STM32 tarafından reddedilmelidir.
+
+Sınır: ±255 RPM. STM32 bu değeri aşan
 komutları kırpmalı ve durum mesajında `FLAG_CMD_CLAMPED` kaldırmalıdır. ROS
 `RPM = m/s × 60 / (2πr)` dönüşümünü uygular; 0.100 m yarıçapta 0.1 m/s yaklaşık
-9.55 RPM'dir ve kabloda en yakın tam sayı olan 10 gönderilir.
+9.5493 RPM'dir ve bu küsurat korunarak gönderilir.
 
 ### 3.2 `0x02` CMD_FORK — olay bazlı
 

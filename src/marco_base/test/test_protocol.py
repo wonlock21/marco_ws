@@ -13,14 +13,20 @@ def test_crc_bilinen_deger():
 
 
 def test_cerceve_gidis_donus():
-    frame = p.encode_wheel_rpm(80, -80, True)
+    frame = p.encode_wheel_rpm(80.25, -80.75, True)
+    # SYNC(2) + LEN/ID(2) + iki float32/flags(9) + CRC(2)
+    assert len(frame) == 15
+    assert frame[2] == 9
     parser = p.FrameParser()
     messages = list(parser.feed(frame))
     assert len(messages) == 1
     msg_id, payload = messages[0]
     assert msg_id is p.MsgId.CMD_WHEEL_RPM
     assert payload == frame[4:-2]
-    assert p.decode_wheel_rpm(payload) == (80, -80, True)
+    left_rpm, right_rpm, enabled = p.decode_wheel_rpm(payload)
+    assert left_rpm == pytest.approx(80.25)
+    assert right_rpm == pytest.approx(-80.75)
+    assert enabled is True
     assert parser.crc_errors == 0
 
 
@@ -167,5 +173,8 @@ def test_status_bayraklari():
 
 
 def test_rpm_komutu_motorlari_kapatabilir():
-    payload = p.encode_wheel_rpm(10, 10, False)[4:-2]
-    assert p.decode_wheel_rpm(payload) == (10, 10, False)
+    payload = p.encode_wheel_rpm(10.125, 10.625, False)[4:-2]
+    left_rpm, right_rpm, enabled = p.decode_wheel_rpm(payload)
+    assert left_rpm == pytest.approx(10.125)
+    assert right_rpm == pytest.approx(10.625)
+    assert enabled is False

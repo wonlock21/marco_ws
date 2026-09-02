@@ -1,0 +1,29 @@
+* [33m3fbff4f[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;32mbackup-before-sync[m[33m)[m yarisma senaryosuna uygun senaryo hazirligi
+* [33ma011d98[m[33m ([m[1;31mgithub/main[m[33m)[m feat: align phase 0 vehicle contract
+* [33mab2fe58[m bugfix
+* [33m97f1dc6[m WIP: Orange Pi uzerindeki kamera ve serit takip guncellemeleri
+*   [33m53d948c[m Merge remote-tracking branch 'github/main'
+[32m|[m[33m\[m  
+[32m|[m * [33m9d5fd47[m yarisma plan
+[32m|[m [33m|[m * [33mdae1e50[m[33m ([m[1;31morigin/main[m[33m)[m fix: remove invalid accidental diff file
+[32m|[m [33m|[m * [33mb467439[m WIP: Orange Pi uzerindeki kamera ve serit takip guncellemeleri
+[32m|[m [33m|[m * [33m004e3ab[m yarisma plan
+[32m|[m [33m|[m[32m/[m  
+[32m|[m[32m/[m[33m|[m   
+* [33m|[m [33m7123f1a[m feat(lane): add calibrated PD lookahead tracking
+[33m|[m[33m/[m  
+* [33m34a0d27[m stabilize mapping localization and route demo
+* [33m7e19b59[m demo video faz
+* [33mcdd2ce6[m feat: complete field demo and STM32 IMU integration
+* [33mf2a72c1[m feat: add A-B autonomous demo scenario
+* [33mffc7123[m feat(localization): add field selection and automatic initial pose
+* [33mbef8a3f[m feat(mapping): add ROS mapping control and save services
+* [33m1d43061[m yeni_proje_plani baslangic
+* [33m196480a[m Mapping ayarlarini ve kalibrasyon planini guncelle
+* [33m7e077d3[m feat: publish speed and battery data in robot status
+* [33mabbed68[m YDLidar scan QoS uyumlulugunu duzelt
+* [33m59ff1bf[m AMCL fix
+* [33mb3d03c7[m GCS cok durakli gorev ve gercek donanim ayarlarini entegre et
+* [33m9804d57[m Faz 11 tek gercek sistem launchini ekle
+* [33mf165109[m Test düzenlemeleri
+* [33mf5699a7[m Flutter arayuzleri icin ROS bridge ekle

@@ -131,12 +131,16 @@ class DemoScenarioManager(Node):
         self.declare_parameter("data_root", "~/marco_data/fields")
         self.declare_parameter("turn_direction", 1)
         self.declare_parameter("nav_startup_timeout", 60.0)
-        self.declare_parameter("nav_goal_timeout", 180.0)
+        self.declare_parameter("nav_goal_timeout", 240.0)
         self.declare_parameter("lane_phase_timeout", 120.0)
         self.declare_parameter("handoff_delay", 1.2)
         self.declare_parameter("position_tolerance", 0.10)
         self.declare_parameter("obstacle_clear_delay", 0.5)
         self.declare_parameter("obstacle_detection_enabled", True)
+        # Varsayilan demo yalnizca kayitli rota grafi uzerinden Nav2 testi
+        # yapar. Eski kamera/serit/yuk-onayi akisi gerektiginde launch
+        # argumaniyla yeniden etkinlestirilebilir.
+        self.declare_parameter("use_lane_tracking", False)
 
         self._callbacks = ReentrantCallbackGroup()
         latched = QoSProfile(
@@ -564,13 +568,24 @@ class DemoScenarioManager(Node):
             self._set_state(
                 DemoStatus.STATE_STARTING, "Demo Nav2 sunuculari baslatiliyor"
             )
-            threading.Thread(
-                target=self._navigate_then_lane,
-                args=("A", self._point_a),
-                daemon=True,
-            ).start()
+            use_lane_tracking = bool(
+                self.get_parameter("use_lane_tracking").value
+            )
+            if use_lane_tracking:
+                worker = threading.Thread(
+                    target=self._navigate_then_lane,
+                    args=("A", self._point_a),
+                    daemon=True,
+                )
+            else:
+                worker = threading.Thread(
+                    target=self._run_navigation_only,
+                    daemon=True,
+                )
+            worker.start()
+            mode = "Nav2 + serit" if use_lane_tracking else "yalniz Nav2"
             return (
-                "A/B kayitli rota demo senaryosu baslatildi; "
+                f"A/B kayitli rota demo senaryosu baslatildi ({mode}); "
                 f"A ara nokta={len(self._route_a)}, "
                 f"B ara nokta={len(self._route_b)}"
             )
@@ -881,16 +896,7 @@ class DemoScenarioManager(Node):
 
     def _navigate_then_lane(self, target_name: str, point: Pose2D) -> None:
         try:
-            startup_timeout = float(
-                self.get_parameter("nav_startup_timeout").value
-            )
-            self._wait_nav2_active(startup_timeout)
-            if not self._compute_route.wait_for_server(
-                timeout_sec=startup_timeout
-            ):
-                raise DemoAbort("compute_route action sunucusu hazir olmadi")
-            if not self._follow_path.wait_for_server(timeout_sec=startup_timeout):
-                raise DemoAbort("follow_path action sunucusu hazir olmadi")
+            self._wait_navigation_ready()
             state = (
                 DemoStatus.STATE_NAVIGATING_A
                 if target_name == "A"
@@ -923,6 +929,58 @@ class DemoScenarioManager(Node):
             if not self._cancel_requested:
                 self._fail(str(error))
         except Exception as error:
+            self._fail(f"Demo beklenmeyen hata: {error}")
+
+    def _wait_navigation_ready(self) -> None:
+        startup_timeout = float(
+            self.get_parameter("nav_startup_timeout").value
+        )
+        self._wait_nav2_active(startup_timeout)
+        if not self._compute_route.wait_for_server(
+            timeout_sec=startup_timeout
+        ):
+            raise DemoAbort("compute_route action sunucusu hazir olmadi")
+        if not self._follow_path.wait_for_server(timeout_sec=startup_timeout):
+            raise DemoAbort("follow_path action sunucusu hazir olmadi")
+
+    def _run_navigation_only(self) -> None:
+        """A ve B hedeflerini arada serit/lift beklemesi olmadan izle."""
+        try:
+            self._wait_navigation_ready()
+            self._set_state(
+                DemoStatus.STATE_NAVIGATING_A,
+                "A noktasina yalniz Nav2 rota grafi ile gidiliyor",
+                "A",
+            )
+            self._move_nav2_route("A", self._point_a)
+            if self._cancel_requested:
+                raise DemoAbort("Demo iptal edildi")
+
+            self._set_state(
+                DemoStatus.STATE_NAVIGATING_B,
+                "A tamamlandi; B noktasina Nav2 ile cikiliyor",
+                "B",
+            )
+            self._move_nav2_route("B", self._point_b)
+            if self._cancel_requested:
+                raise DemoAbort("Demo iptal edildi")
+
+            # Monitor, kontrollu kapatmayi beklenmeyen Nav2 kapanmasi olarak
+            # yorumlamasin.
+            self._turn_finishing = True
+            if not self._terminate_nav():
+                raise DemoAbort("Demo Nav2 sureci guvenli bicimde kapatilamadi")
+            self._set_state(
+                DemoStatus.STATE_COMPLETE,
+                "A ve B yalniz navigasyon testi tamamlandi",
+            )
+            self._turn_finishing = False
+        except DemoAbort as error:
+            self._turn_finishing = False
+            if not self._cancel_requested:
+                self._fail(str(error))
+        except Exception as error:
+            self._turn_finishing = False
             self._fail(f"Demo beklenmeyen hata: {error}")
 
     def _on_lane_end(self, msg: Bool) -> None:

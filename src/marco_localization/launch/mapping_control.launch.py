@@ -110,6 +110,9 @@ def generate_launch_description() -> LaunchDescription:
             "obstacle_detection_enabled": ParameterValue(
                 LaunchConfiguration("obstacle_detection"), value_type=bool
             ),
+            "use_lane_tracking": ParameterValue(
+                LaunchConfiguration("demo_use_lane_tracking"), value_type=bool
+            ),
         }],
     )
     buzzer_driver = Node(
@@ -160,6 +163,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "demo_odom_topic", default_value="/odometry/filtered"
         ),
+        DeclareLaunchArgument("demo_use_lane_tracking", default_value="false"),
         DeclareLaunchArgument("turn_direction", default_value="1"),
         DeclareLaunchArgument("rosbridge_port", default_value="9090"),
         # Orange Pi 5 Plus fiziksel pin 7 = GPIO1_D6 = wiringOP pin 2.
