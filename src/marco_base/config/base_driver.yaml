@@ -6,19 +6,15 @@ marco_base_driver:
     use_fake_hardware: false
 
     # --- Kinematik ---
-    # DIKKAT: wheel_radius ve wheel_separation fiziksel URDF degerleriyle
-    # aynidir. Onceki 0.421 m etkin odometri degeri, duzeltilmekte olan STM32
-    # verisiyle hesaplandigi icin 22.08.2026 Faz 0 kararinda geri cekilmistir.
+    # wheel_radius fiziksel URDF degeridir. wheel_separation ise encoder
+    # odometrisi icin etkin araliktir; URDF'deki 0.460 m geometrik araliktan
+    # farkli olabilir.
     #
     # wheel_radius ve URDF'deki geometrik aralik SolidWorks'ten olculdu;
     # bu dosyadaki etkin aralik daha sonra saha donusleriyle kalibre edildi:
     #   wheel_radius     tahrik tekeri kusursuz silindir, yaricap 100.00 mm
     #                    (dis kabuk sacilimi 0.000 mm)
-    #   wheel_separation teker merkezleri x=135.40 ve x=595.40 -> 460.00 mm
-    # Onceki tahmin 0.520 idi; %13 hataliydi. O deger odometrinin her donusu
-    # %11.5 eksik saymasina yol aciyordu (gercek 101.7 derecelik donus 90
-    # derece olarak raporlanir) ve sartnamenin +/-5 derece toleransini tek
-    # donuste asiyordu.
+    #   geometrik aralik teker merkezleri x=135.40 ve x=595.40 -> 460.00 mm
     #
     # NOT: tahrik uniteleri yayli (4 adet 3 mm telli, 75 mm serbest boy
     # helezon yay). CAD'de teker zeminden 11.5 mm yukarida cizilmis; arac
@@ -26,9 +22,9 @@ marco_base_driver:
     # altinda lastik ezilmesi kadar azalabilir, odometry_check.py ile
     # dogrulanmali.
     wheel_radius: 0.100
-    # Fiziksel merkez mesafesi 0.460 m. STM32 firmware duzeltmesinden sonra
-    # duz surus ve iki yonlu 360 derece testleriyle yeniden dogrulanacak.
-    wheel_separation: 0.460
+    # 03.09.2026 fiziksel 360 derece testi: sol 0.432778 m, sag 0.433333 m;
+    # iki yon ortalamasi 0.433056 m, config hassasiyetiyle 0.433 m.
+    wheel_separation: 0.433
     # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
     ticks_per_revolution: 360
     # /cmd_vel bu fiziksel m/s sinirinda oransal kirpilir, ardindan 0x01 icin

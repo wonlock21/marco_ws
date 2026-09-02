@@ -26,6 +26,8 @@ setup(
     entry_points={
         'console_scripts': [
             'base_driver = marco_base.base_driver:main',
+            'odometry_turn_calibration = '
+            'marco_base.odometry_turn_calibration:main',
         ],
     },
 )
