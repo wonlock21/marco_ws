@@ -58,11 +58,11 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "lidar",
             default_value="true",
-            description="YDLidar Tmini Pro (haritalama icin varsayilan acik)",
+            description="RPLIDAR A2M12 (haritalama icin varsayilan acik)",
         ),
         DeclareLaunchArgument("imu", default_value="false"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
         DeclareLaunchArgument(
             "rviz",
             default_value="false",

@@ -17,7 +17,10 @@ setup(
         ),
         (
             'share/lidar_filter/launch',
-            ['launch/lidar_with_filter.launch.py']
+            [
+                'launch/lidar_with_filter.launch.py',
+                'launch/ydlidar_tmini_pro_with_filter.launch.py',
+            ]
         ),
     ],
     install_requires=['setuptools'],

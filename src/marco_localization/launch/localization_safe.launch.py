@@ -34,7 +34,7 @@ def generate_launch_description() -> LaunchDescription:
         ),
         launch_arguments={
             "use_sim_time": "false",
-            "scan_topic": "/scan_raw",
+            "scan_topic": "/scan",
             "obstacle_detection": LaunchConfiguration("obstacle_detection"),
         }.items(),
     )
@@ -45,7 +45,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("imu", default_value="false"),
         DeclareLaunchArgument("obstacle_detection", default_value="true"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
         DeclareLaunchArgument("harita"),
         DeclareLaunchArgument("rviz", default_value="false"),
         LogInfo(msg="Lokalizasyon: map -> odom -> base_footprint"),

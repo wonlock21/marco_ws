@@ -61,14 +61,13 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("lidar", default_value="true"),
             DeclareLaunchArgument("imu", default_value="false"),
             DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-            DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+            DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
             DeclareLaunchArgument("rviz", default_value="false"),
             DeclareLaunchArgument(
                 "safety_scan_topic",
-                default_value="/scan_raw",
+                default_value="/scan",
                 description=(
-                    "Collision Monitor ham taramayi kullanir; SLAM/Nav2 /scan "
-                    "speckle-filtreli veridir."
+                    "Collision Monitor, SLAM ve Nav2 filtrelenmis /scan kullanir."
                 ),
             ),
             DeclareLaunchArgument("harita", default_value="nav_test"),

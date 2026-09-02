@@ -5,7 +5,7 @@
 # kalibrasyon sonucuydu. Firmware duzeltmesinden sonra 0.460 m yeniden saha
 # kabulune girecek; kabul tamamlanana kadar deger "provisional" durumundadir.
 metadata:
-  version: "2026-08-22-f0"
+  version: "2026-09-02-f0"
   status: provisional_pending_stm32_revalidation
 drive:
   wheel_radius_m: 0.100
@@ -14,6 +14,6 @@ drive:
   odometry_effective_wheel_separation_m: 0.460
 geometry:
   footprint: [[0.50, 0.35], [0.50, -0.35], [-1.20, -0.35], [-1.20, 0.35]]
-  lidar_base_link_xyz_m: [0.350, 0.000, 0.350]
+  lidar_base_link_xyz_m: [0.270, 0.000, 0.200]
   base_link_height_m: 0.100
-  lidar_scan_height_m: 0.450
+  lidar_scan_height_m: 0.300

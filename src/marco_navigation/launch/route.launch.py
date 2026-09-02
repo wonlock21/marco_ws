@@ -296,7 +296,7 @@ def generate_launch_description() -> LaunchDescription:
                 ),
             ),
             DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-            DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+            DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
             DeclareLaunchArgument("rviz", default_value="false"),
             DeclareLaunchArgument("nav_cmd_vel", default_value="/cmd_vel"),
             DeclareLaunchArgument("harita", default_value="nav_test"),

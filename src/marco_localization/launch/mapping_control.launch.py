@@ -144,7 +144,7 @@ def generate_launch_description() -> LaunchDescription:
         # Gecici hareket videosu bypass'i. Saha testinden sonra tekrar true yap.
         DeclareLaunchArgument("obstacle_detection", default_value="false"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
         DeclareLaunchArgument(
             "data_root", default_value="~/marco_data/fields"
         ),

@@ -136,7 +136,7 @@ NOT: 30mm yerden yükseklik + 200mm teker → tahrik tekerleri şasi içine göm
 
 **properties.xacro'da `TAHMINI` etiketli her değer mekanik ekibinden doğrulanmalı.**
 Güncel Faz 0 değerleri: fiziksel ve odometri `wheel_separation=0.460`;
-`lidar_x/y/z=+0.350/0/+0.350` (`base_link`, tarama zeminden 0.450 m);
+`lidar_x/y/z=+0.270/0/+0.200` (`base_link`, tarama zeminden 0.300 m);
 `body_length=0.950`. Önceki `0.421` ve eski LiDAR konumu tarihsel/geçersizdir.
 
 ## FAZ 3 İLERLEMESİ (marco_base) — sürücü katmanı BİTTİ, EKF kaldı
@@ -471,9 +471,9 @@ körlüğü konuları GÜNDEMDEN ÇIKARILDI — tekrar açma.
 `DM_Üst-1` üst yüzleri aynı düzlemde). Tmini Pro gövdesi 33 mm → tarama
 düzlemi yüzeyin ~20 mm üzerinde.
 
-Bu 29.07 yerleşim kararı, 11.08 kullanıcı fiziksel ölçümüyle geçersiz olmuştur.
-Güncel montaj: `lidar_x=+0.350`, `lidar_y=0`, `lidar_z=+0.350`
-(`base_link`e göre); tarama düzlemi zeminden `0.450 m`. Fiziksel montaj
+Bu 29.07 yerleşim kararı, 02.09 kullanıcı fiziksel ölçümüyle geçersiz olmuştur.
+Güncel montaj: `lidar_x=+0.270`, `lidar_y=0`, `lidar_z=+0.200`
+(`base_link`e göre); tarama düzlemi zeminden `0.300 m`. Fiziksel montaj
 değişirse yeniden ölçülmelidir.
 
 ### İLERİ YÖN KARARI (28.07, kullanıcı onayladı)

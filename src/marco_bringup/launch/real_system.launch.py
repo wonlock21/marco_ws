@@ -156,7 +156,7 @@ def _setup(context, *args, **kwargs):
     if fake:
         required.add("marco_perception")
     else:
-        required.add("ydlidar_ros2_driver")
+        required.add("rplidar_ros")
     if imu_enabled:
         required.add("imu_filter_madgwick")
     if rviz_enabled:
@@ -215,7 +215,7 @@ def _setup(context, *args, **kwargs):
     lidar_port = LaunchConfiguration("lidar_port").perform(context)
     if not fake:
         _check_device(serial_port, "STM32")
-        _check_device(lidar_port, "YDLidar")
+        _check_device(lidar_port, "RPLIDAR A2M12")
 
     navigation_share = get_package_share_directory("marco_navigation")
     docking_share = get_package_share_directory("marco_docking")
@@ -251,7 +251,7 @@ def _setup(context, *args, **kwargs):
             "y": LaunchConfiguration("y"),
             "yaw": LaunchConfiguration("yaw"),
             "rviz": "true" if rviz_enabled else "false",
-            "safety_scan_topic": "/scan" if fake else "/scan_raw",
+            "safety_scan_topic": "/scan",
         }.items(),
     )
     docking = IncludeLaunchDescription(
@@ -325,7 +325,7 @@ def generate_launch_description():
         DeclareLaunchArgument("harita", default_value="nav_test"),
         DeclareLaunchArgument("graf", default_value="phase10_route.geojson"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
         DeclareLaunchArgument("x", default_value="0.0"),
         DeclareLaunchArgument("y", default_value="0.0"),
         DeclareLaunchArgument("yaw", default_value="0.0",

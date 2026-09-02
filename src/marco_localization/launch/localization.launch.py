@@ -94,7 +94,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "lidar",
             default_value="false",
-            description="YDLidar Tmini Pro surucusunu baslatir",
+            description="RPLIDAR A2M12 surucusunu baslatir",
         ),
         DeclareLaunchArgument(
             "imu",
@@ -109,7 +109,7 @@ def generate_launch_description() -> LaunchDescription:
             description="RViz2 gorsellestirici",
         ),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
         DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),

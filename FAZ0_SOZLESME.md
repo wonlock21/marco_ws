@@ -34,8 +34,8 @@ tek sözleşmedir.
 | Odometri teker aralığı | `0.460 m` | 22.08 kararı; firmware sonrası fiziksel kabul bekliyor |
 | Footprint | `x=-1.20..+0.50 m`, `y=-0.35..+0.35 m` | Nav2 ve Collision Monitor sözleşmesi |
 | `base_link` yüksekliği | `0.100 m` | `base_footprint` referanslı |
-| LiDAR, `base_link` | `[+0.350, 0.000, +0.350] m` | 11.08 kullanıcı fiziksel ölçümü |
-| LiDAR tarama düzlemi | `0.450 m` | Zemine göre |
+| LiDAR, `base_link` | `[+0.270, 0.000, +0.200] m` | 02.09 kullanıcı fiziksel ölçümü |
+| LiDAR tarama düzlemi | `0.300 m` | Zemine göre |
 
 Önceki `0.421 m` odometri değeri, düzeltilmekte olan STM32 verileriyle
 yapılan 360° hesaplarından türemiştir ve aktif sözleşmeden çıkarılmıştır.
