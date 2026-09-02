@@ -82,7 +82,7 @@ class BaseDriver(Node):
 
         self._parser = p.FrameParser()
         self._target = (0.0, 0.0)
-        self._last_sent_target_rpm = (0, 0)
+        self._last_sent_target_rpm = (0.0, 0.0)
         self._last_command_enabled = False
         self._last_cmd_time = self.get_clock().now()
         self._last_heartbeat = 0.0
@@ -294,12 +294,12 @@ class BaseDriver(Node):
         if blocked:
             left, right = 0.0, 0.0
 
-        left_rpm = int(round(
+        left_rpm = (
             wheel_speed_to_rpm(left, self.wheel_radius) * self.command_rpm_scale
-        ))
-        right_rpm = int(round(
+        )
+        right_rpm = (
             wheel_speed_to_rpm(right, self.wheel_radius) * self.command_rpm_scale
-        ))
+        )
 
         self._transport.write(
             p.encode_wheel_rpm(
@@ -379,12 +379,12 @@ class BaseDriver(Node):
         """Hedef ve STM32 olculen teker hizlarini logla."""
         now = self._now_seconds()
         target_left_rpm, target_right_rpm = self._last_sent_target_rpm
-        target_left = int(round(wheel_rpm_to_speed(
+        target_left = wheel_rpm_to_speed(
             target_left_rpm, self.wheel_radius
-        ) * 1000.0))
-        target_right = int(round(wheel_rpm_to_speed(
+        ) * 1000.0
+        target_right = wheel_rpm_to_speed(
             target_right_rpm, self.wheel_radius
-        ) * 1000.0))
+        ) * 1000.0
         measured_left = int(frame.left_mm_s)
         measured_right = int(frame.right_mm_s)
         error_left = target_left - measured_left
@@ -397,14 +397,14 @@ class BaseDriver(Node):
                     "ros_time_s": f"{now:.6f}",
                     "stm32_timestamp_us": frame.timestamp_us,
                     "command_enabled": int(self._last_command_enabled),
-                    "target_left_rpm": target_left_rpm,
-                    "target_right_rpm": target_right_rpm,
-                    "target_left_equivalent_mm_s": target_left,
-                    "target_right_equivalent_mm_s": target_right,
+                    "target_left_rpm": f"{target_left_rpm:.6f}",
+                    "target_right_rpm": f"{target_right_rpm:.6f}",
+                    "target_left_equivalent_mm_s": f"{target_left:.6f}",
+                    "target_right_equivalent_mm_s": f"{target_right:.6f}",
                     "measured_left_mm_s": measured_left,
                     "measured_right_mm_s": measured_right,
-                    "error_left_mm_s": error_left,
-                    "error_right_mm_s": error_right,
+                    "error_left_mm_s": f"{error_left:.6f}",
+                    "error_right_mm_s": f"{error_right:.6f}",
                     "left_ticks": frame.left_ticks,
                     "right_ticks": frame.right_ticks,
                     "status_flags": flags,
@@ -423,10 +423,11 @@ class BaseDriver(Node):
             self._last_wheel_log_time = now
             self.get_logger().info(
                 "[TEKER OLCUM] "
-                f"hedef sol={target_left_rpm:+d} sag={target_right_rpm:+d} RPM "
-                f"(karsilik {target_left:+d}/{target_right:+d} mm/s) | "
+                f"hedef sol={target_left_rpm:+.3f} "
+                f"sag={target_right_rpm:+.3f} RPM "
+                f"(karsilik {target_left:+.3f}/{target_right:+.3f} mm/s) | "
                 f"olculen sol={measured_left:+d} sag={measured_right:+d} mm/s | "
-                f"hata sol={error_left:+d} sag={error_right:+d} mm/s | "
+                f"hata sol={error_left:+.3f} sag={error_right:+.3f} mm/s | "
                 f"aktif={self._last_command_enabled}"
             )
 
@@ -634,7 +635,7 @@ class BaseDriver(Node):
             # UART tamponu/tek-kare kaybi ihtimaline karsi kapanista birden
             # fazla devre-disinda sifir komutu gonderilir.
             for _ in range(5):
-                self._transport.write(p.encode_wheel_rpm(0, 0, False))
+                self._transport.write(p.encode_wheel_rpm(0.0, 0.0, False))
             self._transport.close()
         except OSError:
             pass

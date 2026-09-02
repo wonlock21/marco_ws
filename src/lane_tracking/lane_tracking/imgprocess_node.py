@@ -1,6 +1,7 @@
 """Kamera tabanli QR hizalama ve serit takip dugumu."""
 
 from enum import Enum
+import math
 import os
 
 import cv2
@@ -59,6 +60,22 @@ def apply_deadband(value, deadband_ratio=0.01):
     return -scaled_magnitude if float(value) < 0.0 else scaled_magnitude
 
 
+def shape_lane_control_error(value, center_zone=0.0, center_gain=1.0):
+    """Use a gentler linear slope near center and full authority outside."""
+    magnitude = min(1.0, abs(float(value)))
+    zone = max(0.0, min(0.95, float(center_zone)))
+    gain = max(0.0, min(1.0, float(center_gain)))
+    if zone <= 0.0 or gain >= 1.0:
+        shaped = magnitude
+    elif magnitude <= zone:
+        shaped = gain * magnitude
+    else:
+        boundary = gain * zone
+        outer_slope = (1.0 - boundary) / (1.0 - zone)
+        shaped = boundary + outer_slope * (magnitude - zone)
+    return -shaped if float(value) < 0.0 else shaped
+
+
 def enforce_minimum_wheel_speed(
         linear_speed, angular_speed, wheel_separation,
         minimum_wheel_speed):
@@ -80,6 +97,17 @@ def schedule_lane_linear_speed(
     turn_ratio = max(0.0, min(
         1.0, abs(float(angular_speed)) / float(max_angular_speed)))
     return cruise - (cruise - minimum) * turn_ratio
+
+
+def lane_tracking_demand(
+        position_error, heading_error, position_gain, heading_gain,
+        control_error):
+    """Return uncancelled lane effort for speed scheduling."""
+    return max(0.0, min(1.0, max(
+        abs(float(control_error)),
+        abs(float(position_gain) * float(position_error)),
+        abs(float(heading_gain) * float(heading_error)),
+    )))
 
 
 def combine_lane_errors(
@@ -127,6 +155,20 @@ def lane_end_confirmed(
     )
 
 
+def lane_end_alignment_valid(
+        position_error, heading_error, max_offset_ratio,
+        max_heading_error):
+    """Arm lane-end detection only while the vehicle is lane-aligned."""
+    values = (position_error, heading_error, max_offset_ratio,
+              max_heading_error)
+    if not all(math.isfinite(float(value)) for value in values):
+        return False
+    return (
+        abs(float(position_error)) <= abs(float(max_offset_ratio))
+        and abs(float(heading_error)) <= abs(float(max_heading_error))
+    )
+
+
 def image_message_to_bgr(msg):
     """Convert common raw ROS image encodings to an owned BGR array."""
     channels_by_encoding = {
@@ -166,7 +208,8 @@ def compute_pd_angular(
         error_px, half_frame_width, previous_error, dt, kp, kd,
         max_angular_speed, previous_derivative=0.0,
         derivative_alpha=0.25, position_gain=1.0, heading_error=0.0,
-        heading_gain=0.0, center_deadband_ratio=0.0):
+        heading_gain=0.0, center_deadband_ratio=0.0,
+        center_zone=0.0, center_gain=1.0):
     """Compute bounded PD steering from lateral position and lane heading."""
     if half_frame_width <= 0.0 or max_angular_speed <= 0.0:
         return 0.0, 0.0, 0.0
@@ -178,6 +221,7 @@ def compute_pd_angular(
         - float(heading_gain) * float(heading_error),
     ))
     error = apply_deadband(error, center_deadband_ratio)
+    error = shape_lane_control_error(error, center_zone, center_gain)
     raw_derivative = 0.0
     if previous_error is not None and dt is not None and 0.001 <= dt <= 0.25:
         raw_derivative = (error - float(previous_error)) / float(dt)
@@ -223,6 +267,10 @@ class ImgProcessNode(Node):
             self.get_parameter('lane_end_min_seen_frames').value)
         self.lane_end_missing_frames = int(
             self.get_parameter('lane_end_missing_frames').value)
+        self.lane_end_max_offset_ratio = float(
+            self.get_parameter('lane_end_max_offset_ratio').value)
+        self.lane_end_max_heading_error = float(
+            self.get_parameter('lane_end_max_heading_error').value)
         self.lane_end_detection_enabled = bool(
             self.get_parameter('lane_end_detection_enabled').value)
         self.lane_min_wheel_speed = float(
@@ -235,6 +283,10 @@ class ImgProcessNode(Node):
         self.pd_kd = float(self.get_parameter('lane_pd_kd').value)
         self.pd_derivative_alpha = float(
             self.get_parameter('lane_pd_derivative_alpha').value)
+        self.pd_center_zone = float(
+            self.get_parameter('lane_pd_center_zone').value)
+        self.pd_center_gain = float(
+            self.get_parameter('lane_pd_center_gain').value)
         self._pd_previous_error = None
         self._pd_previous_time = None
         self._pd_derivative = 0.0
@@ -242,6 +294,7 @@ class ImgProcessNode(Node):
         self.lane_missed_frames = 0
         self.lane_seen_frames = 0
         self.lane_end_reported = False
+        self.lane_end_armed = False
         self.last_lane_command = None
         self.show_debug_window = bool(
             self.get_parameter('show_debug_window').value)
@@ -390,11 +443,15 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_pd_kp', 0.080)
         self.declare_parameter('lane_pd_kd', 0.012)
         self.declare_parameter('lane_pd_derivative_alpha', 0.25)
+        self.declare_parameter('lane_pd_center_zone', 0.0)
+        self.declare_parameter('lane_pd_center_gain', 1.0)
         self.declare_parameter('lane_loss_hold_frames', 3)
         # Serit, yeni bir takip oturumunda yeterince gorulmeden "son" karari
         # verilmez. Boylece kamera acilisindaki bos kareler donusu tetiklemez.
         self.declare_parameter('lane_end_min_seen_frames', 15)
         self.declare_parameter('lane_end_missing_frames', 9)
+        self.declare_parameter('lane_end_max_offset_ratio', 0.20)
+        self.declare_parameter('lane_end_max_heading_error', 0.18)
         self.declare_parameter('lane_end_detection_enabled', True)
         self.declare_parameter('lane_adaptive_value_max', 140)
         self.declare_parameter('lane_adaptive_block_size', 81)
@@ -575,9 +632,21 @@ class ImgProcessNode(Node):
                     else:
                         self.lane_seen_frames += 1
                         pd_error = float(center_x) - float(lane_x)
+                        self.lane_end_armed = lane_end_alignment_valid(
+                            pd_error / max(1.0, float(center_x)),
+                            self.lane_tracker.last_heading_error,
+                            self.lane_end_max_offset_ratio,
+                            self.lane_end_max_heading_error,
+                        )
                         self.publish_pd_lane_movement(pd_error, center_x)
                 else:
                     self.lane_seen_frames += 1
+                    self.lane_end_armed = lane_end_alignment_valid(
+                        float(error) / max(1.0, float(center_x)),
+                        self.lane_tracker.last_heading_error,
+                        self.lane_end_max_offset_ratio,
+                        self.lane_end_max_heading_error,
+                    )
                     self.publish_lane_movement(error, center_x)
             else:
                 self._handle_lane_loss()
@@ -615,16 +684,25 @@ class ImgProcessNode(Node):
             heading_error=heading_error,
             heading_gain=self.lane_heading_gain,
             center_deadband_ratio=self.lane_center_deadband_ratio,
+            center_zone=self.pd_center_zone,
+            center_gain=self.pd_center_gain,
         )
         self._pd_previous_error = control_error
         self._pd_previous_time = now
         self._pd_derivative = derivative
 
         angular = self._filter_lane_steering(target_angular)
+        speed_demand = lane_tracking_demand(
+            position_error,
+            heading_error,
+            self.lane_offset_gain,
+            self.lane_heading_gain,
+            control_error,
+        )
         linear_speed = schedule_lane_linear_speed(
             self.lane_linear_speed,
             self.lane_min_linear_speed,
-            angular,
+            speed_demand * self.max_angular_speed,
             self.max_angular_speed,
         )
         half_track = self.wheel_separation * 0.5
@@ -640,6 +718,7 @@ class ImgProcessNode(Node):
             f'{dt if dt is not None else 0.0:.4f}s | '
             f'P={self.pd_kp * control_error:+.4f} | '
             f'D={self.pd_kd * derivative:+.4f} | '
+            f'hiz_talebi={speed_demand:.1%} | '
             f'hedef_w={target_angular:+.3f} filtre_w={angular:+.3f} | '
             f'cmd_vel: v={linear_speed:.3f} w={angular:+.3f} rad/s | '
             f'teker hedef sol={left_target * 1000.0:+.0f} '
@@ -737,7 +816,8 @@ class ImgProcessNode(Node):
         if (not self.lane_end_reported and lane_end_confirmed(
                 self.lane_seen_frames, self.lane_missed_frames,
                 self.lane_end_min_seen_frames, self.lane_end_missing_frames,
-                hold_frames, self.lane_end_detection_enabled)):
+                hold_frames,
+                self.lane_end_detection_enabled and self.lane_end_armed)):
             self.lane_end_reported = True
             self.last_lane_command = None
             self.filtered_lane_angular = 0.0
@@ -769,6 +849,7 @@ class ImgProcessNode(Node):
         if new_session:
             self.lane_seen_frames = 0
             self.lane_end_reported = False
+            self.lane_end_armed = False
         if hasattr(self, 'lane_tracker'):
             self.lane_tracker.reset_tracking()
 

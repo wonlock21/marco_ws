@@ -56,7 +56,7 @@ class SafetyCommand(IntEnum):
 
 
 # Payload yapilari. '<' hizalama dolgusunu kapatir; STM32 tarafiyla bayt bayt uyumlu.
-_FMT_WHEEL_RPM = "<hhB"        # left_rpm, right_rpm, flags
+_FMT_WHEEL_RPM = "<ffB"        # left_rpm, right_rpm, flags
 _FMT_FORK = "<BH"              # action, timeout_ms
 _FMT_SAFETY = "<B"             # command
 _FMT_ODOMETRY_LEGACY = "<Iiihh"  # uint32 zaman damgali eski 16 baytlik paket
@@ -104,14 +104,14 @@ def encode(msg_id: MsgId, payload: bytes = b"") -> bytes:
 
 # --- Komut kodlayicilari (Orange Pi -> STM32) ---
 
-def encode_wheel_rpm(left_rpm: int, right_rpm: int, enabled: bool) -> bytes:
-    """Isaretli teker hedeflerini tam sayi RPM olarak kodlar."""
+def encode_wheel_rpm(left_rpm: float, right_rpm: float, enabled: bool) -> bytes:
+    """Isaretli teker hedeflerini IEEE-754 float32 RPM olarak kodlar."""
     return encode(
         MsgId.CMD_WHEEL_RPM,
         struct.pack(
             _FMT_WHEEL_RPM,
-            int(left_rpm),
-            int(right_rpm),
+            float(left_rpm),
+            float(right_rpm),
             1 if enabled else 0,
         ),
     )
@@ -189,7 +189,7 @@ def encode_status(f: StatusFrame) -> bytes:
     )
 
 
-def decode_wheel_rpm(payload: bytes) -> tuple[int, int, bool]:
+def decode_wheel_rpm(payload: bytes) -> tuple[float, float, bool]:
     """(left_rpm, right_rpm, enabled) dondurur."""
     left, right, flags = struct.unpack(_FMT_WHEEL_RPM, payload)
     return left, right, bool(flags & 1)
