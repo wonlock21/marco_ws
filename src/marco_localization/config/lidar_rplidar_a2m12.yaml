@@ -1,0 +1,16 @@
+### SLAMTEC RPLIDAR A2M12 — marco_ws aktif LiDAR konfigürasyonu ###
+#
+# Akış: rplidar_node /scan -> /scan_raw remap -> laser_filters -> /scan
+# A2M12 için SLAMTEC'in resmi ROS 2 ayarı 256000 baud ve Sensitivity
+# tarama modudur. Fiziksel montaj değişmediği için mevcut laser_link frame'i
+# korunur.
+
+rplidar_node:
+  ros__parameters:
+    channel_type: serial
+    serial_port: /dev/marco_lidar
+    serial_baudrate: 256000
+    frame_id: laser_link
+    inverted: false
+    angle_compensate: true
+    scan_mode: Sensitivity

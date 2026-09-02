@@ -40,22 +40,22 @@ def test_mock_node_accepts_stationary_robot_health_inputs():
         rclpy.shutdown()
 
 
-def test_scan_subscription_is_compatible_with_real_ydlidar_qos():
-    """The real YDLidar publishes volatile scans with best-effort delivery."""
+def test_scan_subscription_is_compatible_with_real_lidar_qos():
+    """The real LiDAR publishes volatile scans with best-effort delivery."""
     rclpy.init()
     node = MissionManager()
     try:
         scan_subscription = next(
             subscription for subscription in node.subscriptions
             if subscription.topic_name == '/scan')
-        ydlidar_qos = QoSProfile(
+        lidar_qos = QoSProfile(
             depth=10,
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
 
         compatibility, reason = qos_check_compatible(
-            ydlidar_qos, scan_subscription.qos_profile)
+            lidar_qos, scan_subscription.qos_profile)
 
         assert compatibility != QoSCompatibility.ERROR, reason
     finally:

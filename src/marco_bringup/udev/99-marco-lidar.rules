@@ -1,0 +1,3 @@
+# SLAMTEC RPLIDAR A2M12 USB-UART adaptoru (CP210x).
+# Sistemde ayni anda yalnizca tek fiziksel LiDAR bagli olmalidir.
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE:="0660", GROUP:="dialout", SYMLINK+="marco_lidar"

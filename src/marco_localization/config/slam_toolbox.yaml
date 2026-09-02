@@ -1,6 +1,6 @@
 ### slam_toolbox — MarCO online async haritalama ###
 #
-# YDLidar Tmini Pro (0.03-12 m, 10 Hz, 430 nokta) + diferansiyel odometri.
+# Filtrelenmis 2D LaserScan (/scan) + diferansiyel odometri.
 # Bu dosya /opt/ros/humble/.../mapper_params_online_async.yaml uzerinden
 # turetilmistir; degisen her satir asagida gerekcelidir.
 #
@@ -50,10 +50,10 @@ slam_toolbox:
     # ve bos hucreleri "bilinmeyen" diye sifirlar.
     min_laser_range: 0.05
     max_laser_range: 12.0
-    # Senkron modda islenen taramalar arasindaki asgari sure. Hareketsizken
-    # dugum eklemeyi zorlamaz; dugum esikleri asagidaki travel ayarlaridir.
-    # Async dugum resmi varsayilanla uyum icin bu parametreyi tasir.
-    minimum_time_interval: 0.5
+    # RPLIDAR yaklasik 11.6 Hz (86 ms) tarar. 80 ms, donuste ardışık scan
+    # araligini buyutmeyip neredeyse her taramanin degerlendirilmesini saglar.
+    # Pose graph dugum esikleri asagidaki travel ayarlaridir.
+    minimum_time_interval: 0.08
     transform_timeout: 0.2
     tf_buffer_duration: 30.0
     stack_size_to_use: 40000000

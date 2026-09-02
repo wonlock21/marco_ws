@@ -70,7 +70,9 @@ def generate_launch_description() -> LaunchDescription:
 
     xacro_file = os.path.join(description_share, "urdf", "marco.urdf.xacro")
     rviz_config = os.path.join(bringup_share, "config", "robot.rviz")
-    lidar_config = os.path.join(localization_share, "config", "lidar_tmini_pro.yaml")
+    lidar_config = os.path.join(
+        localization_share, "config", "lidar_rplidar_a2m12.yaml"
+    )
     lidar_filter_config = os.path.join(
         localization_share, "config", "lidar_speckle_filter.yaml"
     )
@@ -81,7 +83,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "lidar",
             default_value="false",
-            description="YDLidar Tmini Pro surucusunu baslatir",
+            description="RPLIDAR A2M12 surucusunu baslatir",
         ),
         DeclareLaunchArgument(
             "tf",
@@ -98,8 +100,8 @@ def generate_launch_description() -> LaunchDescription:
         ),
         DeclareLaunchArgument(
             "lidar_port",
-            default_value="/dev/ttyUSB0",
-            description="YDLidar seri port yolu",
+            default_value="/dev/marco_lidar",
+            description="RPLIDAR A2M12 seri port yolu",
         ),
         DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
@@ -145,23 +147,23 @@ def generate_launch_description() -> LaunchDescription:
         }.items(),
     )
 
-    # YDLidar Tmini Pro. frame_id lidar_tmini_pro.yaml'da "laser_link"
-    # olarak ayarlanmis — URDF ile eslesir, ekstra static TF gerekmez.
-    # ONEMLI: Node adi degistirilmemeli. YAML parametreler dugum adiyla
-    # eslenir; farkli isim verilirse SDK kendi varsayilanini (/dev/ydlidar)
-    # kullanir ve baglanamazken hata verir.
+    # RPLIDAR A2M12. frame_id aktif YAML'da "laser_link" olarak ayarlanmis;
+    # mevcut fiziksel TF korunur ve ekstra static TF gerekmez. Surucunun
+    # varsayilan /scan cikisi ham topic sozlesmesine remap edilir.
     lidar_node = Node(
-        package="ydlidar_ros2_driver",
-        executable="ydlidar_ros2_driver_node",
-        name="ydlidar_ros2_driver_node",
+        package="rplidar_ros",
+        executable="rplidar_node",
+        name="rplidar_node",
         output="screen",
-        parameters=[lidar_config, {"port": LaunchConfiguration("lidar_port")}],
+        parameters=[
+            lidar_config,
+            {"serial_port": LaunchConfiguration("lidar_port")},
+        ],
         remappings=[("scan", "/scan_raw")],
         condition=IfCondition(LaunchConfiguration("lidar")),
     )
 
-    # Hafif speckle filtresi: SLAM/AMCL/Nav2 /scan'i kullanir. Guvenlik
-    # katmani gercek sistemde /scan_raw'i dinleyerek ince engelleri korur.
+    # Hafif speckle filtresi: SLAM/AMCL/Nav2 ve guvenlik /scan'i kullanir.
     lidar_filter = Node(
         package="laser_filters",
         executable="scan_to_scan_filter_chain",

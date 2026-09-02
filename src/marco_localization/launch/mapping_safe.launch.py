@@ -33,9 +33,8 @@ def generate_launch_description() -> LaunchDescription:
         launch_arguments={
             "use_sim_time": "false",
             "obstacle_detection": LaunchConfiguration("obstacle_detection"),
-            # Speckle filtresi SLAM icindir; guvenlik tek isinlik ince engeli
-            # kaybetmemek icin dogrudan YDLidar /scan_raw verisini kullanir.
-            "scan_topic": "/scan_raw",
+            # Guvenlik de nihai filtrelenmis LiDAR sozlesmesini kullanir.
+            "scan_topic": "/scan",
         }.items(),
     )
 
@@ -45,7 +44,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("imu", default_value="false"),
         DeclareLaunchArgument("obstacle_detection", default_value="true"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
-        DeclareLaunchArgument("lidar_port", default_value="/dev/ttyUSB0"),
+        DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
         DeclareLaunchArgument("rviz", default_value="false"),
         LogInfo(msg="Manuel surus: /cmd_vel_manual -> twist_mux -> /cmd_vel"),
         mapping,

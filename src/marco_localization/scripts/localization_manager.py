@@ -49,7 +49,7 @@ class LocalizationManager(Node):
         self.declare_parameter("use_imu", False)
         self.declare_parameter("obstacle_detection_enabled", True)
         self.declare_parameter("serial_port", "/dev/marco_stm32")
-        self.declare_parameter("lidar_port", "/dev/ttyUSB0")
+        self.declare_parameter("lidar_port", "/dev/marco_lidar")
         self.declare_parameter("data_root", "~/marco_data/fields")
         self.declare_parameter("startup_timeout", 30.0)
         self.declare_parameter("initial_pose_timeout", 35.0)
