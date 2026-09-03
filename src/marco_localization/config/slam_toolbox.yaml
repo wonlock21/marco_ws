@@ -48,7 +48,7 @@ slam_toolbox:
     resolution: 0.05
     # Tmini Pro menzili. Varsayilan 20 m bu birimde gecerli olcum uretmez
     # ve bos hucreleri "bilinmeyen" diye sifirlar.
-    min_laser_range: 0.05
+    min_laser_range: 0.20
     max_laser_range: 12.0
     # RPLIDAR yaklasik 11.6 Hz (86 ms) tarar. 80 ms, donuste ardışık scan
     # araligini buyutmeyip neredeyse her taramanin degerlendirilmesini saglar.
@@ -73,7 +73,7 @@ slam_toolbox:
     link_match_minimum_response_fine: 0.1
     link_scan_maximum_distance: 1.5
     loop_search_maximum_distance: 3.0
-    do_loop_closing: true
+    do_loop_closing: false
     loop_match_minimum_chain_size: 10
     loop_match_maximum_variance_coarse: 3.0
     loop_match_minimum_response_coarse: 0.35

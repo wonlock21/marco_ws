@@ -148,8 +148,9 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # RPLIDAR A2M12. frame_id aktif YAML'da "laser_link" olarak ayarlanmis;
-    # mevcut fiziksel TF korunur ve ekstra static TF gerekmez. Surucunun
-    # varsayilan /scan cikisi ham topic sozlesmesine remap edilir.
+    # fiziksel yaw=pi montaji sensors.xacro TF'inde temsil edilir ve ekstra
+    # static TF gerekmez. Surucunun varsayilan /scan cikisi ham topic
+    # sozlesmesine remap edilir.
     lidar_node = Node(
         package="rplidar_ros",
         executable="rplidar_node",
