@@ -15,14 +15,15 @@
     Aktif RPLIDAR A2M12 yapilandirmasi frame_id'yi "laser_link" olarak
     yayinlar (marco_localization/config/lidar_rplidar_a2m12.yaml); bu link
     ile birebir eslesir ve mevcut fiziksel montaj pozu korunur.
-    rpy simdilik 0 0 0 kabuludur. Fiziksel montaj yaw'i /scan_raw ile
-    olculmeden bu donusume tahmini bir aci eklenmemelidir.
+    Saha testinde arac fiziksel onundeki hedef /scan_raw icinde yaklasik
+    -170..-179 derece goruldu. Fiziksel arac onu base_link +X oldugu icin
+    base_link -> laser_link sabit donusumunde yaw=pi uygulanir.
     Tarama 360 derecedir. Govde olculeri yaklasiktir, gorsel amaclidir.
   -->
   <joint name="base_link_to_laser" type="fixed">
     <parent link="base_link"/>
     <child  link="laser_link"/>
-    <origin xyz="${lidar_x} ${lidar_y} ${lidar_z}" rpy="0 0 0"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${lidar_z}" rpy="0 0 ${pi}"/>
   </joint>
 
   <link name="laser_link">

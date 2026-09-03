@@ -148,8 +148,9 @@
 
     base_link, base_footprint'in 0.100 m ustundedir. Bu nedenle asagidaki
     base_link'e gore z degeri 0.200 m'dir; TF zincirinde zemine gore
-    laser_link z=0.300 m olur. LiDAR yaw'i olculene kadar sifir kabul edilir;
-    fiziksel montaj yonu /scan_raw ile ayrica kalibre edilmelidir.
+    laser_link z=0.300 m olur. Saha testinde fiziksel on, LiDAR scan
+    koordinatinda yaklasik -170..-179 derece goruldugu icin sensors.xacro
+    icindeki base_link -> laser_link yaw duzeltmesi pi'dir.
   -->
   <xacro:property name="lidar_x"           value="0.270"/>
   <xacro:property name="lidar_y"           value="0.000"/>
