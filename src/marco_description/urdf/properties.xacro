@@ -37,8 +37,8 @@
         z_urdf = (y_cad -   13.778) / 1000    yukari +
 
     Bu donusumun sonuclari:
-      tahrik tekeri x_cad=595.40 -> y=+0.230  SOL
-      tahrik tekeri x_cad=135.40 -> y=-0.230  SAG
+      tahrik tekeri merkezi -> y=+0.215  SOL
+      tahrik tekeri merkezi -> y=-0.215  SAG
       catal ucu               -> x=-1.160
       govde on yuzu           -> x=+0.477
       govde arka yuzu         -> x=-0.475
@@ -69,12 +69,8 @@
   <xacro:property name="wheel_width"       value="0.050"/>
 
   <!--
-    OLCULDU: teker merkezleri x=135.40 ve x=595.40 -> 460.00 mm.
+    DOGRULANMIS: fiziksel/CAD tahrik tekeri merkez araligi 430.00 mm.
 
-    Onceki TAHMINI deger 0.520 idi ve %13 hataliydi. Diferansiyel odometride
-    aci hizi (v_sag - v_sol) / wheel_separation oldugu icin bu hata her donusu
-    %11.5 eksik saydiriyordu: gercek 101.7 derecelik donus 90 derece olarak
-    raporlanir. Sartnamenin +/-5 derece yon toleransi tek donuste asilirdi.
     Bu deger fiziksel model icindir. Encoder odometrisi base_driver.yaml'daki
     saha kalibrasyonlu etkin wheel_separation degerini kullanir.
 
@@ -82,7 +78,7 @@
     boy helezon yay, akssin uzerinde. CAD'de teker zeminden 11.5 mm yukarida
     duruyor (yay serbest konumu); arac agirligi altinda basiyor.
   -->
-  <xacro:property name="wheel_separation"  value="0.460"/>
+  <xacro:property name="wheel_separation"  value="0.430"/>
 
   <!--
     OLCULDU: 0.475 m. base_link tahrik aksinin ortasina yerlesir (donme

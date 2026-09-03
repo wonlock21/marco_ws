@@ -1,6 +1,6 @@
 # Faz 0 kanonik arac sozlesmesi.
 #
-# Geometrik teker araligi 0.460 m'dir. Encoder odometrisinin etkin araligi,
+# Fiziksel/CAD geometrik teker araligi 0.430 m'dir. Encoder odometrisinin etkin araligi,
 # 03.09.2026 iki yonlu fiziksel 360 derece testiyle 0.433 m kalibre edildi.
 metadata:
   version: "2026-09-03-f0"
@@ -8,7 +8,7 @@ metadata:
 drive:
   wheel_radius_m: 0.100
   encoder_ticks_per_revolution: 360
-  geometric_wheel_separation_m: 0.460
+  geometric_wheel_separation_m: 0.430
   odometry_effective_wheel_separation_m: 0.433
 geometry:
   footprint: [[0.50, 0.35], [0.50, -0.35], [-1.20, -0.35], [-1.20, 0.35]]

@@ -7,14 +7,14 @@ marco_base_driver:
 
     # --- Kinematik ---
     # wheel_radius fiziksel URDF degeridir. wheel_separation ise encoder
-    # odometrisi icin etkin araliktir; URDF'deki 0.460 m geometrik araliktan
+    # odometrisi icin etkin araliktir; URDF'deki 0.430 m geometrik araliktan
     # farkli olabilir.
     #
     # wheel_radius ve URDF'deki geometrik aralik SolidWorks'ten olculdu;
     # bu dosyadaki etkin aralik daha sonra saha donusleriyle kalibre edildi:
     #   wheel_radius     tahrik tekeri kusursuz silindir, yaricap 100.00 mm
     #                    (dis kabuk sacilimi 0.000 mm)
-    #   geometrik aralik teker merkezleri x=135.40 ve x=595.40 -> 460.00 mm
+    #   geometrik aralik fiziksel/CAD dogrulamasiyla 430.00 mm
     #
     # NOT: tahrik uniteleri yayli (4 adet 3 mm telli, 75 mm serbest boy
     # helezon yay). CAD'de teker zeminden 11.5 mm yukarida cizilmis; arac
