@@ -31,10 +31,13 @@ Eski belgelerde geçen “şartname V1.2”, eski sensör konumları veya eski k
 - Takım hareket ve kabiliyet videosu aşamasını geçmiş ve finalist olmuştur.
 - Flutter/Windows kontrol uygulamasının güncel dizini `/mnt/c/Users/emre/desktop/liftant_v2_bitirme` olarak bildirilmiştir.
 - PLC wire protokol belgesi henüz organizasyon tarafından takıma iletilmemiştir.
-- Fiziksel etkin teker aralığı `0.460 m` kabul edilecektir. Önceki `0.421 m` değeri, düzeltilmekte olan STM32 verileri üzerinden yapılan hesaplamadan türemiştir.
+- Gerçek tahrik tekeri dönme eksenleri arası physical/geometric wheel separation `0.430 m`, 360° fiziksel odometri kalibrasyonundan gelen odometry-effective wheel separation `0.433 m` kabul edilecektir. Eski `0.460 m` fiziksel değer yanlış geometrik referanstan ölçülmüştür.
+- Şerit takibi için yalnız lift/arka taraftaki kamera kullanılacaktır. A/B istasyon girişleri approach QR doğrulaması ve 180° dönüşten sonra rear-camera reverse docking; istasyon çıkışları lane STOP + Nav2 olacaktır.
+- Kapı geçişi gidişte q5 outbound, dönüşte q6 return izin noktasıyla yönetilecek ve her fiziksel geçiş yeni izin gerektirecektir.
+- Production görev `imu:=false` profiliyle çalışabilecektir; IMU etkinse ek health/yaw doğrulama kaynağı, kapalıysa yokluğu tek başına abort nedeni olmayacaktır.
 - Lift sistemi ve limit sensörleri fiziksel olarak çalışmaktadır. Eksik olan kısım, bunların yarışma görev yöneticisine güvenli ve geri bildirimli ROS action olarak bağlanması ve ölçümlü kabulüdür.
 
-Bu girdiler planlama kararıdır; firmware düzeltmesi sonrasında `0.460 m` değeri düz/rotasyon fiziksel deneyleriyle yeniden doğrulanıp araç sözleşmesine işlenecektir.
+Bu girdiler planlama kararıdır; `0.430 m physical / 0.433 m odometry-effective` ayrımı production araç sözleşmesine işlenecek ve düz sürüş ile iki yönlü 360° fiziksel deneyleriyle yeniden kabul edilecektir.
 
 ## 2. Yönetici özeti
 
@@ -42,12 +45,12 @@ Mevcut depo iyi bir ROS temeline sahiptir: STM32 taban sürücüsü, odometri/IM
 
 Ancak depo bugün itibarıyla yarışma görevinin tamamını gerçek donanımda uçtan uca yapabilecek durumda değildir. Yarışmaya çıkışı engelleyen başlıca konular şunlardır:
 
-- Faz 0 yazılım sözleşmesinde fiziksel ve odometri teker aralığı `0.460 m` olarak tekleştirilmiş ve otomatik denetim PASS olmuştur; STM32 firmware düzeltmesi sonrası fiziksel yeniden kabul hâlâ zorunludur.
+- Faz 0'daki provisional `0.460 m` tek değer sözleşmesi artık production kararı değildir; physical/geometric değer `0.430 m`, odometry-effective değer `0.433 m` olarak ayrıştırılmalı ve yeniden kabul edilmelidir.
 - Çalışma alanında güncel `build/` ve `install/` bulunmadığından mevcut HEAD için temiz derleme/test kanıtı yoktur.
 - Operatör arayüzünden şartnameye uygun rota öğretme, semantik düğüm tanımlama ve aktif saha paketini devreye alma akışı eksiktir.
-- Gerçek çizgi/QR algısının `LaneOffset` ve `QrDetection` üretim bağlantısı yoktur; QR içeriği ve kameraya göre metrik poz çıkarımı tamamlanmamıştır.
+- Gerçek çizgi/QR algısının `LaneOffset` ve `QrDetection` üretim bağlantısı yoktur; şerit kontrolü yalnız arka kamerayla reverse docking için kullanılmalı, çıkışta lane STOP sonrası Nav2 devralmalıdır.
 - PLC wire protokolü henüz gelmemiştir; gerçek PLC adaptörü yoktur. Lift ve limit donanımı çalışsa da gerçek `LiftLoad` action sunucusu/görev entegrasyonu yoktur.
-- Görev yöneticisi q5 kapısını her iki yöndeki geçişlerde yönetmemekte, düğüm yönelimini kullanmamakta ve yük arkada kalacak hareket kuralını garanti etmemektedir.
+- Görev yöneticisi gidişte q5 outbound/dönüşte q6 return izinlerini, istasyondan ilgili approach node'a deterministik Nav2 çıkışını, rota geometrisine bağlı junction dönüşlerini ve normal segmentlerde route-heading politikasını henüz birlikte uygulamamaktadır.
 - Üretim ortamında rota sapmasını ölçen ve `±10 cm` kuralını gözeten bir route guard yoktur.
 - Flutter GUI mevcuttur ve rosbridge, mapping/lokalizasyon, görev özeti, QR/PLC alanları ile fiziksel manuel moda bağlı hız kilidi için ciddi bir temel sunar; fakat düğüm/rota kayıtları ROS backend olmadığı için yerel draft/stub seviyesindedir, gerçek PLC kaynağı yoktur ve fiziksel uçtan uca kabul beklemektedir.
 - Bazı launch yolları güvenlik zincirini atlayabilmekte; mapping kontrolünde engel algılama varsayılanı yarışma için kapalıdır.
@@ -55,7 +58,7 @@ Ancak depo bugün itibarıyla yarışma görevinin tamamını gerçek donanımda
 
 Bu nedenle öncelik “yeni özellik eklemek” değil, aşağıdaki zorunlu zinciri eksiksiz ve ölçülebilir hâle getirmektir:
 
-`fiziksel sözleşme → güvenli taban → lokalizasyon → saha paketi/rota → gerçek algı/docking → rota koruması → PLC/lift/görev → GUI → hata testleri → 60 dakikalık kurulum → tam prova`
+`fiziksel/odometri sözleşmesi → güvenli taban → lokalizasyon → saha paketi/rota → rear-camera reverse docking → lane STOP + Nav2 exit → çift yön gate/junction akışı → rota koruması → PLC/lift/görev → GUI → profile-aware hata testleri → 60 dakikalık kurulum → tam prova`
 
 Otomatik şarj yalnızca zorunlu görevin en az üç ardışık uçtan uca provada geçtiği noktadan sonra ele alınacaktır.
 
@@ -71,14 +74,14 @@ Durumlar: **Temel var** kullanılabilir altyapı var; **Kısmi** entegrasyon vey
 | R04 | Fabrika otomasyon sistemiyle haberleşme | Bloker | F7 | Gerçek protokol, bağlantı kaybı ve tekrar mesaj testleri |
 | R05 | QR kodu okuma | Kısmi/mok | F5 | İçerik, zaman, güven ve istasyon eşleşmesi yayımlanır |
 | R06 | QR’ın kameraya göre konumunu bulma | Bloker | F5 | Kalibre kamera ile metrik x/y/yaw veya eşdeğer poz |
-| R07 | İstasyondan yaklaşık 1.5 m önceki çizgiyi işleme | Kısmi | F5 | Doğal navigasyondan çizgi/docking kipine güvenli devir |
-| R08 | Hibrit navigasyonla hassas yanaşma | Kısmi/mok | F5 | Bekleme, alma ve bırakmada ±7.5 cm, ±5° |
+| R07 | İstasyondan yaklaşık 1.5 m önceki çizgiyi işleme | Kısmi | F5, F7C, F8B | Nav2'den 180° dönüş sonrası arka kamera/geri docking kipine güvenli devir; çıkışta lane STOP |
+| R08 | Hibrit navigasyonla hassas yanaşma | Kısmi/mok | F5, F7C, F8B | A/B'ye yalnız rear-camera reverse docking ile ±7.5 cm, ±5°; ilgili approach node'a Nav2 çıkışı |
 | R09 | Rota sapmasını en fazla 10 cm’de tutma | Bloker | F6 | Gerçek aktif rota üzerinde zaman eşlemeli maksimum sapma ölçümü |
 | R10 | Engel görünce çarpmadan durma | Temel var | F1, F8 | Hareketli ve sabit engelde temas yok, duruş mesafesi kaydı |
 | R11 | Engel kalkınca göreve devam etme | Kısmi | F8 | Uzun beklemede gereksiz görev iptali olmadan otomatik devam |
-| R12 | q5’te PLC’ye bildir, izin bekle, geç | Kısmi/mok | F6, F7 | Gidiş ve dönüşte izinsiz geçiş yok; tekrar mesaj güvenli |
+| R12 | Gidişte q5, dönüşte q6 kapı izni al | Kısmi/mok | F6, F7, F8B | q5 outbound/q6 return için ayrı, yeni ve tek geçişlik izin; eski/geç mesaj güvenli |
 | R13 | Yükü azami 5 kg ile taşıma | Fiziksel kanıt gerekli | F1, F10 | 5 kg ile kaldırma, taşıma, bırakma ve fren testleri |
-| R14 | Yükü hareket yönünün ters tarafında tutma | Bloker | F3, F6, F7 | Yük durumuna göre yön/yaw/kenar kuralı ve video kanıtı |
+| R14 | Yükü hareket yönünün ters tarafında tutma | Bloker | F3, F6, F7, F8B | A/B'de reverse docking, lane STOP sonrası ileri Nav2 exit ve yük yönü video kanıtı |
 | R15 | Görev sonunda bekleme noktasına dönme ve bildirme | Kısmi | F7 | PLC bildirimiyle tamamlanan deterministik dönüş |
 | R16 | Görevi hedef 30, en çok 45 dakikada bitirme | Test edilmedi | F10 | Resmî senaryo benzeri en az üç ölçümlü tam koşu |
 | R17 | Harita ve rota hazırlığını 60 dakikada bitirme | Kısmi | F9 | Sıfırdan iki ayrı 60 dakikalık prova |
@@ -111,33 +114,33 @@ Not: Şartname çiziminde yük `500 × 420 × 360 mm`, paletle ilgili `600 mm`, 
 
 | Öncelik | Bulgu | Sonuç |
 |---|---|---|
-| P0 | `0.460 m` yazılım sözleşmesi tekleştirildi ve otomatik test PASS; STM32 firmware düzeltmesi/fiziksel tekrar ölçüm açık | Fiziksel kabul tamamlanmadan odometri yarışma için dondurulamaz |
+| P0 | Eski sözleşme physical/odometry değerlerini `0.460 m` olarak tekleştiriyor; doğrulanan production kararı `0.430 m physical / 0.433 m odometry-effective` | Ayrım config/contract/URDF'ye işlenip düz sürüş ve iki yönlü 360° kabulü geçmeden odometri dondurulamaz |
 | P0 | Güncel kaynak için temiz build/test kurulumu yok | Geçmiş başarı kayıtları bugünkü HEAD’i kanıtlamıyor |
 | P0 | PLC protokolü/adaptörü yok; çalışan lift/limit donanımının gerçek action sunucusu yok | Yük alma/bırakma ve kapı görevi uçtan uca tamamlanamaz |
-| P0 | Üretim QR/çizgi düğümleri docking arayüzlerini üretmiyor | Hassas yanaşma gerçek sensörle çalışamaz |
+| P0 | Üretim QR/çizgi düğümleri tek arka kamerayla reverse docking ve lane STOP → Nav2 exit arayüzlerini tamamlamıyor | Hassas yanaşma ve güvenli istasyon çıkışı gerçek sensörle çalışamaz |
 | P0 | Flutter GUI var; `/stations/*` ve `/routes/*` açıkça backend stub, lift komutu pasif, PLC verisi gerçek kaynağa bağlı değil | Rota hazırlama ve görev ekranı yarışma backend’i olmadan tamamlanamaz |
-| P0 | Görev yöneticisi q5’i yalnız sınırlı akışta ele alıyor; dönüş geçişi yok | Kapı ihlali veya senaryo kilitlenmesi riski |
+| P0 | Görev yöneticisi q5'i yalnız sınırlı akışta ele alıyor; q5 outbound/q6 return geçiş kimliği ve her crossing için yeni izin yok | Kapı ihlali, eski iznin yeniden kullanılması veya senaryo kilitlenmesi riski |
 | P0 | Yük arkada kalacak yön kuralı uygulanmıyor | Açık şartname ihlali |
 | P1 | Semantik rota editörü, saha sürümü ve atomik aktivasyon yok | 60 dakikalık hazırlık güvenilir değil |
 | P1 | Üretim route guard/cross-track yayını yok | 10 cm sapma ölçülemiyor ve korunamıyor |
 | P1 | Gerçek sistem test haritası/grafı ile açılabiliyor | Yanlış saha verisiyle hareket riski |
 | P1 | Mapping kontrolünde engel algılama yarışma için kapalı varsayılabiliyor | Haritalama sırasında çarpışma riski |
 | P1 | Bağımsız çizgi launch’ları güvenli hız zincirini atlayabiliyor | Güvenlik mimarisi devre dışı kalabilir |
-| P1 | Güvenlik yöneticisinin 15 saniye engel bekleme sonrası iptali | Şartnamedeki “engel kalkınca devam” davranışını bozabilir |
+| P1 | Güvenlik yöneticisinin production 15 saniye engel iptali kaldırıldı; aynı Nav2 action/rota ile 5/30/120 saniye fiziksel kabul henüz tamamlanmadı | Uzun bekleme kabulü kanıtlanmadan “engel kalkınca devam” davranışı dondurulamaz |
 | P1 | QR docking boyunca sürekli taze algı bekliyor | QR görüşten çıkınca yanaşma gereksiz iptal olabilir |
-| P1 | Kamera çözünürlüğü ve sensör TF’leri belgeler arasında çelişkili | Algı kalibrasyonu tekrarlanamaz |
+| P1 | Tek arka kameranın production çözünürlük/exposure ayarı ve sensör TF kaydı belgeler arasında tekleştirilmemiş | Reverse docking algı kalibrasyonu tekrarlanamaz |
 | P2 | Otomatik şarj görevi yok | Yalnızca +5 ek puan kaybı; ana görevi engellemez |
 
 ### 4.3 Sözleşme ve belge çelişkileri
 
 Bu değerler Faz 0’da tek bir tarihli “araç sözleşmesi” altında çözülecektir:
 
-- Etkin teker aralığı kararı: fiziksel değer `0.460 m`; `0.421 m`, eski STM32 verisiyle hesaplanmış tarihsel değerdir. Firmware düzeltmesi sonrası `0.460 m` fiziksel testle doğrulanacak ve bütün sözleşme/config/belgelerde tek değer yapılacaktır.
+- Teker aralığı kararı: physical/geometric değer `0.430 m`, odometry-effective/calibrated değer `0.433 m` olarak ayrı tutulacaktır. Eski `0.460 m` yanlış fiziksel referanstan, `0.421 m` eski STM32 verisinden gelen tarihsel değerlerdir.
 - LiDAR konumu: eski belgelerde geride/düşük, güncel kaynak yorumunda önde ve daha yüksek değerler.
-- Ön kamera ve arka kamera konumları: ön ölçüm mevcut, arka konum simetri varsayımına dayanıyor.
+- Kamera yerleşimi: şerit takibi için lift/arka tarafta tek kamera vardır; öndeki donanım QR okuyucudur. Arka kamera konumu tahmin değil ölçülmüş TF ile tutulmalıdır.
 - Kamera eğimi: yaklaşık 45° tahmin; kalibre ölçüm değil.
 - Kamera yayın biçimi: bazı ayarlar 320×240 isterken donanım notları desteklenen en düşük modun farklı olduğunu belirtiyor.
-- IMU ifadesi: eski belgelerde haricî IMU, güncel gerçek profilde STM32’den gelen yaw.
+- IMU politikası: `imu:=false` production profili desteklenir; `imu:=true` profilinde STM32 IMU/yaw ek health doğrulamasıdır ve iki profil ayrı kabul edilir.
 - Araç dış sınırı: gövde, çatal ve toplam boyun şartname çizimine göre ayrı ayrı ölçülmesi gerekiyor.
 
 ### 4.4 Geçmiş test kayıtlarının kullanımı
@@ -193,7 +196,7 @@ fields/<field_id>/
 Graf düğümleri yalnız `name/x/y` içeremez. En az şu alanlar gereklidir:
 
 - `id`, `name`, `role`, `x`, `y`, `yaw`.
-- `role`: `WAIT`, `PICKUP_APPROACH`, `PICKUP_DOCK`, `DROPOFF_APPROACH`, `DROPOFF_DOCK`, `GATE_Q5`, `QR_TRIGGER`, `TRANSIT`, gerekirse `CHARGE`.
+- `role`: `WAIT`, `PICKUP_APPROACH`, `PICKUP_DOCK`, `DROPOFF_APPROACH`, `DROPOFF_DOCK`, `GATE_OUTBOUND_Q5`, `GATE_RETURN_Q6`, `QR_TRIGGER`, `TRANSIT`, gerekirse `CHARGE`.
 - `station_id`: `A1..A3`, `B1..B3`, `q1..q9`, `D1..D6` eşleşmesi.
 - Her A/B istasyonu için `approach_qr_id`, `dock_heading_yaw`, ölçülmüş
   `line_follow_duration_s` ve ilk sürümde `turn_direction: left|right`
@@ -210,7 +213,7 @@ Graf düğümleri yalnız `name/x/y` içeremez. En az şu alanlar gereklidir:
 - Hassas yaklaşma modu: doğal navigasyon veya line/docking.
 - Harita ve araç sözleşmesi sürümü.
 
-Validator “bütün düğümler birbirine bağlı” kontrolünden fazlasını yapmalıdır. Dokuz A×B görevi için gereken yönlü yolları, her gerekli q5 geçişini, dönüş yolunu, istasyon yaw’larını, yük yönünü, çakışan kimlikleri ve harita sınırlarını denetlemelidir.
+Validator “bütün düğümler birbirine bağlı” kontrolünden fazlasını yapmalıdır. Dokuz A×B görevi için gereken yönlü yolları, gidişte q5 outbound ve dönüşte q6 return izin geçişlerini, dönüş yolunu, approach QR eşleşmelerini, istasyon yaw’larını, yük yönünü, çakışan kimlikleri ve harita sınırlarını denetlemelidir.
 
 ### 5.4 Görev durum makinesi
 
@@ -227,9 +230,9 @@ BOOT/PREFLIGHT
   → STOP_AND_VERIFY_A
   → PICKUP_READY
   → LIFT_LOAD
-  → EXITING_STATION_A (şerit kapalı, ileri Nav2)
+  → EXITING_STATION_A (lane STOP, Nav2 ile A'nın approach node'una çıkış)
   → LOADED_ROUTE_TO_B (Nav2)
-      → (izinli kapı kenarı öncesi) GATE_NOTIFY → GATE_WAIT → GATE_PASS
+      → q5 OUTBOUND_GATE_NOTIFY → OUTBOUND_GATE_WAIT → q6 GATE_PASS
   → APPROACHING_STATION_B
   → QR_B_VERIFY (target_station + mission_state + QR_ID)
   → TURN_FOR_REVERSE_DOCK_B (180 derece, güvenli yön)
@@ -237,15 +240,15 @@ BOOT/PREFLIGHT
   → STOP_AND_VERIFY_B
   → DROPOFF_READY
   → DROP_LOAD
-  → EXITING_STATION_B (şerit kapalı, ileri Nav2)
+  → EXITING_STATION_B (lane STOP, Nav2 ile B'nin approach node'una çıkış)
   → RETURN_ROUTE (Nav2)
-      → (izinli kapı kenarı öncesi) GATE_NOTIFY → GATE_WAIT → GATE_PASS
+      → q6 RETURN_GATE_NOTIFY → RETURN_GATE_WAIT → q5 GATE_PASS
   → WAIT_POSITION
   → TASK_COMPLETE_NOTIFY
   → WAITING_FOR_TASK
 ```
 
-Her durum; giriş koşulu, timeout, tekrar deneme, güvenli duruş, PLC mesajı, GUI metni ve kalıcı olay kaydıyla tanımlanmalıdır. Aynı görev veya kapı izni tekrarlı geldiğinde çift kaldırma/indirme ya da izinsiz hareket olmamalıdır. İstasyon QR tetikleyicisi yalnız `APPROACHING_STATION` durumunda ve QR kimliği güncel hedef istasyonla eşleştiğinde bir kez kurulmalıdır. `EXITING_STATION` durumunda aynı QR yeniden görülse bile dönüş veya şerit takibi tetiklenmemelidir. Süre sayacı QR algılandığında veya dönüş başladığında değil, 180° dönüş başarıyla bittikten ve geri şerit kontrolü gerçekten aktif olduğuna dair onay alındıktan sonra başlatılır. Süre dolunca şerit kontrolü kapatılır, sıfır hız yayımlanıp aracın durduğu doğrulanır ve ancak bundan sonra `PICKUP_READY` veya `DROPOFF_READY` durumuna geçilir.
+Her durum; giriş koşulu, timeout, tekrar deneme, güvenli duruş, PLC mesajı, GUI metni ve kalıcı olay kaydıyla tanımlanmalıdır. Aynı görev veya kapı izni tekrarlı geldiğinde çift kaldırma/indirme ya da izinsiz hareket olmamalıdır. Her fiziksel kapı geçişi yönüne özgü yeni izin kullanır; q5 outbound izni q6 return geçişini veya sonraki görevi yetkilendiremez. İstasyon QR tetikleyicisi yalnız `APPROACHING_STATION` durumunda ve QR kimliği güncel hedef istasyonla eşleştiğinde bir kez kurulmalıdır. `EXITING_STATION` durumunda aynı QR yeniden görülse bile dönüş veya şerit takibi tetiklenmemelidir. Süre sayacı QR algılandığında veya dönüş başladığında değil, 180° dönüş başarıyla bittikten ve geri şerit kontrolü gerçekten aktif olduğuna dair onay alındıktan sonra başlatılır. Süre dolunca şerit kontrolü kapatılır, sıfır hız yayımlanıp aracın durduğu doğrulanır ve ancak bundan sonra `PICKUP_READY` veya `DROPOFF_READY` durumuna geçilir. Health geçişleri profile-aware olmalı; `imu:=false` profilinde IMU yokluğu tek başına görev abort'u üretmemelidir.
 
 ## 6. Faz planı
 
@@ -687,6 +690,33 @@ Kabul kapısı:
 **Bağımlılık:** F1–F7C
 **Amaç:** Her tekil arızanın güvenli, görünür ve mümkünse devam edilebilir davranışa dönüşmesi.
 
+4 Eylül 2026 başlangıç uygulama durumu:
+
+- [x] Production `obstacle_wait_timeout_s` varsayılanı `0.0` yapıldı. Engel,
+  Nav2 ile birlikte yüksek öncelikli manuel ve docking kaynaklarını da anında
+  sıfır hızda tutar; süre dolduğu için otomatik görev iptali yapılmaz.
+- [x] `/safety/reset` açık operatör reset servisi eklendi. E-stop bırakıldıktan
+  sonra aktif hareket komutu varken reset reddedilir; sıfır komut ve temiz
+  safety durumu doğrulanmadan araç yeniden hareket edemez. Production mission
+  reset akışı bu servisin onayını almak zorundadır.
+- [x] Base driver geçerli STM32 çerçevelerinin yaşını
+  `/base/communication_ok` üzerinden yayınlar. Safety katmanı kayıp/bayat
+  UART'ta tüm hız kaynaklarını kilitler; mission preflight görevi reddeder ve
+  aktif görevde bağlantı kaybını latch'li abort'a dönüştürür.
+- [x] Otomatik testlerde engelin 121 saniyelik eşdeğer bekleme sonunda abort
+  üretmediği, engel guard'ının sürdüğü, E-stop sonrası hareketli resetin
+  reddedildiği ve STM32 sağlık mesajının taze/bayat geçişi doğrulandı.
+- [ ] Engel kaldırıldıktan sonra aynı Nav2 action/rota ile 5/30/120 saniyelik
+  gerçek zamanlı devam testleri tamamlanacak. Orange Pi kurulumunda `ign` ve
+  `ros_gz_bridge` bulunmadığı için Gazebo kabul koşusu simülasyon bilgisayarında
+  çalıştırılacak; fiziksel araç testi ayrıca kaydedilecek.
+- [ ] Fiziksel E-stop'un sürüş ve lifti durdurduğu kullanıcı tarafından
+  doğrulandı; ölçümlü tekrar, bag ve reset testi kabul kanıtı olarak alınacak.
+- [ ] Batarya telemetrisi gelmediği için düşük/kritik batarya eşikleri ve testi
+  beklemededir; doğrulanmamış voltaj eşiği koda yazılmayacaktır.
+- [ ] Fiziksel mod anahtarı araçta henüz olmadığı için bu test son entegrasyona
+  ertelenmiştir.
+
 Zorunlu testler:
 
 | Arıza/olay | Beklenen davranış |
@@ -707,6 +737,18 @@ Zorunlu testler:
 | Düşük batarya | Zorunlu görev için güvenli politika; opsiyonel şarj yoksa görev başlamasını engelleyen eşik |
 | Yanlış/tekrar QR | İstasyon kabul edilmez, yanlış lift eylemi yok |
 | Yanlış saha paketi | Preflight görevi başlatmaz |
+| q5 gidiş izni verilmez | Robot q5'te güvenli durmuş kalır ve q6 tarafına geçmez |
+| q6 dönüş izni verilmez | Robot q6'da güvenli durmuş kalır ve q5 tarafına geçmez |
+| Kapı izni timeout | Robot ilgili izin noktasında güvenli durmuş kalır; izinsiz rota segmenti başlamaz |
+| Eski/geç gate izni | Önceki veya ters yönlü geçiş izni yeni fiziksel geçişi yetkilendirmez |
+| D1–D6 junction Spin sırasında engel | Robot güvenli durur; engel politikası sağlanmadan Spin veya sonraki FollowPath başlamaz |
+| Junction Spin timeout/action abort | Sonraki FollowPath segmenti başlamaz; görev açık hata nedeni ile güvenli bekler |
+| 180°/junction dönüşünde lokalizasyon kaybı | Dönüş ve görev güvenli durur; geçerli poz gelmeden devam etmez |
+| `imu:=false` profili | Yalnız IMU mesajı gelmediği için safety veya mission abort oluşmaz |
+| `imu:=true` profilinde IMU bayat | Tanımlı fail-safe davranış çalışır ve GUI açık sağlık nedeni gösterir |
+| İstasyon çıkışında aynı QR'ın yeniden okunması | 180° dönüş/docking/lane tracking tekrar tetiklenmez; Nav2 kesilmez |
+| Lane STOP → Nav2 kontrol devri | Aynı anda iki sıfır-dışı motion source oluşmaz; devir sıfır hız üzerinden atomiktir |
+| q5/q6 çift yön gate arıza enjeksiyonu | Gidiş ve dönüş izinleri ayrı görev/geçiş kimlikleriyle sınanır; biri diğerini yetkilendirmez |
 
 Kabul kapısı:
 
@@ -714,11 +756,122 @@ Kabul kapısı:
 - Normal olmayan hiçbir durumda doğrudan `/cmd_vel` bypass’ı veya kontrolsüz lift hareketi yoktur.
 - Engel bekleme timeout’u şartnamenin otomatik devam beklentisiyle uyumludur; 15 saniyelik geliştirme varsayımı yarışma davranışını belirlemez.
 - E-stop ve watchdog testleri gerçek donanımda tekrarlanmıştır.
+- q5 outbound ve q6 return için izin yok, timeout, geç/eski izin ve reconnect arızalarının her biri ayrı log/bag ile kanıtlanmıştır.
+- Junction Spin engel/timeout/action abort ve dönüş sırasında lokalizasyon kaybında sonraki FollowPath'in başlamadığı kanıtlanmıştır.
+- `imu:=false` ve `imu:=true` profillerinin beklenen safety davranışları ayrı ayrı geçmiştir.
+- Lane STOP → Nav2 devrinde hareket kaynağı çakışması olmadığı ve EXITING_STATION sırasında QR tekrarının aksiyon üretmediği kanıtlanmıştır.
+
+### F8A — Production araç, yön ve IMU sözleşmesi
+
+**Uygulama sırası:** F8'den sonra, F9/F10 saha provası ve kabulünden önce
+
+**Süre:** 15 Eylül
+
+**Bağımlılık:** F3, F6, F7A–F7C, F8
+
+**Amaç:** Production hareket temelini doğru fiziksel ölçü, normal rota heading politikası ve profile-aware IMU davranışıyla sabitlemek.
+
+> Bu fazda kullanılan production kararları, F0–F7C dönemindeki provisional teknik kabullerin yerini alır; geçmiş faz kayıtları izlenebilirlik için değiştirilmemiştir.
+
+Yerine geçen kararlar:
+
+- Eski physical `0.460 m` → yeni physical `0.430 m` / odometry-effective `0.433 m`.
+- Tek q5 gate yaklaşımı → outbound q5 / return q6.
+- İleri station exit lane → lane STOP + Nav2.
+- Kör final node yaw → route heading + explicit turn action'ları.
+- IMU zorunlu → profile-aware IMU.
+- D waypoint → rota geometrisi gerektirince explicit junction Spin.
+
+Yapılacaklar:
+
+- [ ] Physical wheel separation değerini `0.430 m` yap.
+- [ ] Odometry-effective wheel separation değerini `0.433 m` ayrı parametre olarak koru.
+- [ ] URDF teker eksenlerinin fiziksel `±0.215 m` mantığıyla tutarlı olduğunu doğrula.
+- [ ] Düz sürüş ve iki yönlü 360° saha kabulünü tekrar yap.
+- [ ] TRANSIT, q1–q9, gate ve normal D segmentlerinde final pose'a kör kayıtlı node yaw yazmayı kaldır.
+- [ ] Normal FollowPath hedef heading'ini son geçerli rota segmentinin geometrisinden üret.
+- [ ] İstasyon 180° dönüşünü `dock_heading_yaw` kullanan ayrı Spin action olarak tut.
+- [ ] D1–D6 junction dönüşünü ayrı Spin action olarak tut.
+- [ ] Küçük terminal yaw, motor deadband ve `FollowPath status=6` için regresyon testi ekle.
+- [ ] Manevra health kontrolünü IMU enabled/disabled profiline ayır.
+- [ ] `imu:=false` profilinde IMU freshness yokluğunun abort üretmesini engelle.
+- [ ] IMU kapalıyken encoder odometry, `/odometry/filtered`, AMCL ve map/odom/base TF ile dönüş kabulü yap.
+- [ ] `imu:=true` profilinde IMU'yu ek health/yaw doğrulama kaynağı olarak kullan ve bayatlık fail-safe politikasını koru.
+
+F8A kabul kapısı:
+
+- [ ] `0.430 m physical / 0.433 m odometry-effective` sözleşmesi config, contract ve URDF'de tutarlı.
+- [ ] Normal Nav2 segmentleri gereksiz terminal node yaw istemiyor ve deadband kaynaklı `status=6` regresyonu geçiyor.
+- [ ] Düz sürüş ve iki yönlü 360° ölçümleri kabul toleransında.
+- [ ] `imu:=false` profilinde normal rota ve ayrı Spin manevrası IMU-yokluğu abort'u olmadan; `imu:=true` profilinde bayat IMU fail-safe ile çalışıyor.
+
+### F8B — İstasyon çıkışı ve çift yönlü gate
+
+**Uygulama sırası:** F8A'dan sonra, F9/F10 öncesi
+
+**Süre:** 15–16 Eylül
+
+**Bağımlılık:** F7A–F7C, F8, F8A
+
+**Amaç:** Reverse docking sonrasında deterministik Nav2 çıkışını ve her fiziksel kapı geçişinde yönüne özgü yeni izin alınmasını production mission'a yerleştirmek.
+
+Yapılacaklar:
+
+- [ ] Lift başarıyla bitince lane tracking'i STOP/disarm et.
+- [ ] Kontrol devrini sıfır hız üzerinden yaparak Nav2'yi hemen devral.
+- [ ] İlk Nav2 hedefini aktif saha paketindeki ilgili approach node yap: A1/q2, A2/q3, A3/q4, B1/q9, B2/q8, B3/q7.
+- [ ] Approach node'a çıktıktan sonra ana loaded/return rotaya devam et.
+- [ ] EXITING_STATION sırasında aynı QR yeniden okunduğunda hiçbir istasyon aksiyonu oluşmadığını doğrula.
+- [ ] İstasyon çıkışında ileri lane tracking'in hiçbir zaman başlamadığını doğrula.
+- [ ] q5 outbound entry ve q6 return entry semantiğini aktif saha paketinde tanımla.
+- [ ] Gidişte q5'te, dönüşte q6'da dur/izin/bekle/geç davranışını uygula.
+- [ ] Her fiziksel crossing için yeni, geçiş yönüne bağlı handshake iste.
+- [ ] Gate handshake'i pickup sonrası tek çağrı olmaktan çıkarıp aktif route crossing'ine bağla.
+- [ ] Validator'a iki yönde unauthorized gate bypass kontrolü ekle.
+- [ ] RobotStatus/mission event tarafında izin beklenen gate entry ve yönünü göster.
+
+F8B kabul kapısı:
+
+- [ ] A/B istasyonlarında yalnız arka kamera ile geri docking yapılıyor; çıkışta lane STOP sonrası Nav2 devralıyor.
+- [ ] Her istasyon çıkışının ilk Nav2 hedefi aktif saha paketindeki kendi approach QR node'u oluyor.
+- [ ] EXITING_STATION sırasında QR tekrarının dönüş, docking veya lane tracking üretmediği kanıtlanıyor.
+- [ ] Gidişte q5, dönüşte q6 gate handshake çalışıyor; eski/geç izin diğer geçişi yetkilendirmiyor ve iki yönde izinsiz geçiş mümkün değil.
+
+### F8C — Junction manevraları ve segmentli rota yürütme
+
+**Uygulama sırası:** F8B'den sonra, F9/F10 öncesi
+
+**Süre:** 15–16 Eylül
+
+**Bağımlılık:** F6, F8, F8A, F8B
+
+**Amaç:** D1–D6 kavşaklarında rota geometrisine göre gereken dönüşleri açık, atomik manevralarla yürütmek ve tam production rotayı doğrulamak.
+
+Yapılacaklar:
+
+- [ ] Aktif route üzerindeki mevcut ve sonraki edge geometrisinden gerekli heading değişimini hesapla.
+- [ ] Yaklaşık 90° değişimde açık Spin/junction maneuver uygula; düz devamda Spin yapma.
+- [ ] Keskin dönüş içeren yolu tek FollowPath'e bırakmak yerine gerekli yerde segmentlere ayır.
+- [ ] `FollowPath → sıfır hız → Spin → sıfır hız → sonraki FollowPath` sırasını atomik uygula.
+- [ ] Engel, timeout, localization kaybı veya action failure sonrasında sonraki segmente geçme.
+- [ ] Junction kararını QR'a veya hardcoded A/B senaryosuna değil aktif rota geometrisine bağla.
+- [ ] Junction Spin hedefini F8A route-heading politikasıyla üret ve motor deadband altında kalan terminal düzeltmeyi normal FollowPath'e yükleme.
+- [ ] `A2 → B3 → WAIT` referans senaryosunu segment, junction ve gate olaylarıyla düşük hızlı production smoke testinde çalıştır.
+
+F8C kabul kapısı:
+
+- [ ] D1–D6'da rota gerektirince yaklaşık 90° Spin yapılıyor; düz D geçişinde gereksiz Spin oluşmuyor.
+- [ ] Her junction'da FollowPath tamamen bitip sıfır hız doğrulanmadan Spin, Spin bitmeden sonraki FollowPath başlamıyor.
+- [ ] Engel/timeout/localization/action abort durumunda sonraki segment başlamıyor.
+- [ ] `imu:=false` profiliyle junction turn ve segmentli route yürütme çalışıyor.
+- [ ] `A2 → B3 → WAIT` örnek senaryosu en az düşük hızlı production smoke testinde tamamlanıyor.
 
 ### F9 — 60 dakikalık harita ve rota hazırlama provası
 
-**Süre:** 15 Eylül
-**Bağımlılık:** F2–F4, F6  
+**Süre:** 16 Eylül
+
+**Bağımlılık:** F2–F4, F6, F8A–F8C
+
 **Amaç:** İkinci aşamaya geçiş kapısı olan saha hazırlığını baskı altında tamamlamak.
 
 Önerilen dakika planı:
@@ -728,10 +881,10 @@ Kabul kapısı:
 | 00–05 | Araç ölçü/güç/ağ/preflight, saat ve disk kontrolü | Tüm sağlıklar yeşil |
 | 05–25 | Güvenli manuel haritalama, kapı ve istasyon çevreleri | Kapalı/temiz 2B harita |
 | 25–30 | Harita kaydı, mapping kapatma, lokalizasyon açma | AMCL kararlı, başlangıç pozu doğru |
-| 30–45 | WAIT, A1–A3, B1–B3, q1–q9, D1–D6 ve gerekli yaklaşım/dock pozlarını öğretme | Semantik düğümler |
-| 45–50 | Kenarlar, yönler, yük kuralları, q5 olayları ve hızlar | Tam yönlü rota grafı |
-| 50–54 | Validator ve atomik aktivasyon | Geçerli saha paketi |
-| 54–58 | En uzak A→B→WAIT smoke testi; q5 el sıkışma testi | Hareket kanıtı |
+| 30–45 | WAIT, A1–A3, B1–B3, q1–q9, D1–D6 ve altı istasyon approach/dock pozunu öğretip station config ile ilişkilendirme | Semantik düğümler ve A1/q2, A2/q3, A3/q4, B1/q9, B2/q8, B3/q7 eşleşmeleri |
+| 45–50 | Kenarlar, yönler, yük kuralları, q5 outbound/q6 return gate semantiği, D1–D6 junction geometrisi ve hızlar | Tam yönlü rota grafı |
+| 50–54 | Dokuz A×B, B→WAIT, çift yönlü gate, junction bağlantıları ve approach QR eşleşmeleri için validator; atomik aktivasyon | Geçerli saha paketi |
+| 54–58 | En uzak A→B→WAIT smoke testi; outbound q5 + return q6 gate el sıkışma testi | Hareket ve çift yönlü izin kanıtı |
 | 58–60 | Paket yedeği/hash, yarışma profilini kilitleme | Hazır ve geri alınabilir release |
 
 Prova koşulları:
@@ -746,37 +899,67 @@ Kabul kapısı:
 
 - İki farklı günde sıfırdan iki prova da `≤55 dakika` içinde geçer.
 - Prova sonunda dokuz A×B yol matrisinin tamamı geçerli ve en az bir tam görev çalışır.
+- Sıfırdan oluşturulan sahada q5 outbound/q6 return gate semantiği, D1–D6 junction dönüş geometrisi ve altı approach QR eşleşmesi GUI üzerinden üretilebilir ve validator’dan geçer.
+- B→WAIT dönüşlerinde q6 izni zorunluluğu ile gerekli junction manevraları rota üzerinde doğrulanır.
 - Eski/test haritası kullanma, yanlış graph seçme veya elle dosya düzenleme ihtiyacı yoktur.
 
 ### F10 — Tam yarışma provası ve performans
 
-**Süre:** 15–16 Eylül  
-**Bağımlılık:** F1–F9  
+**Süre:** 16–17 Eylül
+
+**Bağımlılık:** F1–F9, F8A–F8C
+
 **Amaç:** Hakem müdahalesi dışında tek komutla tam senaryoyu puan ve süre hedefinde tamamlamak.
 
 Yapılacaklar:
 
 1. Görevi PLC/test sistemi rastgele seçsin; ekip önceden A/B bilmesin.
-2. Robot beklemeden başlasın; pickup, q5, dropoff ve dönüşün tamamı otonom olsun.
+2. Robot beklemeden başlasın; pickup, q5 outbound, dropoff, q6 return ve WAIT dönüşünün tamamı production FSM ile otonom olsun.
 3. Bir koşuda kısa süreli engel, bir koşuda uzun engel; bir koşuda GUI yeniden bağlantısı uygula.
 4. Boş ve yüklü hızları toplam süreyi 30 dakikanın altında tutacak ancak sapma/duruş payını bozmayacak şekilde ayarla.
-5. Poz toleransı, maksimum rota sapması, q5 izin zamanları, yük düşmesi ve toplam süreyi otomatik raporla.
+5. Poz toleransı, maksimum rota sapması, q5 outbound ve q6 return izin zamanlarını ayrı ayrı, yük düşmesini ve toplam süreyi otomatik raporla.
 6. En az iki farklı batarya seviyesinde ve iki farklı zemin tutuşunda dene.
 7. Kullanıcı paneline izleme dışında dokunmadan tamamla.
 8. Her başarısızlığı kök neden, düzeltme ve tekrar testiyle kapat; yalnız “yeniden deneyince geçti” kabul edilmez.
+9. Dokuz A×B kombinasyonunu graph/sim üzerinde doğrula; en az üç tam fiziksel senaryo çalıştır ve bunlardan birini junction sayısı yüksek seç.
+10. `A2 → B3 → WAIT` akışını zorunlu fiziksel kabul senaryolarından biri yap.
+11. En az bir tam görevi `imu:=false` production profiliyle tamamla.
+12. Her normal Nav2 segmentinde route heading kullanıldığını ve `FollowPath status=6` terminal-yaw abort'u oluşmadığını doğrula.
+13. A/B çıkışlarının tamamında lane tracking'in STOP/disarm olduğunu, ilk Nav2 hedefinin ilgili approach node olduğunu ve ileri lane tracking'in hiç etkinleşmediğini logla.
+14. q5 ve q6 geçişlerinde izin gelmeden önce robotun kapının doğru tarafında kaldığını bağımsız poz/log kanıtıyla doğrula.
+
+Production tam görev akışı:
+
+`WAIT → A approach → hedef QR → 180° Spin → arka kamera ile geri docking → pickup → lane STOP → Nav2 ile A approach node'a çıkış → loaded route → gerekli D junction Spin → q5 outbound izin → q6 → B approach → 180° Spin → arka kamera ile geri docking → dropoff → lane STOP → Nav2 ile B approach node'a çıkış → return route → gerekli junction Spin → q6 return izin → q5 → D1 → q1 → WAIT → görev tamamlandı`
+
+`A2 → B3 → WAIT` referans kabul akışı:
+
+1. `Başlangıç → q1 → D1` Nav2; D1'de D2 yönüne yaklaşık 90° Spin.
+2. `D1 → D2` Nav2; D2'de q3 yönüne yaklaşık 90° Spin; `D2 → q3` Nav2.
+3. q3 doğrulama → 180° Spin → arka kamera ile geri `q3 → A2` docking → pickup → lane STOP → Nav2 ile `A2 → q3` çıkış.
+4. `q3 → D2` Nav2; D2'de D3 yönüne junction Spin; `D2 → D3 → q5` Nav2.
+5. q5'te dur → outbound izin al → `q6 → D4` Nav2; D4'te D6 yönüne Spin; `D4 → D6` Nav2; D6'da q7 yönüne gereken Spin; `D6 → q7` Nav2.
+6. q7 doğrulama → 180° Spin → arka kamera ile geri `q7 → B3` docking → dropoff → lane STOP → Nav2 ile `B3 → q7` çıkış.
+7. `q7 → D6` Nav2; D6'da D4 yönüne gereken Spin; `D6 → D4` Nav2; D4'te q6 yönüne Spin; `D4 → q6` Nav2.
+8. q6'da dur → return izin al → `q5 → D3 → D2 → D1` Nav2; D1'de q1 yönüne Spin; `D1 → q1 → Başlangıç` Nav2 → görev tamamlandı.
 
 Kabul kapısı:
 
 - Üç ardışık tam görev başarıyla tamamlanır.
+- Dokuz A×B kombinasyonu graph/sim doğrulamasından, en az üç fiziksel tam senaryo kabulden geçer; fiziksel koşulardan biri `A2 → B3 → WAIT` olur.
 - Her biri `<30 dakika` hedefinde; hiçbir koşu 45 dakikaya yaklaşmaz.
 - Maksimum rota sapması `<10 cm`; her istasyon ve bekleme pozunda `±7.5 cm/±5°`.
-- Yük düşmesi, çarpışma, izinsiz q5 geçişi veya operatör müdahalesi yoktur.
+- Yük düşmesi, çarpışma, izinsiz q5 outbound veya q6 return geçişi ya da operatör müdahalesi yoktur.
+- Hiçbir koşuda ileri lane tracking, istasyon çıkışında tekrar QR aksiyonu veya normal route sonunda terminal-yaw kaynaklı `FollowPath status=6` görülmez.
+- `imu:=false` production profiliyle en az bir tam görev başarıyla tamamlanır.
 - GUI’de şartnamedeki tüm bilgiler ve PLC tx/rx geçmişi görünürdür.
 
 ### F11 — Release dondurma ve yarışma operasyonu
 
-**Süre:** 16–17 Eylül; final boyunca kontrollü kullanım  
-**Bağımlılık:** F10  
+**Süre:** 17 Eylül; final boyunca kontrollü kullanım
+
+**Bağımlılık:** F10, F8A–F8C
+
 **Amaç:** Çalışan sistemin yarışma yerine aynı biçimde taşınması.
 
 Yapılacaklar:
@@ -791,6 +974,10 @@ Yapılacaklar:
 8. MAC adresleri, ağ adı, yerel IP ve firewall kurallarını yazılı taşı.
 9. İki parkur görevlisi ve kontrol masası rolleri için kısa operasyon kartları hazırla.
 10. 17 Eylül’den sonra yalnız P0 güvenlik veya görev engelleyici hata için değişiklik; her değişiklik tam smoke test ister.
+11. Release config/contract kapısında physical wheel separation `0.430 m`, odometry-effective separation `0.433 m` ve seçili production IMU profilini doğrula.
+12. Altı station approach QR eşleşmesini, q5 outbound/q6 return semantiğini ve junction-turn production davranışını doğrula.
+13. Normal route final-yaw politikasının route heading kullandığını; explicit yaw'ın yalnız docking ve junction Spin action'larında bulunduğunu doğrula.
+14. Placeholder/test graph'ın seçili olmadığını, aktif saha paketi hash'inin doğru olduğunu ve tek komutlu production launch'ın F8A–F8C akışını kullandığını fail-fast kontrol et.
 
 Kabul kapısı:
 
@@ -798,10 +985,13 @@ Kabul kapısı:
 - Release commit’i, firmware ve GUI build’i eşleşir.
 - Soğuk açılıştan göreve hazır olma iki tekrarda ölçülmüş ve prosedüre uygundur.
 - Geri dönüş release’i fiziksel araçta denenmiştir.
+- Dondurulan release ile q5 outbound + q6 return gate smoke testi geçer.
+- En az bir junction-turn smoke testi ve bir A/B reverse docking → lane STOP → Nav2 approach çıkış smoke testi geçer.
 
 ### F12 — Opsiyonel puanlar: otomatik şarj, yerlilik, özgünlük
 
-**Başlama şartı:** F10 üç ardışık kez geçmiş ve yarışma release’i dondurulmuş olmalı.  
+**Başlama şartı:** F8A–F8C ve F10 kabul kapıları geçmiş, F10 üç ardışık kez tamamlanmış ve yarışma release’i dondurulmuş olmalı.
+
 **Öncelik:** P2
 
 Otomatik şarj için:
@@ -829,14 +1019,17 @@ Yerlilik/özgünlük için kod, elektronik, mekanik ve algoritma kanıtlarını 
 | 10–13 Eylül | F7 gerçek PLC/lift/tam FSM | ilk tam görev |
 | 13 Eylül | F7A istasyon–QR/state sözleşmesi | yanlış/tekrar QR hareket üretmiyor |
 | 13–14 Eylül | F7B güvenli 180° dönüş ve kontrol devri | tek hız sahibiyle dönüş kabulü |
-| 14 Eylül | F7C geri şerit docking ve ileri Nav2 çıkışı | altı istasyon entegrasyonu |
+| 14 Eylül | F7C geri şerit docking ve lane STOP sonrası Nav2 çıkışı | altı istasyon entegrasyonu |
 | 14–15 Eylül | F8 arıza matrisi | safety kabulü |
-| 15 Eylül | F9 iki 60 dk prova | saha hazırlık kabulü |
-| 15–16 Eylül | F10 üç tam görev | yarışma kabulü |
-| 16–17 Eylül | F11 release freeze/lojistik | imzalı final release |
+| 15 Eylül | F8A araç/yön/IMU production sözleşmesi | 0.430/0.433 ayrımı, route heading ve IMU profili |
+| 15–16 Eylül | F8B istasyon çıkışı ve çift yön gate | lane STOP → approach Nav2, q5 outbound/q6 return |
+| 15–16 Eylül | F8C junction ve segmentli rota | D1–D6 Spin ve atomik segment geçişi |
+| 16 Eylül | F9 iki 60 dk prova | saha hazırlık kabulü |
+| 16–17 Eylül | F10 üç tam görev | yarışma kabulü |
+| 17 Eylül | F11 release freeze/lojistik | imzalı final release |
 | 18–20 Eylül | Yarışma finali | yalnız kontrollü hotfix |
 
-Kritik yol: `F0 → F1 → F2 → F3 → F5 → F6 → F7 → F7A → F7B → F7C → F8 → F9 → F10 → F11`.
+Kritik yol: `F0 → F1 → F2 → F3 → F5 → F6 → F7 → F7A → F7B → F7C → F8 → F8A → F8B → F8C → F9 → F10 → F11`.
 
 F4 kısmen paralel yürüyebilir. F12 kritik yolda değildir. Bir P0 blokeri hedef tarihinden iki gün fazla sarkarsa opsiyonel işler kapatılır ve ekip tam zamanlı kritik yola döner.
 
@@ -846,18 +1039,18 @@ Bu bölüm değişiklik emri değil, fazlar başladığında etki analizidir.
 
 | Alan | İncelenecek başlıca dosyalar/paketler | Beklenen iş |
 |---|---|---|
-| Araç sözleşmesi | `src/marco_base/config/base_driver.yaml`, `src/marco_bringup/config/vehicle_contract.yaml`, description/URDF | Ölçüm tekliği, TF ve kinematik |
+| Araç sözleşmesi | `src/marco_base/config/base_driver.yaml`, `src/marco_bringup/config/vehicle_contract.yaml`, description/URDF | Physical `0.430 m`, odometry-effective `0.433 m` ayrımı, TF ve kinematik |
 | Sözleşme kapısı | `src/marco_bringup/scripts/check_vehicle_contract.py` | Tüm kritik parametrelerin fail-fast denetimi |
 | Üretim launch | `src/marco_bringup/launch/real_system.launch.py` | Aktif saha, gerçek PLC/lift/perception, preflight |
 | Mapping/localization | `src/marco_localization/scripts/mapping_manager.py`, `localization_manager.py`, `mapping_control.launch.py` | Atomik saha paketi, güvenli varsayılanlar |
-| Rota | `marco_navigation` graph/config/launch ve `route_graph_validator.py` | Semantik editör, aktivasyon, rol/yön/q5 validator |
+| Rota | `marco_navigation` graph/config/launch ve `route_graph_validator.py` | Semantik editör, aktivasyon, rol/yön, q5 outbound/q6 return ve junction validator |
 | Route guard | `marco_navigation` içinde yeni/uygun üretim düğümü | Aktif path ve cross-track metrikleri |
 | Algı | `lane_tracking`, `marco_perception`, `qr_detector.py` | Gerçek `LaneOffset`, `QrDetection`, QR poz ve decode |
-| Docking | `src/marco_docking/marco_docking/dock_server.py` | Latch, mod devri, kayıp algı, fiziksel tolerans |
-| Görev | `src/marco_mission/marco_mission/mission_manager.py` | Semantik rota, yaw, q5 iki yön, yük yönü, idempotency |
+| Docking | `src/marco_docking/marco_docking/dock_server.py` | Tek arka kamera ile reverse docking, lane STOP, atomik Nav2 devri, kayıp algı ve fiziksel tolerans |
+| Görev | `src/marco_mission/marco_mission/mission_manager.py` | Approach-node çıkışı, route-heading, explicit docking/junction Spin, q5 outbound/q6 return ve idempotency |
 | PLC | `marco_mission` veya ayrı transport paketi | Resmî protokol adaptörü, heartbeat, tx/rx log |
 | Lift | `marco_base`/donanım paketi ve `LiftLoad.action` | Gerçek action sunucusu ve emniyet |
-| Güvenlik | `marco_safety` config/launch/supervisor, tüm hareket launch’ları | Tek komut zinciri, obstacle resume, mod matrisi |
+| Güvenlik | `marco_safety` config/launch/supervisor, tüm hareket launch’ları | Tek komut zinciri, obstacle resume, profile-aware IMU ve kontrol devri matrisi |
 | GUI | `/mnt/c/Users/emre/desktop/liftant_v2_bitirme` | Var olan rosbridge/mapping/dashboard temelini kalıcı rota backend’i, lift action, gerçek PLC kaynağı ve zaman damgalı PLC günlüğüyle tamamlama |
 
 Yeni mesaj/servis eklemeden önce mevcut `marco_msgs` sözleşmelerinin genişletilmesi değerlendirilmelidir. Geriye dönük uyumsuz değişiklik varsa GUI, PLC adaptörü ve ROS release’i birlikte sürümlenmelidir.
@@ -876,7 +1069,11 @@ Yeni mesaj/servis eklemeden önce mevcut `marco_msgs` sözleşmelerinin genişle
 | Yük | ≤5 kg | 5 kg’da tam kabul | Kalibre tartım + görev videosu |
 | Docking başarı oranı | Açık oran yok | ≥95% | A/B, boş/yüklü 20’şer deneme |
 | Manuel kilit | Otomatikte hareket yok | 0/100 ihlal | Fiziksel switch + manuel komut enjeksiyonu |
-| q5 | İzinli geçiş | 0 izinsiz/tekrar etkili geçiş | Edge olayı + PLC tx/rx + poz |
+| q5 outbound gate | Her gidiş geçişinde yeni izin | 0 izinsiz/eski izinle geçiş | q5 edge olayı + PLC tx/rx + kapı öncesi/sonrası poz |
+| q6 return gate | Her dönüş geçişinde yeni izin | 0 izinsiz/eski izinle geçiş | q6 edge olayı + PLC tx/rx + kapı öncesi/sonrası poz |
+| Junction turn | Rota geometrisi gerektirdiğinde kontrollü dönüş | Gerekli yaklaşık 90° dönüşlerin %100'ü; düz geçişte 0 gereksiz Spin | Edge heading farkı + Spin action sonucu + odom/AMCL |
+| Reverse docking → Nav2 exit | A/B'de geri docking, çıkışta lane yok | 0 ileri-lane/çift hareket kaynağı; ilk hedef doğru approach node | Motion-source logu + QR/state + route action |
+| IMU kapalı production | IMU tek başına zorunlu değil | `imu:=false` tam görevde 0 IMU-kaynaklı abort | Health/state olayları + odom/TF + görev sonucu |
 
 Tek bir AMCL pozuna dayanarak poz ve rota kabulü yapılmamalıdır; aynı lokalizasyon kaynağı hem kontrol hem “hakem” olursa sistematik hata görünmez. En azından kalibre saha işaretleri/video ölçümü veya bağımsız referansla periyodik çapraz kontrol gerekir.
 
@@ -901,7 +1098,10 @@ Her gece zorunlu regresyon kümesi:
 - Engel dur/devam.
 - QR/çizgi bayatlığı.
 - Dokuz A×B graph validator matrisi.
-- q5 gidiş/dönüş izinleri.
+- q5 outbound ve q6 return izinleri; eski/geç iznin ters yöndeki yeni geçişte reddi.
+- Rota gerektiren D1–D6 junction Spin ve düz D geçişinde gereksiz Spin olmaması.
+- A/B reverse docking → lane STOP → ilgili approach node'a Nav2 çıkışı; EXITING_STATION QR tekrarının etkisizliği.
+- `imu:=false` profilinde 180° dönüş, junction turn ve kısa mission smoke testi.
 - Lift timeout/limit/e-stop.
 - GUI topic sözleşmesi ve PLC tx/rx görünürlüğü.
 - En az bir kısa uçtan uca mok görev; fiziksel kabul günlerinde gerçek görev.
@@ -917,13 +1117,19 @@ Robot ancak tüm zorunlu maddeler “GO” ise yarışma parkuruna çıkar:
 - [ ] E-stop, watchdog, mod anahtarı ve lift emniyeti gerçek donanımda geçti.
 - [ ] 5 kg yük ile kaldırma/taşıma/bırakma kabulü geçti.
 - [ ] Haritalama ve AMCL fiziksel kabulü geçti.
+- [ ] Production araç sözleşmesinde physical wheel separation `0.430 m`, odometry-effective separation `0.433 m`; URDF teker eksenleri fiziksel `±0.215 m` ile tutarlı.
 - [ ] GUI ile 55 dakika içinde sıfırdan saha paketi hazırlanabiliyor.
-- [ ] Dokuz A×B rotası, q5 gidiş/dönüşleri ve yük yönleri validator’dan geçiyor.
+- [ ] Dokuz A×B rotası, q5 outbound/q6 return izinleri, D1–D6 junction bağlantıları, approach QR eşleşmeleri ve yük yönleri validator’dan geçiyor.
 - [ ] Gerçek QR decode + metrik poz + gerçek çizgi/docking çalışıyor.
+- [ ] A/B istasyonlarında yalnız arka kamera ile geri docking; çıkışta lane STOP ve doğru approach node'a Nav2 devri çalışıyor.
+- [ ] Rota gerektiren D1–D6 kavşaklarında kontrollü junction Spin var; düz geçişte gereksiz Spin yok.
+- [ ] Normal route heading politikası terminal node yaw/deadband kaynaklı `FollowPath status=6` üretmiyor.
+- [ ] `imu:=false` production profiliyle 180° dönüş, junction turn, docking ve tam görev kabulü geçti.
 - [ ] A, B ve WAIT toleransları ölçümlü olarak sağlanıyor.
 - [ ] Rota maksimum sapması 10 cm’den küçük.
 - [ ] Engel görülünce duruyor ve kalkınca otomatik devam ediyor.
 - [ ] Gerçek PLC görev/kapı/tamamlanma haberleşmesi geçti.
+- [ ] Gidişte q5 ve dönüşte q6 izni ayrı ayrı sınandı; eski/geç izin başka geçişi yetkilendirmiyor.
 - [ ] Otomatik kipte uzaktan manuel sürüş donanım ve yazılım katmanlarında engelli.
 - [ ] GUI tüm zorunlu bilgileri ve PLC alınan/gönderilen mesajlarını gösteriyor.
 - [ ] İnternetsiz, iki cihazlı ağ provası geçti; MAC bilgileri hazır.
@@ -945,6 +1151,10 @@ Herhangi bir P0 madde NO-GO ise otomatik şarj, görsel iyileştirme veya yeni o
 | 60 dakika kuruluma yetişememe | Orta/Yüksek | Elle dosya düzenleme, validator geç kalması | GUI otomasyonu, hazır rol şablonu, iki farklı saha provası, 55 dk hedef |
 | Güvenlik bypass launch kullanımı | Orta/Çok yüksek | Doğrudan `/cmd_vel` | Üretim allowlist, launch testi, topic yayıncı denetimi |
 | Wi‑Fi/rosbridge kopması | Orta/Yüksek | GUI bayat, PLC gecikmesi | Robot otonomluğu GUI’den bağımsız, reconnect/idempotency, iki cihaz provası |
+| Terminal yaw/motor deadband | Yüksek/Yüksek | Hedef koordinatta çok düşük RPM isteği, robot duruyor, `FollowPath status=6` | Normal node'larda route heading, explicit dönüşleri ayrı Spin action, deadband regresyonu |
+| Yanlış gate yönü veya eski izin | Orta/Çok yüksek | q5/q6 yönü karışıyor, önceki izin yeni geçişi açıyor | Outbound q5/return q6 geçiş kimliği, tek kullanımlık izin, iki yönlü fault injection |
+| Junction-turn başarısızlığı | Orta/Yüksek | Robot D düğümünde ters/çapraz kalıyor veya sonraki segment erken başlıyor | Edge-geometri kararı, FollowPath–STOP–Spin–STOP sırası, abortta sonraki segmente geçmeme |
+| İstasyon çıkışında kontrol kaynağı çakışması | Orta/Çok yüksek | Lane ve Nav2 aynı anda sıfır-dışı hız üretiyor veya QR tekrar dönüş başlatıyor | EXITING_STATION yetkilendirmesi, lane STOP/disarm, motion-source sahipliği testi |
 | Son gün değişikliği regresyonu | Yüksek/Yüksek | Kanıtsız hotfix | 16 Eylül freeze, tam smoke zorunluluğu, geri dönüş release’i |
 | Resmî şartname/teknik cevap değişikliği | Orta/Yüksek | Yeni PDF dosya adı/mail | Günlük sorumlu, sürüm diff’i, gereksinim matrisi güncelleme |
 
@@ -954,7 +1164,11 @@ Kapanan girdiler:
 
 - Finalistlik: doğrulandı; hareket ve kabiliyet videosu geçildi.
 - Flutter projesi: `/mnt/c/Users/emre/desktop/liftant_v2_bitirme` bulundu ve plan kapsamındaki kaynakları incelendi.
-- Etkin teker aralığı: fiziksel kanonik hedef `0.460 m`; firmware düzeltmesi sonrası kabul testi zorunlu.
+- Teker aralığı: gerçek tahrik tekeri eksenleri arası physical/geometric değer `0.430 m`; 360° odometri kalibrasyonundan gelen odometry-effective değer `0.433 m`.
+- Kamera/docking yerleşimi: şerit takibi için lift/arka tarafta tek kamera vardır; A ve B girişleri 180° dönüş sonrası bu kamerayla geri docking, çıkışları lane STOP + Nav2'dir.
+- Saha örneği approach eşleşmeleri: A1/q2, A2/q3, A3/q4, B1/q9, B2/q8, B3/q7; production'da aktif saha paketinden okunacaktır.
+- Kapı yönü: gidişte q5 outbound izin noktası, dönüşte q6 return izin noktasıdır ve her fiziksel geçiş yeni izin gerektirir.
+- IMU politikası: production görev `imu:=false` ile çalışabilmeli; IMU yalnız etkin profilde ek health/yaw doğrulama kaynağıdır.
 - Lift ve limit sensörleri: fiziksel olarak çalışıyor; ROS action/görev entegrasyonu ile yüklü kabul henüz yapılacak.
 - PLC protokolü: henüz takıma verilmedi; Faz 7’nin dış bağımlılığıdır.
 
@@ -962,15 +1176,15 @@ Kalan sorular ilk fazlarda kapanmadan ilgili alt sistem tamamlanmış sayılamaz
 
 1. Final ulaşım, kurulum, saha test rezervasyonu ve robot/PC MAC bildirim ayrıntıları geldi mi?
 2. PLC protokol belgesinin teslim tarihi veya teknik kurul temas noktası belli mi?
-3. Ön/arka kamera modelleri, kullanılacak kamera sayısı, gerçek desteklenen modlar ve QR’ın fiziksel boyutu nedir?
+3. Arka kameranın yarışma sahasında kullanılacak sabit exposure/FPS modu ve QR’ın resmî fiziksel boyutu kesinleşti mi?
 4. QR içeriğinin beklenen şeması ile istasyon eşlemesi açıklandı mı?
 5. Fiziksel manuel/otomatik anahtarın elektriksel doğruluk tablosu nedir; docking/lift için manuel kip politikası nasıl olmalı?
 6. Güncel resmî araç ve palet ölçü çizimi için teknik kuruldan alınmış CAD veya yazılı açıklama var mı?
-7. Kontrollü kapı protokolü ve geçiş algılama koşulu açıklandı mı; izin tek geçişlik mi ve dönüşte yeni izin kesin gerekli mi?
+7. Kontrollü kapının resmî mesaj şeması, endpoint'i, heartbeat/timeout değerleri ve geçişin fiziksel olarak tamamlandığını bildiren koşul açıklandı mı?
 8. Otomatik şarj istasyonunun mekanik/elektrik çizimi yayımlandı mı?
 
 ## 14. “Yarışmaya hazır” tanımı
 
-Proje, yalnız düğümler açıldığı veya simülasyon geçtiği için yarışmaya hazır sayılmaz. Yarışmaya hazır olma; güncel resmî şartnameye göre doğru ölçülerdeki gerçek aracın, internetsiz iki cihazlı yarışma ağı üzerinde, yeni bir sahayı 55 dakika içinde haritalayıp arayüzden geçerli rota paketi oluşturması; PLC’den rastgele A/B görevi alması; gerçek QR/çizgi algısı ile 5 kg yükü tolerans içinde alması; tanımlı rotadan 10 cm’den fazla sapmadan, yükü arkada tutarak ve q5’te her gerekli yönde izin bekleyerek taşıması; engelde çarpmadan durup engel kalkınca devam etmesi; yükü tolerans içinde bırakıp bekleme noktasına dönmesi; tüm zorunlu durum ve iletişimi GUI’de göstermesi; bunu müdahalesiz, 30 dakikanın altında ve üç ardışık koşuda tamamlamasıdır.
+Proje, yalnız düğümler açıldığı veya simülasyon geçtiği için yarışmaya hazır sayılmaz. Yarışmaya hazır olma; güncel resmî şartnameye göre doğru ölçülerdeki gerçek aracın, internetsiz iki cihazlı yarışma ağı üzerinde, yeni bir sahayı 55 dakika içinde haritalayıp arayüzden geçerli rota paketi oluşturması; PLC’den rastgele A/B görevi alması; hedef approach QR'ını aktif saha paketinden doğrulayıp 180° dönmesi; yalnız arka kamera ile geri docking yaparak 5 kg yükü tolerans içinde alması/bırakması; lift sonrasında lane STOP edip önce ilgili approach node'a Nav2 ile çıkması; gerekli D1–D6 kavşaklarında rota geometrisine bağlı junction Spin uygulaması; normal segmentlerde route heading kullanarak terminal-yaw/deadband abort'u üretmemesi; gidişte q5'te, dönüşte q6'da her fiziksel geçiş için yeni izin beklemesi; tanımlı rotadan 10 cm’den fazla sapmaması; engelde çarpmadan durup engel kalkınca devam etmesi; `imu:=false` production profiliyle de çalışabilmesi; WAIT noktasına dönüp görevi tamamlaması; tüm zorunlu durum ve iletişimi GUI’de göstermesi ve bunu müdahalesiz, 30 dakikanın altında üç ardışık koşuda tamamlamasıdır.
 
 Bu tanım sağlanmadan opsiyonel puan özelliği veya yalnızca sunum amaçlı iyileştirme, zorunlu işlerin önüne geçmemelidir.

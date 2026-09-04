@@ -23,6 +23,8 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('simulate_steps', default_value='false'),
         DeclareLaunchArgument('graph_file', default_value=graph),
         DeclareLaunchArgument('require_active_field', default_value='false'),
+        DeclareLaunchArgument('require_safety_supervisor', default_value='true'),
+        DeclareLaunchArgument('require_base_communication', default_value='true'),
         DeclareLaunchArgument('test_only_lift', default_value='false'),
         DeclareLaunchArgument('qr_reader_adapter', default_value='true'),
         Node(package='marco_mission', executable='qr_reader_adapter',
@@ -43,5 +45,9 @@ def generate_launch_description() -> LaunchDescription:
                  'graph_file': LaunchConfiguration('graph_file'),
                  'require_active_field':
                      LaunchConfiguration('require_active_field'),
+                 'require_safety_supervisor':
+                     LaunchConfiguration('require_safety_supervisor'),
+                 'require_base_communication':
+                     LaunchConfiguration('require_base_communication'),
              }]),
     ])

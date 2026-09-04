@@ -14,7 +14,7 @@ from ros_gz_interfaces.msg import Entity
 from ros_gz_interfaces.srv import DeleteEntity, SpawnEntity
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, String
-from std_srvs.srv import SetBool
+from std_srvs.srv import SetBool, Trigger
 from tf2_msgs.msg import TFMessage
 
 
@@ -35,6 +35,7 @@ class Acceptance(Node):
         super().__init__('phase8_acceptance')
         self.declare_parameter('result_path', '/tmp/marco_phase8/headless.json')
         self.declare_parameter('fault_scenario', '')
+        self.declare_parameter('obstacle_hold_s', 5.0)
         self.raw_pub = self.create_publisher(Twist, '/cmd_vel_raw', 10)
         self.manual_pub = self.create_publisher(Twist, '/cmd_vel_manual', 10)
         self.dock_pub = self.create_publisher(Twist, '/cmd_vel_dock', 10)
@@ -44,6 +45,7 @@ class Acceptance(Node):
         self.safe = Twist()
         self.odom = None
         self.state = {}
+        self.navigation_abort_seen = False
         self.samples = []
         self.safe_samples = []
         self.odom_samples = []
@@ -56,10 +58,13 @@ class Acceptance(Node):
         self.create_subscription(TFMessage, '/tf',
                                  lambda _: self.times['tf'].append(time.monotonic()), 30)
         self.create_subscription(String, '/safety/state', self._state_cb, 10)
+        self.create_subscription(
+            Bool, '/safety/navigation_abort', self._navigation_abort_cb, 10)
         self.spawn = self.create_client(SpawnEntity, '/world/marco_test/create')
         self.remove = self.create_client(DeleteEntity, '/world/marco_test/remove')
         self.scan_gate = self.create_client(
             SetBool, '/simulation_scan_gate/set_enabled')
+        self.safety_reset = self.create_client(Trigger, '/safety/reset')
 
     def _cmd_cb(self, msg):
         self.cmd = msg
@@ -81,6 +86,10 @@ class Acceptance(Node):
             self.state = json.loads(msg.data)
         except json.JSONDecodeError:
             pass
+
+    def _navigation_abort_cb(self, msg):
+        if msg.data:
+            self.navigation_abort_seen = True
 
     def spin_until(self, predicate, timeout, publish=None):
         end = time.monotonic() + timeout
@@ -109,6 +118,18 @@ class Acceptance(Node):
             self.dock_pub.publish(self.twist(dock))
         self.estop_pub.publish(Bool(data=estop))
         self.mode_pub.publish(Bool(data=manual_mode))
+
+    def neutral_inputs(self):
+        self.publish_inputs(raw=0.0, manual=0.0, dock=0.0,
+                            estop=False, manual_mode=False)
+
+    def call_safety_reset(self):
+        if not self.safety_reset.wait_for_service(timeout_sec=2.0):
+            return None
+        future = self.safety_reset.call_async(Trigger.Request())
+        if not self.spin_until(future.done, 2.0):
+            return None
+        return future.result()
 
     def pose(self):
         p = self.odom.pose.pose
@@ -143,9 +164,11 @@ class Acceptance(Node):
         future = self.remove.call_async(request)
         return self.spin_until(future.done, 8) and future.result().success
 
-    def stage_obstacle(self, label, command, position, expected_speed):
+    def stage_obstacle(self, label, command, position, expected_speed,
+                       source='raw', manual_mode=False):
         def publish():
-            self.publish_inputs(raw=command)
+            values = {source: command, 'manual_mode': manual_mode}
+            self.publish_inputs(**values)
         self.spin_until(lambda: abs(self.cmd.linear.x) > 0.05, 3, publish)
         before = self.pose()[:2]
         start = time.monotonic()
@@ -166,7 +189,7 @@ class Acceptance(Node):
         removed = self.delete(label) if spawned else False
         resumed = self.spin_until(lambda: abs(self.cmd.linear.x) > 0.05, 4, publish)
         resume_time = time.monotonic()
-        return {
+        result = {
             'spawned': spawned, 'triggered': triggered, 'removed': removed,
             'stopped_or_slowed': stopped,
             'trigger_sec': trigger_time - start,
@@ -175,7 +198,10 @@ class Acceptance(Node):
             'observed_speed_mps': min(observed) if observed else None,
             'continued_same_command': resumed,
             'resume_sec': resume_time - stop_time,
+            'source': source,
         }
+        self.spin_until(lambda: False, 0.7, self.neutral_inputs)
+        return result
 
     def mux_test(self):
         result = {}
@@ -222,18 +248,35 @@ class Acceptance(Node):
             with open(path, 'w', encoding='utf-8') as stream:
                 json.dump(result, stream, indent=2, sort_keys=True)
             return passed
-        if self.get_parameter('fault_scenario').value == 'obstacle_timeout':
-            spawned = self.obstacle('phase8_timeout_obstacle', 0.72)
-            passed = self.spin_until(
-                lambda: ('obstacle_wait_timeout' in
-                         self.state.get('reason', []) and
+        if self.get_parameter('fault_scenario').value in (
+                'obstacle_hold', 'obstacle_timeout'):
+            hold_s = float(self.get_parameter('obstacle_hold_s').value)
+            if hold_s <= 0.0:
+                raise ValueError('obstacle_hold_s pozitif olmali')
+            self.navigation_abort_seen = False
+            spawned = self.obstacle('phase8_hold_obstacle', 0.72)
+            stopped = self.spin_until(
+                lambda: ('obstacle' in self.state.get('reason', []) and
                          abs(self.cmd.linear.x) < 1e-4),
-                12, lambda: self.publish_inputs(raw=0.25))
-            removed = self.delete('phase8_timeout_obstacle') if spawned else False
+                5, lambda: self.publish_inputs(raw=0.25))
+            violation = self.spin_until(
+                lambda: (self.navigation_abort_seen or
+                         'obstacle_wait_timeout' in self.state.get('reason', []) or
+                         abs(self.cmd.linear.x) > 1e-4),
+                hold_s, lambda: self.publish_inputs(raw=0.25))
+            held_without_abort = stopped and not violation
+            removed = self.delete('phase8_hold_obstacle') if spawned else False
+            resumed = self.spin_until(
+                lambda: abs(self.cmd.linear.x) > 0.05,
+                4, lambda: self.publish_inputs(raw=0.25))
+            self.spin_until(lambda: False, 0.7, self.neutral_inputs)
             result = {
-                'passed': bool(spawned and passed and removed),
-                'scenario': 'obstacle_timeout', 'spawned': spawned,
-                'timeout_zero': passed, 'removed': removed,
+                'passed': bool(spawned and held_without_abort and removed and resumed),
+                'scenario': 'obstacle_hold', 'spawned': spawned,
+                'stopped': stopped, 'hold_s': hold_s,
+                'held_without_abort': held_without_abort,
+                'navigation_abort_seen': self.navigation_abort_seen,
+                'removed': removed, 'resumed': resumed,
                 'configured_timeout_s': self.state.get(
                     'obstacle_wait_timeout_s'),
                 'final_twist': {'linear_x': self.cmd.linear.x,
@@ -248,23 +291,39 @@ class Acceptance(Node):
         forward_stop = self.stage_obstacle('phase8_forward_stop', 0.40, 0.72, 0.0)
         reverse_slow = self.stage_obstacle('phase8_reverse_slow', -0.30, -1.68, 0.075)
         reverse_stop = self.stage_obstacle('phase8_reverse_stop', -0.30, -1.30, 0.0)
+        manual_stop = self.stage_obstacle(
+            'phase8_manual_stop', 0.20, 0.72, 0.0,
+            source='manual', manual_mode=True)
+        dock_stop = self.stage_obstacle(
+            'phase8_dock_stop', -0.20, -1.30, 0.0, source='dock')
 
         estop_start = time.monotonic()
         self.spin_until(lambda: abs(self.cmd.linear.x) > 0.05, 2,
                         lambda: self.publish_inputs(raw=0.25))
         asserted = time.monotonic()
         estop_zero = self.spin_until(
-            lambda: abs(self.cmd.linear.x) < 1e-4, 2,
+            lambda: (abs(self.cmd.linear.x) < 1e-4 and
+                     self.state.get('operator_reset_required')), 2,
             lambda: self.publish_inputs(raw=0.25, estop=True))
         estop_stop = time.monotonic()
         no_restart = not self.spin_until(
             lambda: abs(self.cmd.linear.x) > 0.02, 1,
-            lambda: self.publish_inputs(raw=0.0, estop=False))
+            lambda: self.publish_inputs(raw=0.25, estop=False))
+        reset_while_moving = self.call_safety_reset()
+        reset_rejected = bool(
+            reset_while_moving is not None and not reset_while_moving.success)
+        self.spin_until(lambda: False, 0.7, self.neutral_inputs)
+        reset_at_zero = self.call_safety_reset()
+        reset_accepted = bool(
+            reset_at_zero is not None and reset_at_zero.success)
         restarted = self.spin_until(
             lambda: abs(self.cmd.linear.x) > 0.05, 2,
             lambda: self.publish_inputs(raw=0.25, estop=False))
         estop = {'zero_observed': estop_zero, 'stop_sec': estop_stop - asserted,
-                 'no_self_restart': no_restart, 'new_command_restart': restarted,
+                 'no_self_restart': no_restart,
+                 'moving_reset_rejected': reset_rejected,
+                 'zero_reset_accepted': reset_accepted,
+                 'new_command_after_reset': restarted,
                  'duration_sec': time.monotonic() - estop_start}
 
         mux = self.mux_test()
@@ -293,18 +352,21 @@ class Acceptance(Node):
         ownership = {topic: [item.node_name for item in
                              self.get_publishers_info_by_topic(topic)]
                      for topic in ('/cmd_vel_raw', '/cmd_vel_safe', '/cmd_vel')}
-        all_stages = [forward_slow, forward_stop, reverse_slow, reverse_stop]
+        all_stages = [forward_slow, forward_stop, reverse_slow, reverse_stop,
+                      manual_stop, dock_stop]
         passed = (ready and all(item['spawned'] and item['triggered'] and
                                 item['stopped_or_slowed'] and item['removed'] and
                                 item['continued_same_command'] for item in all_stages)
                   and all(item['passed'] for item in mux.values())
-                  and all((estop_zero, no_restart, restarted, input_loss,
+                  and all((estop_zero, no_restart, reset_rejected,
+                           reset_accepted, restarted, input_loss,
                            scan_loss, scan_restored))
                   and abs(self.cmd.linear.x) < 1e-4)
         result = {
             'passed': passed, 'ready': ready,
             'forward': {'slow': forward_slow, 'stop': forward_stop},
             'reverse': {'slow': reverse_slow, 'stop': reverse_stop},
+            'source_guard': {'manual': manual_stop, 'dock': dock_stop},
             'estop': estop, 'mux': mux,
             'negative': {'input_timeout_zero': input_loss,
                          'scan_timeout_zero': scan_loss,

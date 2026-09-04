@@ -47,6 +47,9 @@ marco_base_driver:
     # /cmd_vel susarsa arac durur. STM32 watchdog'u (200 ms) son savunma
     # hatti; bu deger normal isleyisteki ilk hat.
     cmd_vel_timeout: 0.5
+    # Gecerli STM32 odometri/durum cercevesi bu surede gelmezse
+    # /base/communication_ok=false olur ve safety katmani hareketi kilitler.
+    communication_timeout: 0.5
 
     # Her STM32 odometri paketindeki gercek teker hizini, son gonderilen hedef
     # ile birlikte CSV'ye yazar. Terminal cikisi analiz icin 2 Hz ile sinirli.

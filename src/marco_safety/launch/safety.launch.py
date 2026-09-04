@@ -84,6 +84,12 @@ def generate_launch_description() -> LaunchDescription:
                 LaunchConfiguration("tf_timeout_s"), value_type=float),
             "input_timeout_s": ParameterValue(
                 LaunchConfiguration("input_timeout_s"), value_type=float),
+            "base_communication_timeout_s": ParameterValue(
+                LaunchConfiguration("base_communication_timeout_s"),
+                value_type=float),
+            "require_base_communication": ParameterValue(
+                LaunchConfiguration("require_base_communication"),
+                value_type=bool),
             "obstacle_wait_timeout_s": ParameterValue(
                 LaunchConfiguration("obstacle_wait_timeout_s"), value_type=float),
             "obstacle_detection_enabled": obstacle_detection,
@@ -99,7 +105,18 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("scan_timeout_s", default_value="0.5"),
             DeclareLaunchArgument("tf_timeout_s", default_value="0.5"),
             DeclareLaunchArgument("input_timeout_s", default_value="0.5"),
-            DeclareLaunchArgument("obstacle_wait_timeout_s", default_value="15.0"),
+            DeclareLaunchArgument(
+                "base_communication_timeout_s", default_value="0.75"),
+            DeclareLaunchArgument(
+                "require_base_communication", default_value="true"),
+            DeclareLaunchArgument(
+                "obstacle_wait_timeout_s",
+                default_value="0.0",
+                description=(
+                    "0: engel kalkana kadar guvenli bekle; pozitif deger yalniz "
+                    "acikca istenen test profillerinde navigasyonu iptal eder"
+                ),
+            ),
             DeclareLaunchArgument("obstacle_detection", default_value="true"),
             LogInfo(msg=f"collision_monitor: {cm_params}"),
             LogInfo(msg=f"twist_mux: {mux_params}"),
