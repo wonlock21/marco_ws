@@ -11,10 +11,10 @@
 #     --cikti /tmp/marco_rpp_calib.json --yaz-override
 
 FollowPath:
-  desired_linear_vel: 0.35
-  lookahead_dist: 0.50
-  min_lookahead_dist: 0.25
-  max_lookahead_dist: 0.75
+  desired_linear_vel: 0.60
+  lookahead_dist: 0.80
+  min_lookahead_dist: 1.00
+  max_lookahead_dist: 1.50
   approach_velocity_scaling_dist: 0.55
   max_allowed_time_to_collision_up_to_carrot: 1.0
   transform_tolerance: 0.30
