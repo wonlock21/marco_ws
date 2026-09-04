@@ -59,13 +59,17 @@ def _write_demo_nav_params(navigation_share: str) -> str:
     with open(params_file, encoding="utf-8") as stream:
         params = yaml.safe_load(stream)
     follow = params["controller_server"]["ros__parameters"]["FollowPath"]
-    follow["desired_linear_vel"] = 0.18
+    # Fiziksel demo profili: ilk saha degerlerinin iki kati. Degerler genel
+    # Nav2 profilini degistirmeden yalniz kayitli A/B demosuna uygulanir.
+    follow["desired_linear_vel"] = 0.36
     follow["lookahead_dist"] = 0.30
     follow["min_lookahead_dist"] = 0.20
     follow["max_lookahead_dist"] = 0.45
+    follow["min_approach_linear_velocity"] = 0.10
+    follow["rotate_to_heading_angular_vel"] = 0.60
     smoother = params["velocity_smoother"]["ros__parameters"]
-    smoother["max_velocity"] = [0.20, 0.0, 0.40]
-    smoother["min_velocity"] = [-0.15, 0.0, -0.40]
+    smoother["max_velocity"] = [0.40, 0.0, 0.80]
+    smoother["min_velocity"] = [-0.30, 0.0, -0.80]
     with open(params_file, "w", encoding="utf-8") as stream:
         yaml.safe_dump(params, stream, sort_keys=False, allow_unicode=True)
     return params_file

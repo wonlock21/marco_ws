@@ -6,6 +6,7 @@ from nav_msgs.msg import Odometry
 from rclpy.qos import (DurabilityPolicy, QoSCompatibility, QoSProfile,
                        ReliabilityPolicy, qos_check_compatible)
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Bool
 
 from marco_msgs.msg import QrDetection
 
@@ -84,6 +85,23 @@ def test_qr_gui_telemetry_keeps_full_detection_contract():
         assert node._last_qr_confidence == 0.91
         assert node._last_qr_camera == 'front'
         assert node._last_qr_seen > 0.0
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_production_mission_requires_fresh_stm32_communication():
+    """A task cannot start from a missing, false or stale UART health state."""
+    rclpy.init()
+    node = MissionManager()
+    try:
+        assert not node._base_communication_healthy()
+
+        node._on_base_communication(Bool(data=True))
+        assert node._base_communication_healthy()
+
+        node._base_communication_seen -= node._base_communication_timeout + 0.1
+        assert not node._base_communication_healthy()
     finally:
         node.destroy_node()
         rclpy.shutdown()

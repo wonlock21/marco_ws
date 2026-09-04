@@ -5,6 +5,7 @@ Sorumluluklari:
   UART      -> encoder tick   -> odometri            -> /odom, /joint_states
   UART      -> imu_yaw        -> IMU yaw              -> /imu/data_raw
   UART      -> durum bayrak   -> /base/estop, /base/manual_mode, /base/battery
+  UART      -> alis bayatligi -> /base/communication_ok
 
 Bilincli olarak DAHIL EDILMEYENLER:
   - odom -> base_footprint TF yayini varsayilan olarak KAPALIDIR.
@@ -19,6 +20,7 @@ from __future__ import annotations
 import csv
 import math
 import struct
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -48,8 +50,8 @@ HEARTBEAT_PERIOD = 0.1
 class BaseDriver(Node):
     """Alt seviye kontrolcu koprusu."""
 
-    def __init__(self) -> None:
-        super().__init__("marco_base_driver")
+    def __init__(self, **kwargs) -> None:
+        super().__init__("marco_base_driver", **kwargs)
 
         self._declare_parameters()
 
@@ -62,6 +64,11 @@ class BaseDriver(Node):
         if not math.isfinite(self.command_rpm_scale) or self.command_rpm_scale <= 0.0:
             raise ValueError("command_rpm_scale sonlu ve 0'dan buyuk olmali")
         self.cmd_timeout = self.get_parameter("cmd_vel_timeout").value
+        self.communication_timeout = float(
+            self.get_parameter("communication_timeout").value
+        )
+        if self.communication_timeout <= 0.0:
+            raise ValueError("communication_timeout sifirdan buyuk olmali")
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
         self.publish_tf = self.get_parameter("publish_tf").value
@@ -88,6 +95,8 @@ class BaseDriver(Node):
         self._last_heartbeat = 0.0
         self._last_wheel_log_time = 0.0
         self._status: p.StatusFrame | None = None
+        self._last_valid_frame_wall: float | None = None
+        self._communication_ok = False
         self._odom_frames_received = 0
         self._odom_len_warned = False
         self._imu_previous: tuple[int, float, int] | None = None
@@ -102,6 +111,9 @@ class BaseDriver(Node):
         self._joint_pub = self.create_publisher(JointState, "joint_states", 10)
         self._estop_pub = self.create_publisher(Bool, "base/estop", 10)
         self._manual_pub = self.create_publisher(Bool, "base/manual_mode", 10)
+        self._communication_pub = self.create_publisher(
+            Bool, "base/communication_ok", 10
+        )
         self._battery_pub = self.create_publisher(BatteryState, "base/battery", qos)
         self._imu_pub = self.create_publisher(Imu, "imu/data_raw", qos)
 
@@ -123,6 +135,7 @@ class BaseDriver(Node):
         read_rate = self.get_parameter("read_rate").value
         self.create_timer(1.0 / command_rate, self._send_command)
         self.create_timer(1.0 / read_rate, self._read_transport)
+        self.create_timer(0.1, self._publish_communication_health)
 
         # Acilis dizisi (protokol §6): once varsa kilitli hatayi temizle.
         self._transport.write(p.encode_safety(p.SafetyCommand.CLEAR_FAULT))
@@ -163,6 +176,7 @@ class BaseDriver(Node):
         self.declare_parameter("command_rate", 50.0)
         self.declare_parameter("read_rate", 200.0)
         self.declare_parameter("cmd_vel_timeout", 0.5)
+        self.declare_parameter("communication_timeout", 0.5)
 
         # STM32 encoder geri bildirimini hedef komutla birlikte kalici kaydet.
         self.declare_parameter("wheel_measurement_log_enabled", True)
@@ -301,20 +315,27 @@ class BaseDriver(Node):
             wheel_speed_to_rpm(right, self.wheel_radius) * self.command_rpm_scale
         )
 
-        self._transport.write(
-            p.encode_wheel_rpm(
-                left_rpm=left_rpm,
-                right_rpm=right_rpm,
-                enabled=not blocked,
+        try:
+            self._transport.write(
+                p.encode_wheel_rpm(
+                    left_rpm=left_rpm,
+                    right_rpm=right_rpm,
+                    enabled=not blocked,
+                )
             )
-        )
+        except OSError as exc:
+            self._mark_communication_lost(f"seri port yazma hatasi: {exc}")
+            return
         self._last_sent_target_rpm = (left_rpm, right_rpm)
         self._last_command_enabled = not blocked
 
         now = self._now_seconds()
         if now - self._last_heartbeat >= HEARTBEAT_PERIOD:
             self._last_heartbeat = now
-            self._transport.write(p.encode_heartbeat())
+            try:
+                self._transport.write(p.encode_heartbeat())
+            except OSError as exc:
+                self._mark_communication_lost(f"heartbeat yazma hatasi: {exc}")
 
     # ------------------------------------------------------------------ okuma yolu
 
@@ -322,7 +343,7 @@ class BaseDriver(Node):
         try:
             data = self._transport.read()
         except OSError as exc:
-            self.get_logger().error(f"seri port okuma hatasi: {exc}")
+            self._mark_communication_lost(f"seri port okuma hatasi: {exc}")
             return
 
         if not data:
@@ -346,8 +367,10 @@ class BaseDriver(Node):
                             "Odometri alinir fakat bu pakette IMU kullanilamaz."
                         )
                     self._on_odometry(p.decode_odometry(payload))
+                    self._last_valid_frame_wall = time.monotonic()
                 elif msg_id is p.MsgId.STATE_STATUS:
                     self._on_status(p.decode_status(payload))
+                    self._last_valid_frame_wall = time.monotonic()
             except (struct.error, ValueError) as exc:
                 self.get_logger().warn(
                     f"protokol uyumsuzlugu msg=0x{int(msg_id):02X} "
@@ -356,6 +379,25 @@ class BaseDriver(Node):
                     f"status={p.STATUS_PAYLOAD_LEN}): {exc} | "
                     f"payload={payload[:32].hex()}"
                 )
+
+    def _mark_communication_lost(self, message: str) -> None:
+        if self._communication_ok:
+            self.get_logger().error(message)
+        self._communication_ok = False
+
+    def _publish_communication_health(self) -> None:
+        now = time.monotonic()
+        healthy = (
+            self._last_valid_frame_wall is not None
+            and now - self._last_valid_frame_wall <= self.communication_timeout
+        )
+        if healthy != self._communication_ok:
+            self._communication_ok = healthy
+            if healthy:
+                self.get_logger().info("STM32/UART iletisimi saglikli")
+            else:
+                self.get_logger().error("STM32/UART verisi bayat veya kayip")
+        self._communication_pub.publish(Bool(data=healthy))
 
     def _on_odometry(self, frame: p.OdometryFrame) -> None:
         self._record_wheel_measurement(frame)

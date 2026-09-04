@@ -79,6 +79,9 @@ class MissionManager(Node):
             ('motion_stop_settle_s', 0.4),
             ('motion_stop_linear_tolerance', 0.01),
             ('motion_stop_angular_tolerance', 0.03),
+            ('require_safety_supervisor', True),
+            ('require_base_communication', True),
+            ('base_communication_timeout_s', 1.0),
             ('require_active_field', False),
             ('status_rate_hz', 5.0),
         ):
@@ -108,6 +111,12 @@ class MissionManager(Node):
             self.get_parameter('route_constraints_timeout_s').value)
         self._require_active_field = bool(
             self.get_parameter('require_active_field').value)
+        self._require_safety_supervisor = bool(
+            self.get_parameter('require_safety_supervisor').value)
+        self._require_base_communication = bool(
+            self.get_parameter('require_base_communication').value)
+        self._base_communication_timeout = float(
+            self.get_parameter('base_communication_timeout_s').value)
         self._graph_file = os.path.realpath(
             str(self.get_parameter('graph_file').value))
         self._nodes = self._load_graph(self._graph_file)
@@ -144,6 +153,8 @@ class MissionManager(Node):
         self._status_detail = 'goreve hazir'
         self._current_node = self._home_node
         self._gate_ok = self._estop = self._manual = self._obstacle = False
+        self._base_communication_ok = False
+        self._base_communication_seen = 0.0
         self._plc_connected = False
         self._plc_seen = 0.0
         self._loaded = False
@@ -196,6 +207,9 @@ class MissionManager(Node):
                                  callback_group=self._cb)
         self.create_subscription(Bool, '/base/manual_mode', self._on_manual, 10,
                                  callback_group=self._cb)
+        self.create_subscription(
+            Bool, '/base/communication_ok', self._on_base_communication, 10,
+            callback_group=self._cb)
         self.create_subscription(Bool, '/safety/obstacle_detected',
                                  lambda m: setattr(self, '_obstacle', bool(m.data)), 10,
                                  callback_group=self._cb)
@@ -236,6 +250,8 @@ class MissionManager(Node):
                                      self, '_route_speed_limit',
                                      float(m.speed_limit)), 10,
                                  callback_group=self._cb)
+        self._safety_reset = self.create_client(
+            Trigger, '/safety/reset', callback_group=self._cb)
         self.create_subscription(QrDetection, '/qr/detection', self._on_qr, 10,
                                  callback_group=self._cb)
         self.create_subscription(BatteryState, '/base/battery', self._on_battery,
@@ -736,6 +752,23 @@ class MissionManager(Node):
             self._status_detail = 'e-stop aktif'
             self._request_abort('e-stop aktif', latch=True)
 
+    def _on_base_communication(self, msg: Bool) -> None:
+        self._base_communication_ok = bool(msg.data)
+        self._base_communication_seen = time.monotonic()
+        if not msg.data and self._busy:
+            self._request_abort('STM32/UART iletisimi kayip', latch=True)
+
+    def _base_communication_healthy(self) -> bool:
+        return (
+            not self._require_base_communication
+            or (
+                self._base_communication_ok
+                and self._base_communication_seen > 0.0
+                and time.monotonic() - self._base_communication_seen
+                <= self._base_communication_timeout
+            )
+        )
+
     def _on_safety_abort(self, msg: Bool) -> None:
         if msg.data:
             self._request_abort('safety abort', latch=True)
@@ -878,6 +911,8 @@ class MissionManager(Node):
                 return 'e-stop/safety kilidi aktif; operator reset gerekli'
             if self._obstacle:
                 return 'engel algilandi; gorev kabul edilmedi'
+            if not self._base_communication_healthy():
+                return 'STM32/UART iletisimi hazir degil'
             if not task_id:
                 return 'task_id bos olamaz'
             if task_id in self._known_task_ids:
@@ -920,6 +955,10 @@ class MissionManager(Node):
                         return res
                     if self._obstacle:
                         res.accepted, res.message = False, 'engel algilandi'
+                        return res
+                    if not self._base_communication_healthy():
+                        res.accepted = False
+                        res.message = 'STM32/UART iletisimi hazir degil'
                         return res
                     health = self._localization_health()
                     if not health.valid:
@@ -1002,13 +1041,29 @@ class MissionManager(Node):
         with self._lock:
             if self._busy or self._estop:
                 res.accepted, res.message = False, 'gorev/e-stop halen aktif'
-            else:
-                self._latched_abort = False
-                self._abort_reason = ''
-                self._state = RobotStatus.STATE_IDLE
-                self._status_detail = 'goreve hazir'
-                res.accepted, res.message = True, 'operator safety reset kabul edildi'
-                self._event('safety_reset')
+                return res
+        if self._require_safety_supervisor:
+            try:
+                reply = self._service_call(
+                    self._safety_reset, Trigger.Request(), 2.0,
+                    'safety supervisor reset')
+            except MissionAbort as error:
+                res.accepted, res.message = False, str(error)
+                return res
+            if not reply.success:
+                res.accepted = False
+                res.message = f'safety reset reddedildi: {reply.message}'
+                return res
+        with self._lock:
+            if self._busy or self._estop:
+                res.accepted, res.message = False, 'gorev/e-stop halen aktif'
+                return res
+            self._latched_abort = False
+            self._abort_reason = ''
+            self._state = RobotStatus.STATE_IDLE
+            self._status_detail = 'goreve hazir'
+            res.accepted, res.message = True, 'operator safety reset kabul edildi'
+            self._event('safety_reset')
         return res
 
     def _on_emergency_stop(self, _req: Trigger.Request,
@@ -1037,6 +1092,8 @@ class MissionManager(Node):
     def _check_abort(self) -> None:
         if self._abort_reason:
             raise MissionAbort(self._abort_reason)
+        if not self._base_communication_healthy():
+            raise MissionAbort('STM32/UART iletisimi bayat/kayip')
         if self._source in ('plc', 'mock_plc') and self._plc_seen:
             if time.monotonic() - self._plc_seen > self._plc_freshness:
                 raise MissionAbort('PLC heartbeat timeout')

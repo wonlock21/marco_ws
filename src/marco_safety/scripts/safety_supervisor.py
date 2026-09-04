@@ -12,6 +12,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, String
+from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 
 
@@ -21,13 +22,18 @@ ZERO_EPS = 1.0e-4
 class SafetySupervisor(Node):
     """Publish measured obstacle/fault state and force an explicit zero on faults."""
 
-    def __init__(self):
-        super().__init__('safety_supervisor')
+    def __init__(self, **kwargs):
+        super().__init__('safety_supervisor', **kwargs)
         self.declare_parameter('base_frame', 'base_footprint')
         self.declare_parameter('scan_timeout_s', 0.5)
         self.declare_parameter('tf_timeout_s', 0.5)
         self.declare_parameter('input_timeout_s', 0.5)
-        self.declare_parameter('obstacle_wait_timeout_s', 15.0)
+        self.declare_parameter('base_communication_timeout_s', 0.75)
+        self.declare_parameter('require_base_communication', True)
+        # Zero disables automatic cancellation. Production policy is to hold a
+        # safe zero for as long as the obstacle exists and resume only after it
+        # clears; a positive value is retained solely for explicit test profiles.
+        self.declare_parameter('obstacle_wait_timeout_s', 0.0)
         self.declare_parameter('stop_min_points', 2)
         self.declare_parameter('slow_min_points', 3)
         self.declare_parameter('obstacle_detection_enabled', True)
@@ -35,8 +41,17 @@ class SafetySupervisor(Node):
         self._scan_timeout = float(self.get_parameter('scan_timeout_s').value)
         self._tf_timeout = float(self.get_parameter('tf_timeout_s').value)
         self._input_timeout = float(self.get_parameter('input_timeout_s').value)
+        self._base_communication_timeout = float(
+            self.get_parameter('base_communication_timeout_s').value)
+        if self._base_communication_timeout <= 0.0:
+            raise ValueError(
+                'base_communication_timeout_s sifirdan buyuk olmali')
+        self._require_base_communication = bool(
+            self.get_parameter('require_base_communication').value)
         self._wait_timeout = float(
             self.get_parameter('obstacle_wait_timeout_s').value)
+        if self._wait_timeout < 0.0:
+            raise ValueError('obstacle_wait_timeout_s sifir veya pozitif olmali')
         self._stop_n = int(self.get_parameter('stop_min_points').value)
         self._slow_n = int(self.get_parameter('slow_min_points').value)
         self._obstacle_detection_enabled = bool(
@@ -50,12 +65,15 @@ class SafetySupervisor(Node):
         self._points = []
         self._estop = False
         self._manual_mode = False
+        self._base_communication_ok = False
+        self._base_communication_wall = None
         self._last_inputs = {'nav': None, 'manual': None, 'dock': None}
-        self._post_estop_command_required = False
-        self._estop_clear_wall = 0.0
+        self._last_input_moving = {'nav': False, 'manual': False, 'dock': False}
+        self._operator_reset_required = False
         self._stop_since = None
         self._obstacle_timed_out = False
         self._cancel_sent = False
+        self._current_reasons = []
         self._last_reason = ''
 
         self._guard_pub = self.create_publisher(Twist, '/cmd_vel_safety_guard', 10)
@@ -68,11 +86,14 @@ class SafetySupervisor(Node):
         self.create_subscription(Bool, '/base/estop', self._on_estop, 10)
         self.create_subscription(Bool, '/base/manual_mode', self._on_manual_mode, 10)
         self.create_subscription(
+            Bool, '/base/communication_ok', self._on_base_communication, 10)
+        self.create_subscription(
             Twist, '/cmd_vel_safe', lambda msg: self._on_input('nav', msg), 10)
         self.create_subscription(
             Twist, '/cmd_vel_manual', lambda msg: self._on_input('manual', msg), 10)
         self.create_subscription(
             Twist, '/cmd_vel_dock', lambda msg: self._on_input('dock', msg), 10)
+        self.create_service(Trigger, '/safety/reset', self._on_reset)
 
         self._cancel_clients = [self.create_client(
             CancelGoal, name + '/_action/cancel_goal') for name in (
@@ -86,21 +107,59 @@ class SafetySupervisor(Node):
                 abs(msg.angular.z) > ZERO_EPS)
 
     def _on_input(self, name, msg):
-        now = time.monotonic()
-        self._last_inputs[name] = now
-        if (self._post_estop_command_required and now > self._estop_clear_wall and
-                self._moving(msg)):
-            self._post_estop_command_required = False
+        self._last_inputs[name] = time.monotonic()
+        self._last_input_moving[name] = self._moving(msg)
 
     def _on_estop(self, msg):
         active = bool(msg.data)
-        if self._estop and not active:
-            self._post_estop_command_required = True
-            self._estop_clear_wall = time.monotonic()
+        if active and not self._estop:
+            self._operator_reset_required = True
+            self._cancel_navigation()
+            self._abort_pub.publish(Bool(data=True))
         self._estop = active
+
+    def _fresh_moving_inputs(self, now):
+        return [
+            name for name, stamp in self._last_inputs.items()
+            if stamp is not None
+            and now - stamp <= self._input_timeout
+            and self._last_input_moving[name]
+        ]
+
+    def _on_reset(self, _request, response):
+        """Clear the post-E-stop latch only after an explicit, safe reset."""
+        now = time.monotonic()
+        if self._estop:
+            response.success = False
+            response.message = 'e-stop halen aktif'
+            return response
+        moving = self._fresh_moving_inputs(now)
+        if moving:
+            response.success = False
+            response.message = 'hareket komutu aktif: ' + ','.join(moving)
+            return response
+        blocking = [
+            reason for reason in self._current_reasons
+            if reason not in (
+                'operator_reset_required', 'nav_input_timeout',
+                'manual_input_timeout', 'dock_input_timeout')
+        ]
+        if blocking:
+            response.success = False
+            response.message = 'guvenlik arizasi aktif: ' + ','.join(blocking)
+            return response
+        self._operator_reset_required = False
+        self._abort_pub.publish(Bool(data=False))
+        response.success = True
+        response.message = 'operator safety reset kabul edildi'
+        return response
 
     def _on_manual_mode(self, msg):
         self._manual_mode = bool(msg.data)
+
+    def _on_base_communication(self, msg):
+        self._base_communication_ok = bool(msg.data)
+        self._base_communication_wall = time.monotonic()
 
     def _on_scan(self, msg):
         now = time.monotonic()
@@ -186,8 +245,17 @@ class SafetySupervisor(Node):
             reasons.append('tf_missing_or_stale')
         if self._estop:
             reasons.append('estop')
-        if self._post_estop_command_required:
-            reasons.append('new_command_required')
+        if self._operator_reset_required:
+            reasons.append('operator_reset_required')
+        base_communication_fresh = (
+            self._base_communication_wall is not None
+            and now - self._base_communication_wall
+            <= self._base_communication_timeout)
+        if self._require_base_communication:
+            if not base_communication_fresh:
+                reasons.append('base_communication_timeout')
+            elif not self._base_communication_ok:
+                reasons.append('base_communication_lost')
 
         input_fresh, selected = self._selected_input_fresh(now)
         if not input_fresh:
@@ -196,6 +264,9 @@ class SafetySupervisor(Node):
         if stop:
             if self._stop_since is None:
                 self._stop_since = now
+            # Collision Monitor protects the Nav2 branch. This independent,
+            # highest-priority guard also blocks manual and docking commands.
+            reasons.append('obstacle')
             if self._wait_timeout > 0.0 and now - self._stop_since >= self._wait_timeout:
                 self._obstacle_timed_out = True
                 reasons.append('obstacle_wait_timeout')
@@ -208,6 +279,7 @@ class SafetySupervisor(Node):
             self._abort_pub.publish(Bool(data=True))
             self._cancel_sent = True
 
+        self._current_reasons = list(reasons)
         guard = bool(reasons)
         if guard:
             self._guard_pub.publish(Twist())
@@ -218,6 +290,14 @@ class SafetySupervisor(Node):
             'scan_fresh': scan_fresh, 'tf_fresh': tf_fresh,
             'selected_input': selected, 'input_fresh': input_fresh,
             'estop': self._estop, 'guard_zero': guard,
+            'base_communication_required': self._require_base_communication,
+            'base_communication_fresh': base_communication_fresh,
+            'base_communication_ok': self._base_communication_ok,
+            'operator_reset_required': self._operator_reset_required,
+            'waiting_for_obstacle_clear': stop,
+            'obstacle_wait_s': (
+                max(0.0, now - self._stop_since)
+                if self._stop_since is not None else 0.0),
             'reason': reasons, 'obstacle_wait_timeout_s': self._wait_timeout,
         }
         self._state_pub.publish(String(data=json.dumps(state, sort_keys=True)))

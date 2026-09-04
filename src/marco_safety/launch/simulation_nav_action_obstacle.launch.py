@@ -5,8 +5,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -31,7 +32,8 @@ def generate_launch_description():
             safety_share, 'launch', 'safety.launch.py')),
         launch_arguments={
             'use_sim_time': 'true', 'scan_topic': '/scan',
-            'obstacle_wait_timeout_s': '30.0',
+            'require_base_communication': 'false',
+            'obstacle_wait_timeout_s': '0.0',
         }.items())
     acceptance = Node(
         package='marco_safety',
@@ -39,10 +41,15 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': True,
-            'result_path': '/tmp/marco_phase8/nav_action_obstacle.json',
+            'result_path': LaunchConfiguration('result_path'),
             'route_bt': route_bt,
+            'obstacle_hold_s': LaunchConfiguration('obstacle_hold_s'),
         }])
     return LaunchDescription([
+        DeclareLaunchArgument('obstacle_hold_s', default_value='5.0'),
+        DeclareLaunchArgument(
+            'result_path',
+            default_value='/tmp/marco_phase8/nav_action_obstacle.json'),
         route_stack, safety,
         TimerAction(period=20.0, actions=[acceptance]),
     ])

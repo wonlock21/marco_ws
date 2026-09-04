@@ -43,6 +43,7 @@ class Acceptance(Node):
         self.declare_parameter(
             'result_path', '/tmp/marco_phase8/nav_action_obstacle.json')
         self.declare_parameter('route_bt', '')
+        self.declare_parameter('obstacle_hold_s', 5.0)
         self.nav = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.spawn = self.create_client(SpawnEntity, '/world/marco_test/create')
         self.remove = self.create_client(DeleteEntity, '/world/marco_test/remove')
@@ -184,7 +185,8 @@ class Acceptance(Node):
             lambda: self.collision_zero_seen, 20))
         stop_time = time.monotonic()
         goal_pending = bool(result_future and not result_future.done())
-        held = self.spin_until(lambda: False, 3.0) is False
+        hold_s = float(self.get_parameter('obstacle_hold_s').value)
+        held = self.spin_until(lambda: False, hold_s) is False
         pending_after_hold = bool(result_future and not result_future.done())
         removed = self.remove_obstacle() if spawned else False
         remove_time = time.monotonic()
@@ -223,7 +225,7 @@ class Acceptance(Node):
                 'collision_monitor_zero': stopped,
                 'raw_motion_before_obstacle': raw_motion_before_obstacle,
                 'obstacle_state_and_safe_output_zero': stopped,
-                'hold_s': 3.0,
+                'hold_s': hold_s,
                 'stop_detection_s': stop_time - spawn_time,
                 'resumed': resumed,
                 'resume_s': resume_time - remove_time,

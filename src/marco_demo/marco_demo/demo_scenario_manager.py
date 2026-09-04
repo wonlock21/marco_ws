@@ -20,7 +20,7 @@ from lifecycle_msgs.msg import State
 from lifecycle_msgs.srv import GetState
 from marco_msgs.msg import DemoStatus, LocalizationStatus
 from marco_msgs.srv import StartDemoScenario
-from nav2_msgs.action import ComputeRoute, FollowPath
+from nav2_msgs.action import ComputeRoute, FollowPath, Spin
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
@@ -42,6 +42,61 @@ class DemoAbort(RuntimeError):
 
 def _same_position(first: Pose2D, second: Pose2D, tolerance: float = 0.02) -> bool:
     return math.hypot(first.x - second.x, first.y - second.y) <= tolerance
+
+
+def _last_path_segment_heading(path, tolerance: float = 1e-6) -> float:
+    """Path'in sondaki sonlu uzunluga sahip segmentinin geometrik yonu."""
+    for index in range(len(path.poses) - 1, 0, -1):
+        start = path.poses[index - 1].pose.position
+        end = path.poses[index].pose.position
+        delta_x = end.x - start.x
+        delta_y = end.y - start.y
+        if math.hypot(delta_x, delta_y) > tolerance:
+            return math.atan2(delta_y, delta_x)
+    raise DemoAbort("Rota yolunda yon hesaplanabilecek bir segment yok")
+
+
+def _first_distinct_point_heading(
+    origin: Pose2D,
+    points: list[Pose2D],
+    tolerance: float = 0.02,
+) -> float:
+    """Baslangictan sonraki ilk farkli noktaya giden geometrik yon."""
+    for point in points:
+        delta_x = point.x - origin.x
+        delta_y = point.y - origin.y
+        if math.hypot(delta_x, delta_y) > tolerance:
+            return math.atan2(delta_y, delta_x)
+    raise DemoAbort("B cikis yonu icin A'dan farkli bir nokta yok")
+
+
+def _angle_error(target: float, current: float) -> float:
+    """Iki yaw arasindaki en kisa isaretli farki [-pi, pi] araliginda ver."""
+    return math.atan2(
+        math.sin(target - current),
+        math.cos(target - current),
+    )
+
+
+def _navigation_only_abort_is_acceptable(
+    *,
+    target_x: float,
+    target_y: float,
+    target_yaw: float,
+    robot_x: float,
+    robot_y: float,
+    robot_yaw: float,
+    position_tolerance: float,
+    yaw_tolerance: float,
+) -> tuple[bool, float, float]:
+    """Yalniz Nav2 testindeki kucuk terminal duzeltme abort'unu sinirla."""
+    position_error = math.hypot(target_x - robot_x, target_y - robot_y)
+    yaw_error = abs(_angle_error(target_yaw, robot_yaw))
+    accepted = (
+        position_error <= position_tolerance * 1.5
+        and yaw_error <= yaw_tolerance
+    )
+    return accepted, position_error, yaw_error
 
 
 def _build_route_graph(
@@ -106,7 +161,7 @@ def _build_route_graph(
                     "startid": directed_start,
                     "endid": directed_end,
                     "cost": 1.0,
-                    "metadata": {"abs_speed_limit": 0.18},
+                    "metadata": {"abs_speed_limit": 0.36},
                 },
                 "geometry": {
                     "type": "MultiLineString",
@@ -135,6 +190,16 @@ class DemoScenarioManager(Node):
         self.declare_parameter("lane_phase_timeout", 120.0)
         self.declare_parameter("handoff_delay", 1.2)
         self.declare_parameter("position_tolerance", 0.10)
+        # Yalniz navigasyon demosunda hedef koordinata varildigi halde cok
+        # kucuk son yaw duzeltmesi motor esiginde kalip FollowPath ABORTED
+        # olursa kabul edilebilecek azami yon farki (10 derece).
+        self.declare_parameter(
+            "navigation_only_abort_yaw_tolerance", math.radians(10.0)
+        )
+        self.declare_parameter(
+            "navigation_only_alignment_yaw_tolerance", math.radians(10.0)
+        )
+        self.declare_parameter("navigation_only_alignment_timeout", 30.0)
         self.declare_parameter("obstacle_clear_delay", 0.5)
         self.declare_parameter("obstacle_detection_enabled", True)
         # Varsayilan demo yalnizca kayitli rota grafi uzerinden Nav2 testi
@@ -230,6 +295,12 @@ class DemoScenarioManager(Node):
             self,
             FollowPath,
             "/follow_path",
+            callback_group=self._callbacks,
+        )
+        self._spin = ActionClient(
+            self,
+            Spin,
+            "/spin",
             callback_group=self._callbacks,
         )
         # Action endpoint'i lifecycle CONFIGURING asamasinda gorunebilir ve bu
@@ -832,7 +903,14 @@ class DemoScenarioManager(Node):
     def _run_action(self, client, goal, label: str) -> int:
         return self._run_action_wrapped(client, goal, label).status
 
-    def _move_nav2_route(self, target_name: str, point: Pose2D) -> None:
+    def _move_nav2_route(
+        self,
+        target_name: str,
+        point: Pose2D,
+        *,
+        use_path_heading: bool = False,
+        start_name: str | None = None,
+    ) -> None:
         self._wait_obstacle_clear()
         goal_id = self._route_goal_ids.get(target_name)
         if goal_id is None:
@@ -840,7 +918,16 @@ class DemoScenarioManager(Node):
 
         route_goal = ComputeRoute.Goal()
         route_goal.goal_id = int(goal_id)
-        route_goal.use_start = False
+        if start_name is None:
+            route_goal.use_start = False
+        else:
+            start_id = self._route_goal_ids.get(start_name)
+            if start_id is None:
+                raise DemoAbort(
+                    f"{start_name} rota baslangici graf icinde yok"
+                )
+            route_goal.start_id = int(start_id)
+            route_goal.use_start = True
         route_goal.use_poses = False
         route_result = self._run_action_wrapped(
             self._compute_route,
@@ -859,10 +946,15 @@ class DemoScenarioManager(Node):
         path.header.frame_id = "map"
         for pose in path.poses:
             pose.header.frame_id = "map"
+        final_heading = (
+            _last_path_segment_heading(path)
+            if use_path_heading
+            else point.theta
+        )
         path.poses[-1].pose.orientation.x = 0.0
         path.poses[-1].pose.orientation.y = 0.0
-        path.poses[-1].pose.orientation.z = math.sin(point.theta / 2.0)
-        path.poses[-1].pose.orientation.w = math.cos(point.theta / 2.0)
+        path.poses[-1].pose.orientation.z = math.sin(final_heading / 2.0)
+        path.poses[-1].pose.orientation.w = math.cos(final_heading / 2.0)
 
         node_count = len(route_result.result.route.nodes)
         edge_count = len(route_result.result.route.edges)
@@ -882,6 +974,43 @@ class DemoScenarioManager(Node):
             f"{target_name} rota takibi",
         )
         if status != GoalStatus.STATUS_SUCCEEDED:
+            if (
+                use_path_heading
+                and status == GoalStatus.STATUS_ABORTED
+            ):
+                x, y, yaw = self._lookup_map_pose()
+                tolerance = float(
+                    self.get_parameter("position_tolerance").value
+                )
+                yaw_tolerance = float(self.get_parameter(
+                    "navigation_only_abort_yaw_tolerance"
+                ).value)
+                accepted, position_error, yaw_error = (
+                    _navigation_only_abort_is_acceptable(
+                        target_x=point.x,
+                        target_y=point.y,
+                        target_yaw=final_heading,
+                        robot_x=x,
+                        robot_y=y,
+                        robot_yaw=yaw,
+                        position_tolerance=tolerance,
+                        yaw_tolerance=yaw_tolerance,
+                    )
+                )
+                if accepted:
+                    self._set_state(
+                        self._state,
+                        f"{target_name} koordinatina ulasildi; kucuk son yon "
+                        f"duzeltmesi kabul edildi (konum={position_error:.3f} "
+                        f"m, yon={math.degrees(yaw_error):.1f} derece)",
+                        target_name,
+                    )
+                    return
+                raise DemoAbort(
+                    f"{target_name} rotasi takip edilemedi; action status="
+                    f"{status}, konum hatasi={position_error:.3f} m, yon "
+                    f"hatasi={math.degrees(yaw_error):.1f} derece"
+                )
             raise DemoAbort(
                 f"{target_name} rotasi takip edilemedi; action status={status}"
             )
@@ -942,6 +1071,57 @@ class DemoScenarioManager(Node):
             raise DemoAbort("compute_route action sunucusu hazir olmadi")
         if not self._follow_path.wait_for_server(timeout_sec=startup_timeout):
             raise DemoAbort("follow_path action sunucusu hazir olmadi")
+        if not self._spin.wait_for_server(timeout_sec=startup_timeout):
+            raise DemoAbort("spin action sunucusu hazir olmadi")
+
+    def _align_navigation_only_for_b(self) -> None:
+        """A'dan sonra ilk B segmentine don; RPP'nin geri secmesini onle."""
+        target_heading = _first_distinct_point_heading(
+            self._point_a,
+            [*self._route_b, self._point_b],
+        )
+        _x, _y, current_yaw = self._lookup_map_pose()
+        relative_yaw = _angle_error(target_heading, current_yaw)
+        yaw_tolerance = float(self.get_parameter(
+            "navigation_only_alignment_yaw_tolerance"
+        ).value)
+        if abs(relative_yaw) <= yaw_tolerance:
+            return
+
+        self._set_state(
+            DemoStatus.STATE_NAVIGATING_B,
+            "A tamamlandi; B rotasinin ilk segmentine donuluyor "
+            f"({math.degrees(relative_yaw):+.1f} derece)",
+            "B",
+        )
+        spin_timeout = max(1.0, float(self.get_parameter(
+            "navigation_only_alignment_timeout"
+        ).value))
+        spin_goal = Spin.Goal()
+        spin_goal.target_yaw = float(relative_yaw)
+        spin_goal.time_allowance.sec = int(spin_timeout)
+        spin_goal.time_allowance.nanosec = int(
+            (spin_timeout - int(spin_timeout)) * 1_000_000_000
+        )
+        self._wait_obstacle_clear()
+        status = self._run_action(
+            self._spin,
+            spin_goal,
+            "A sonrasi B yonune hizalanma",
+        )
+        if status != GoalStatus.STATUS_SUCCEEDED:
+            raise DemoAbort(
+                "A sonrasi B yonune donulemedi; "
+                f"action status={status}"
+            )
+
+        _x, _y, aligned_yaw = self._lookup_map_pose()
+        remaining_error = abs(_angle_error(target_heading, aligned_yaw))
+        if remaining_error > yaw_tolerance:
+            raise DemoAbort(
+                "A sonrasi B yonune hizalanma tolerans disinda: "
+                f"{math.degrees(remaining_error):.1f} derece"
+            )
 
     def _run_navigation_only(self) -> None:
         """A ve B hedeflerini arada serit/lift beklemesi olmadan izle."""
@@ -952,16 +1132,27 @@ class DemoScenarioManager(Node):
                 "A noktasina yalniz Nav2 rota grafi ile gidiliyor",
                 "A",
             )
-            self._move_nav2_route("A", self._point_a)
+            self._move_nav2_route(
+                "A", self._point_a, use_path_heading=True
+            )
+            if self._cancel_requested:
+                raise DemoAbort("Demo iptal edildi")
+
+            self._align_navigation_only_for_b()
             if self._cancel_requested:
                 raise DemoAbort("Demo iptal edildi")
 
             self._set_state(
                 DemoStatus.STATE_NAVIGATING_B,
-                "A tamamlandi; B noktasina Nav2 ile cikiliyor",
+                "B cikis yonu hazir; B noktasina Nav2 ile gidiliyor",
                 "B",
             )
-            self._move_nav2_route("B", self._point_b)
+            self._move_nav2_route(
+                "B",
+                self._point_b,
+                use_path_heading=True,
+                start_name="A",
+            )
             if self._cancel_requested:
                 raise DemoAbort("Demo iptal edildi")
 

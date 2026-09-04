@@ -17,7 +17,9 @@ def generate_launch_description():
         Node(package='marco_mission', executable='mission_manager', output='screen',
              parameters=[{'task_source': 'mock_plc', 'manual_task_enabled': True,
                           'graph_file': graph, 'gate_timeout_s': 0.25,
-                          'action_timeout_s': 2.0, 'plc_freshness_s': 0.6}]),
+                          'action_timeout_s': 2.0, 'plc_freshness_s': 0.6,
+                          'require_safety_supervisor': False,
+                          'require_base_communication': False}]),
         Node(package='marco_mission', executable='phase10_acceptance',
              output='screen'),
     ])

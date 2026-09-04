@@ -41,23 +41,26 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': 'true', 'scan_topic': '/scan_nav2',
             'base_frame': LaunchConfiguration('base_frame'),
+            'require_base_communication': 'false',
             'obstacle_wait_timeout_s': LaunchConfiguration('obstacle_wait_timeout_s'),
         }.items())
     acceptance = Node(
         package='marco_safety', executable='phase8_acceptance.py', output='screen',
         parameters=[{'use_sim_time': True,
                      'result_path': LaunchConfiguration('result_path'),
-                     'fault_scenario': LaunchConfiguration('fault_scenario')}],
+                     'fault_scenario': LaunchConfiguration('fault_scenario'),
+                     'obstacle_hold_s': LaunchConfiguration('obstacle_hold_s')}],
         condition=IfCondition(LaunchConfiguration('run_acceptance')))
     return LaunchDescription([
         DeclareLaunchArgument('gazebo_gui', default_value='false'),
         DeclareLaunchArgument('rviz', default_value='false'),
         DeclareLaunchArgument('base_frame', default_value='base_footprint'),
-        DeclareLaunchArgument('obstacle_wait_timeout_s', default_value='8.0'),
+        DeclareLaunchArgument('obstacle_wait_timeout_s', default_value='0.0'),
         DeclareLaunchArgument('run_acceptance', default_value='true'),
         DeclareLaunchArgument(
             'result_path', default_value='/tmp/marco_phase8/headless.json'),
         DeclareLaunchArgument('fault_scenario', default_value=''),
+        DeclareLaunchArgument('obstacle_hold_s', default_value='5.0'),
         sim, scan_gate, service_bridge, safe,
         TimerAction(period=5.0, actions=[acceptance]),
     ])
