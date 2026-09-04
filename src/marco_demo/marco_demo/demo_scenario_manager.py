@@ -161,7 +161,7 @@ def _build_route_graph(
                     "startid": directed_start,
                     "endid": directed_end,
                     "cost": 1.0,
-                    "metadata": {"abs_speed_limit": 0.36},
+                    "metadata": {"abs_speed_limit": 0.60},
                 },
                 "geometry": {
                     "type": "MultiLineString",
