@@ -183,8 +183,9 @@
   <xacro:property name="camera_rear_z"      value="0.0915"/>
   <xacro:property name="camera_pitch"       value="0.7854"/>  <!-- 45 derece -->
 
-  <!-- TAHMINI: IMU henuz donanimda YOK. Eklenirse konumu buradan ayarlanir.
-       Donme merkezine yakin olmasi merkezkac ivme hatasini azaltir. -->
+  <!-- IMU araca eklendi. Konumu henuz fiziksel olarak olculmedigi icin bu
+       degerler TAHMINIDIR; donme merkezine yakin yerlesim merkezkac ivme
+       hatasini azaltir. -->
   <xacro:property name="imu_x"             value="0.000"/>
   <xacro:property name="imu_y"             value="0.000"/>
   <xacro:property name="imu_z"             value="0.150"/>

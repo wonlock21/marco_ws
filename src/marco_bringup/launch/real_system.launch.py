@@ -274,6 +274,7 @@ def _setup(context, *args, **kwargs):
             "require_active_field": "false" if fake else "true",
             "manual_task_enabled": "true",
             "test_only_lift": "true" if fake else "false",
+            "imu": "true" if imu_enabled else "false",
         }.items(),
     )
     rosbridge = IncludeLaunchDescription(

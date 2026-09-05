@@ -3,18 +3,20 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import os
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import rclpy
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
 from nav2_msgs.action import ComputeRoute, FollowPath, Spin
 from nav2_msgs.msg import SpeedLimit
 from rclpy.action import ActionClient
@@ -48,6 +50,177 @@ class MissionAbort(RuntimeError):
     """Controlled mission failure carrying a PLC-safe diagnostic."""
 
 
+class MissionActionFailure(MissionAbort):
+    """Action failure retaining the ROS goal status for bounded recovery."""
+
+    def __init__(self, label: str, status: int) -> None:
+        super().__init__(f'{label} status={status}')
+        self.status = int(status)
+
+
+@dataclass(frozen=True)
+class JunctionManeuver:
+    """One geometry-derived transit-node turn in a computed route."""
+
+    node_id: int
+    node_name: str
+    x: float
+    y: float
+    incoming_heading: float
+    outgoing_heading: float
+    turn_angle: float
+
+
+def _route_edge_heading(edge, movement_direction: str = 'forward') -> float:
+    """Return robot body heading on one directed route edge."""
+    dx = float(edge.end.x - edge.start.x)
+    dy = float(edge.end.y - edge.start.y)
+    if not all(math.isfinite(value) for value in (dx, dy)):
+        raise MissionAbort('rota kenari sonlu olmayan koordinat iceriyor')
+    if math.hypot(dx, dy) <= 1.0e-6:
+        raise MissionAbort('rota kenari sifir uzunlukta')
+    heading = math.atan2(dy, dx)
+    if movement_direction == 'reverse':
+        heading += math.pi
+    return math.atan2(math.sin(heading), math.cos(heading))
+
+
+def _route_junction_maneuvers(
+    route,
+    node_records: Dict[int, Dict[str, Any]],
+    edge_directions: Dict[int, str],
+    minimum_turn: float,
+    maximum_turn: float,
+):
+    """Find approximately 90-degree turns from ordered route geometry."""
+    nodes = list(getattr(route, 'nodes', []))
+    edges = list(getattr(route, 'edges', []))
+    if not edges:
+        return [], None
+    if len(nodes) != len(edges) + 1:
+        raise MissionAbort('Route Server dugum/kenar sirasi tutarsiz')
+    maneuvers = []
+    for index, (incoming, outgoing) in enumerate(zip(edges, edges[1:])):
+        junction = nodes[index + 1]
+        record = node_records.get(int(junction.nodeid))
+        if record is None or record.get('role') != 'transit':
+            continue
+        incoming_heading = _route_edge_heading(
+            incoming,
+            edge_directions.get(int(incoming.edgeid), 'forward'),
+        )
+        outgoing_heading = _route_edge_heading(
+            outgoing,
+            edge_directions.get(int(outgoing.edgeid), 'forward'),
+        )
+        turn_angle = math.atan2(
+            math.sin(outgoing_heading - incoming_heading),
+            math.cos(outgoing_heading - incoming_heading),
+        )
+        if minimum_turn <= abs(turn_angle) <= maximum_turn:
+            maneuvers.append(JunctionManeuver(
+                node_id=int(junction.nodeid),
+                node_name=str(record.get('name', junction.nodeid)),
+                x=float(junction.position.x),
+                y=float(junction.position.y),
+                incoming_heading=incoming_heading,
+                outgoing_heading=outgoing_heading,
+                turn_angle=turn_angle,
+            ))
+    last = edges[-1]
+    final_heading = _route_edge_heading(
+        last,
+        edge_directions.get(int(last.edgeid), 'forward'),
+    )
+    return maneuvers, final_heading
+
+
+def _split_path_at_junctions(
+    path: Path,
+    maneuvers,
+    match_tolerance: float,
+):
+    """Split a Route Server path at ordered maneuver coordinates."""
+    if not maneuvers:
+        return [copy.deepcopy(path)]
+    if len(path.poses) < 2:
+        raise MissionAbort('segmentlenecek rota en az iki pose icermeli')
+    split_indices = []
+    previous = 0
+    for maneuver in maneuvers:
+        candidates = range(previous + 1, len(path.poses) - 1)
+        try:
+            index = min(candidates, key=lambda item: math.hypot(
+                float(path.poses[item].pose.position.x) - maneuver.x,
+                float(path.poses[item].pose.position.y) - maneuver.y,
+            ))
+        except ValueError as error:
+            raise MissionAbort(
+                f'{maneuver.node_name}: rota junction noktasinda bolunemedi'
+            ) from error
+        distance = math.hypot(
+            float(path.poses[index].pose.position.x) - maneuver.x,
+            float(path.poses[index].pose.position.y) - maneuver.y,
+        )
+        if distance > match_tolerance:
+            raise MissionAbort(
+                f'{maneuver.node_name}: junction/path esleme hatasi '
+                f'{distance:.3f} m'
+            )
+        split_indices.append(index)
+        previous = index
+
+    segments = []
+    start = 0
+    for end in [*split_indices, len(path.poses) - 1]:
+        segment = Path()
+        segment.header = copy.deepcopy(path.header)
+        segment.poses = copy.deepcopy(path.poses[start:end + 1])
+        if len(segment.poses) < 2:
+            raise MissionAbort('junction rota segmenti en az iki pose icermeli')
+        segments.append(segment)
+        start = end
+    return segments
+
+
+def _last_path_segment_heading(path) -> float:
+    """Return the geometric heading of the last non-zero path segment."""
+    if len(path.poses) < 2:
+        raise MissionAbort('rota heading icin en az iki pose gerekli')
+    end = path.poses[-1].pose.position
+    for stamped in reversed(path.poses[:-1]):
+        start = stamped.pose.position
+        dx = float(end.x - start.x)
+        dy = float(end.y - start.y)
+        if math.hypot(dx, dy) > 1.0e-6:
+            return math.atan2(dy, dx)
+    raise MissionAbort('rota heading hesaplanabilecek sonlu segment yok')
+
+
+def _terminal_abort_is_acceptable(
+    *,
+    target_x: float,
+    target_y: float,
+    target_yaw: float,
+    robot_x: float,
+    robot_y: float,
+    robot_yaw: float,
+    position_tolerance: float,
+    yaw_tolerance: float,
+):
+    """Accept only an ABORTED FollowPath already inside strict tolerances."""
+    position_error = math.hypot(target_x - robot_x, target_y - robot_y)
+    yaw_error = abs(math.atan2(
+        math.sin(target_yaw - robot_yaw),
+        math.cos(target_yaw - robot_yaw),
+    ))
+    accepted = (
+        position_error <= position_tolerance
+        and yaw_error <= yaw_tolerance
+    )
+    return accepted, position_error, yaw_error
+
+
 class MissionManager(Node):
     """Own exactly one mission and one motion action at a time."""
 
@@ -59,6 +232,7 @@ class MissionManager(Node):
             ('task_source', 'plc'), ('manual_task_enabled', False),
             ('simulate_steps', False),
             ('graph_file', graph_default), ('gate_node', 'kapi_q5'),
+            ('return_gate_node', 'kapi_q6'),
             ('home_node', 'bekla_A'), ('action_timeout_s', 120.0),
             ('gate_timeout_s', 30.0), ('plc_freshness_s', 3.0),
             ('localization_tf_timeout_s', 2.0),
@@ -75,6 +249,14 @@ class MissionManager(Node):
             ('station_turn_min_angle_deg', 150.0),
             ('station_turn_max_angle_deg', 210.0),
             ('station_turn_imu_timeout_s', 0.5),
+            ('junction_turn_timeout_s', 20.0),
+            ('junction_turn_yaw_tolerance_deg', 5.0),
+            ('junction_turn_min_angle_deg', 60.0),
+            ('junction_turn_max_angle_deg', 120.0),
+            ('junction_path_match_tolerance_m', 0.25),
+            ('imu_enabled', True),
+            ('route_terminal_position_tolerance_m', 0.075),
+            ('route_terminal_yaw_tolerance_deg', 10.0),
             ('motion_stop_timeout_s', 3.0),
             ('motion_stop_settle_s', 0.4),
             ('motion_stop_linear_tolerance', 0.01),
@@ -91,8 +273,11 @@ class MissionManager(Node):
             raise ValueError('Faz 10 sahte sleep modu kaldirildi; simulate_steps:=false kullan')
         self._manual_enabled = bool(self.get_parameter('manual_task_enabled').value)
         self._configured_gate_node = str(self.get_parameter('gate_node').value)
+        self._configured_return_gate_node = str(
+            self.get_parameter('return_gate_node').value)
         self._configured_home_node = str(self.get_parameter('home_node').value)
         self._gate_node = self._configured_gate_node
+        self._return_gate_node = self._configured_return_gate_node
         self._home_node = self._configured_home_node
         self._action_timeout = float(self.get_parameter('action_timeout_s').value)
         self._gate_timeout = float(self.get_parameter('gate_timeout_s').value)
@@ -109,6 +294,7 @@ class MissionManager(Node):
             self.get_parameter('localization_max_position_covariance').value)
         self._route_constraints_timeout = float(
             self.get_parameter('route_constraints_timeout_s').value)
+        self._imu_enabled = bool(self.get_parameter('imu_enabled').value)
         self._require_active_field = bool(
             self.get_parameter('require_active_field').value)
         self._require_safety_supervisor = bool(
@@ -120,6 +306,7 @@ class MissionManager(Node):
         self._graph_file = os.path.realpath(
             str(self.get_parameter('graph_file').value))
         self._nodes = self._load_graph(self._graph_file)
+        self._edge_directions = self._load_edge_directions(self._graph_file)
         self._resolve_special_nodes()
         if self._default_source not in ('plc', 'mock_plc'):
             raise ValueError('task_source plc veya mock_plc olmali')
@@ -153,6 +340,10 @@ class MissionManager(Node):
         self._status_detail = 'goreve hazir'
         self._current_node = self._home_node
         self._gate_ok = self._estop = self._manual = self._obstacle = False
+        self._gate_entry_node = ''
+        self._gate_direction = ''
+        self._gate_crossing_id = ''
+        self._gate_sequence = 0
         self._base_communication_ok = False
         self._base_communication_seen = 0.0
         self._plc_connected = False
@@ -194,6 +385,7 @@ class MissionManager(Node):
 
         self._status_pub = self.create_publisher(RobotStatus, '/robot_status', 10)
         self._event_pub = self.create_publisher(String, '/mission/events', 50)
+        self._task_pub = self.create_publisher(String, '/task_command', 10)
         self._speed_reset_pub = self.create_publisher(
             Empty, '/route/speed_limit_reset', 10)
         load_qos = QoSProfile(
@@ -298,6 +490,7 @@ class MissionManager(Node):
         self._publish_load_state(False)
         self._event('ready', source=self._default_source,
                     manual_task_enabled=self._manual_enabled,
+                    imu_enabled=self._imu_enabled,
                     graph_nodes=len(self._nodes))
 
     @staticmethod
@@ -356,6 +549,31 @@ class MissionManager(Node):
             raise ValueError('graph has no named route nodes')
         return nodes
 
+    @staticmethod
+    def _load_edge_directions(path: str) -> Dict[int, str]:
+        """Load body-motion semantics keyed by Nav2 route feature ID."""
+        with open(path, encoding='utf-8') as stream:
+            data = json.load(stream)
+        directions = {}
+        for feature in data.get('features', []):
+            geometry_type = feature.get('geometry', {}).get('type')
+            if geometry_type not in ('LineString', 'MultiLineString'):
+                continue
+            properties = feature.get('properties', {})
+            metadata = properties.get('metadata', {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            direction = str(
+                metadata.get('movement_direction', 'forward')
+            ).strip().lower()
+            if direction not in ('forward', 'reverse', 'either'):
+                raise ValueError(
+                    f"edge {properties.get('id')} has invalid "
+                    f'movement_direction: {direction}'
+                )
+            directions[int(properties['id'])] = direction
+        return directions
+
     def _resolve_special_nodes(self) -> None:
         def resolve(configured: str, role: str) -> str:
             if configured in self._nodes:
@@ -375,6 +593,15 @@ class MissionManager(Node):
             return preferred
 
         self._gate_node = resolve(self._configured_gate_node, 'gate_q5')
+        try:
+            self._return_gate_node = resolve(
+                getattr(self, '_configured_return_gate_node', 'kapi_q6'),
+                'gate_q6',
+            )
+        except ValueError:
+            # Eski phase10/demo graflarinda q6 yoktur. Production saha paketi
+            # validator'dan gecmek icin ayri gate_q6 tanimlamak zorundadir.
+            self._return_gate_node = self._gate_node
         self._home_node = resolve(self._configured_home_node, 'wait')
 
     def _event(self, event: str, **fields: Any) -> None:
@@ -482,6 +709,116 @@ class MissionManager(Node):
         if self._qr_gate.phase != StationQrGate.IDLE:
             self._qr_gate.exiting()
 
+    def _exit_station(self, station: str, loaded: bool) -> None:
+        """Stop rear-lane control and return to the station approach with Nav2."""
+        self._finish_station_approach()
+        self._task_pub.publish(String(data='STOP'))
+        self._docking_lane_active = False
+        self._event(
+            'station_exit_lane_stopped',
+            station=station,
+            command='STOP',
+        )
+        self._wait_until_stopped(f'{station} lane-Nav2 devri')
+        if not str(self._nodes[station].get('approach_qr_id', '')).strip():
+            # Geriye uyumlu test graflarinda approach dugumu olmayabilir.
+            # Competition validator production paketinde buna izin vermez.
+            self._event(
+                'station_exit_nav_skipped',
+                station=station,
+                reason='legacy_graph_without_approach',
+            )
+            return
+        approach = self._station_approach_target(station)
+        self._event(
+            'station_exit_nav_started',
+            station=station,
+            target=approach,
+        )
+        self._navigate(approach, loaded=loaded)
+        self._event(
+            'station_exit_nav_completed',
+            station=station,
+            target=approach,
+        )
+
+    def _gate_entry_for_direction(self, direction: str) -> str:
+        """Return the direction-specific waiting node for a gate crossing."""
+        if direction == 'outbound':
+            return self._gate_node
+        if direction == 'return':
+            return self._return_gate_node
+        raise MissionAbort(f'gecersiz kapi gecis yonu: {direction}')
+
+    def _navigate_via_gate(
+        self, target: str, loaded: bool, direction: str
+    ) -> None:
+        """Acquire a fresh permission at q5/q6, then consume it once."""
+        entry = self._gate_entry_for_direction(direction)
+        self._gate_sequence += 1
+        crossing_id = (
+            f'{self._task_id or "mission"}:{self._gate_sequence}:{direction}'
+        )
+        self._gate_ok = False
+        self._gate_entry_node = entry
+        self._gate_direction = direction
+        self._gate_crossing_id = crossing_id
+        try:
+            self._navigate(entry, loaded=loaded)
+            self._wait_until_stopped(f'{entry} kapi izin bekleme')
+            self._set_state(RobotStatus.STATE_WAITING_PLC, entry)
+            request = GatePermission.Request()
+            request.task_id = self._task_id
+            request.crossing_id = crossing_id
+            request.node_id = entry
+            request.direction = direction
+            self._event(
+                'gate_permission_requested',
+                gate_entry=entry,
+                direction=direction,
+                crossing_id=crossing_id,
+            )
+            reply = self._service_call(
+                self._gate,
+                request,
+                self._gate_timeout,
+                f'PLC gate_permission:{direction}',
+            )
+            if reply.crossing_id != crossing_id:
+                raise MissionAbort(
+                    f'{entry}: eski/gecersiz kapi izin yaniti '
+                    f'({reply.crossing_id or "bos"})'
+                )
+            if not reply.granted:
+                raise MissionAbort(f'kapi reddi: {reply.message}')
+            self._gate_ok = True
+            self._event(
+                'gate_permission_granted',
+                gate_entry=entry,
+                direction=direction,
+                crossing_id=crossing_id,
+            )
+            self._event(
+                'gate_crossing_started',
+                gate_entry=entry,
+                direction=direction,
+                crossing_id=crossing_id,
+                target=target,
+            )
+            self._navigate(target, loaded=loaded)
+            self._event(
+                'gate_crossing_completed',
+                gate_entry=entry,
+                direction=direction,
+                crossing_id=crossing_id,
+                target=target,
+            )
+        finally:
+            self._gate_ok = False
+            self._gate_entry_node = ''
+            self._gate_direction = ''
+            self._gate_crossing_id = ''
+
     def _unique_graph_nodes(self):
         """Return graph records once even though aliases share records."""
         return {node['id']: node for node in self._nodes.values()}.values()
@@ -577,6 +914,97 @@ class MissionManager(Node):
             'karsilastirilmadan kullanilamaz'
         )
 
+    def _turn_at_junction(self, maneuver: JunctionManeuver) -> None:
+        """Align to the next route edge with one explicit bounded Spin."""
+        self._check_action_health(require_turn_sensors=True)
+        if self._pose is None or not math.isfinite(self._filtered_yaw):
+            raise MissionAbort(
+                f'{maneuver.node_name}: junction yon bilgisi gecersiz'
+            )
+        start_map_yaw = self._yaw_from_pose(self._pose)
+        start_filtered_yaw = self._filtered_yaw
+        relative_turn = self._wrap_angle(
+            maneuver.outgoing_heading - start_map_yaw
+        )
+        timeout = float(
+            self.get_parameter('junction_turn_timeout_s').value)
+        goal = Spin.Goal()
+        goal.target_yaw = float(relative_turn)
+        goal.time_allowance = Duration(seconds=timeout).to_msg()
+        self._status_detail = (
+            f'{maneuver.node_name}: junction donusu '
+            f'{math.degrees(relative_turn):+.1f} derece'
+        )
+        self._event(
+            'junction_turn_started',
+            junction=maneuver.node_name,
+            node_id=maneuver.node_id,
+            incoming_heading=maneuver.incoming_heading,
+            outgoing_heading=maneuver.outgoing_heading,
+            route_turn_rad=maneuver.turn_angle,
+            commanded_turn_rad=relative_turn,
+        )
+        try:
+            self._action(
+                self._spin,
+                goal,
+                f'junction_turn:{maneuver.node_name}',
+                timeout + 2.0,
+                require_turn_sensors=True,
+            )
+            self._wait_until_stopped(
+                f'{maneuver.node_name} junction donus sonu')
+            self._check_action_health(require_turn_sensors=True)
+            if self._pose is None:
+                raise MissionAbort(
+                    f'{maneuver.node_name}: junction donus sonu AMCL pozu yok'
+                )
+            final_map_yaw = self._yaw_from_pose(self._pose)
+            yaw_error = abs(self._wrap_angle(
+                maneuver.outgoing_heading - final_map_yaw
+            ))
+            measured_turn = self._wrap_angle(
+                self._filtered_yaw - start_filtered_yaw
+            )
+            fused_turn_error = abs(self._wrap_angle(
+                relative_turn - measured_turn
+            ))
+            tolerance = math.radians(float(self.get_parameter(
+                'junction_turn_yaw_tolerance_deg').value
+            ))
+            if yaw_error > tolerance:
+                raise MissionAbort(
+                    f'{maneuver.node_name}: junction yon hatasi '
+                    f'{math.degrees(yaw_error):.2f} derece'
+                )
+            turn_source = (
+                'imu+encoder' if self._imu_enabled else 'encoder'
+            )
+            if fused_turn_error > tolerance:
+                raise MissionAbort(
+                    f'{maneuver.node_name}: {turn_source} junction donus '
+                    f'hatasi {math.degrees(fused_turn_error):.2f} derece'
+                )
+        except MissionAbort as error:
+            reason = 'obstacle' if self._obstacle else str(error)
+            self._event(
+                'junction_turn_failed',
+                junction=maneuver.node_name,
+                node_id=maneuver.node_id,
+                reason=reason,
+            )
+            raise
+        self._event(
+            'junction_turn_completed',
+            junction=maneuver.node_name,
+            node_id=maneuver.node_id,
+            final_map_yaw=final_map_yaw,
+            measured_fused_turn=measured_turn,
+            turn_source=turn_source,
+            yaw_error_rad=yaw_error,
+            fused_turn_error_rad=fused_turn_error,
+        )
+
     def _turn_at_station(self, station: str) -> None:
         config = self._nodes[station]
         direction = str(config.get('turn_direction', '')).lower()
@@ -645,6 +1073,7 @@ class MissionManager(Node):
         fused_turn_error = abs(self._wrap_angle(
             relative_turn - measured_turn
         ))
+        turn_source = 'imu+encoder' if self._imu_enabled else 'encoder'
         tolerance = math.radians(float(
             self.get_parameter('station_turn_yaw_tolerance_deg').value
         ))
@@ -655,7 +1084,7 @@ class MissionManager(Node):
             )
         if fused_turn_error > tolerance:
             raise MissionAbort(
-                f'{station}: IMU+encoder donus hatasi '
+                f'{station}: {turn_source} donus hatasi '
                 f'{math.degrees(fused_turn_error):.2f} derece'
             )
         self._qr_gate.line_follow_ready()
@@ -665,6 +1094,7 @@ class MissionManager(Node):
             station=station,
             final_map_yaw=final_map_yaw,
             measured_fused_turn=measured_turn,
+            turn_source=turn_source,
             yaw_error_rad=yaw_error,
             fused_turn_error_rad=fused_turn_error,
         )
@@ -727,7 +1157,10 @@ class MissionManager(Node):
             if msg.active and msg.graph_file:
                 try:
                     graph_file = os.path.realpath(msg.graph_file)
-                    self._nodes = self._load_graph(graph_file)
+                    nodes = self._load_graph(graph_file)
+                    edge_directions = self._load_edge_directions(graph_file)
+                    self._nodes = nodes
+                    self._edge_directions = edge_directions
                     self._graph_file = graph_file
                     self._resolve_special_nodes()
                     self._current_node = self._home_node
@@ -810,7 +1243,13 @@ class MissionManager(Node):
             return 'bos gorev'
         if len(route_nodes) < 2 or len(route_nodes) % 2:
             return 'rota alma/birakma ciftlerinden olusmali'
-        required = tuple(route_nodes) + (self._gate_node, self._home_node)
+        if (
+            getattr(self, '_require_active_field', False)
+            and self._return_gate_node == self._gate_node
+        ):
+            return 'production saha paketinde ayri gate_q6 dugumu gerekli'
+        required = tuple(route_nodes) + (
+            self._gate_node, self._return_gate_node, self._home_node)
         missing = [node for node in required if node not in self._nodes]
         if missing:
             return f"gecersiz graph node: {', '.join(sorted(set(missing)))}"
@@ -1102,13 +1541,14 @@ class MissionManager(Node):
         if not require_turn_sensors:
             return
         now = time.monotonic()
-        timeout = float(
-            self.get_parameter('station_turn_imu_timeout_s').value)
-        if now - self._imu_seen > timeout:
-            raise MissionAbort('manevra sirasinda IMU verisi bayat/kayip')
+        if self._imu_enabled:
+            timeout = float(
+                self.get_parameter('station_turn_imu_timeout_s').value)
+            if now - self._imu_seen > timeout:
+                raise MissionAbort('manevra sirasinda IMU verisi bayat/kayip')
         if now - self._filtered_odom_seen > self._odom_freshness:
             raise MissionAbort(
-                'manevra sirasinda IMU+encoder filtreli odometri bayat/kayip'
+                'manevra sirasinda filtreli odometri bayat/kayip'
             )
         if not self._localization_health().valid:
             raise MissionAbort('manevra sirasinda lokalizasyon/TF gecersiz')
@@ -1151,7 +1591,7 @@ class MissionManager(Node):
                 time.sleep(0.02)
             wrapped = result_future.result()
             if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
-                raise MissionAbort(f'{label} status={wrapped.status}')
+                raise MissionActionFailure(label, wrapped.status)
             result = wrapped.result
             if hasattr(result, 'success') and not result.success:
                 raise MissionAbort(f'{label}: {getattr(result, "message", "failed")}')
@@ -1200,20 +1640,146 @@ class MissionManager(Node):
         path = route_result.path
         if path.header.frame_id not in ('', 'map') or len(path.poses) < 2:
             raise MissionAbort(f'{target}: Route Server gecerli path uretmedi')
-        path.header.frame_id = 'map'
-        for pose in path.poses:
-            pose.header.frame_id = 'map'
-        yaw = float(self._nodes[target].get('yaw', 0.0))
-        path.poses[-1].pose.orientation.x = 0.0
-        path.poses[-1].pose.orientation.y = 0.0
-        path.poses[-1].pose.orientation.z = math.sin(yaw / 2.0)
-        path.poses[-1].pose.orientation.w = math.cos(yaw / 2.0)
-        follow_goal = FollowPath.Goal()
-        follow_goal.path = path
-        follow_goal.controller_id = 'FollowPath'
-        self._edge = f'{self._current_node}->{target}'
-        self._action(self._follow_path, follow_goal, f'follow_route:{target}')
-        self._current_node, self._edge = target, ''
+        route = getattr(route_result, 'route', None)
+        maneuvers = []
+        final_heading = None
+        if route is not None and list(getattr(route, 'edges', [])):
+            minimum = math.radians(float(self.get_parameter(
+                'junction_turn_min_angle_deg').value))
+            maximum = math.radians(float(self.get_parameter(
+                'junction_turn_max_angle_deg').value))
+            match_tolerance = float(self.get_parameter(
+                'junction_path_match_tolerance_m').value)
+            if not (
+                math.isfinite(minimum)
+                and math.isfinite(maximum)
+                and 0.0 < minimum <= maximum <= math.pi
+            ):
+                raise MissionAbort('junction donus aci bandi gecersiz')
+            if not math.isfinite(match_tolerance) or match_tolerance <= 0.0:
+                raise MissionAbort('junction path esleme toleransi gecersiz')
+            node_records = {
+                int(node['id']): node for node in self._unique_graph_nodes()
+            }
+            maneuvers, final_heading = _route_junction_maneuvers(
+                route,
+                node_records,
+                self._edge_directions,
+                minimum,
+                maximum,
+            )
+            segments = _split_path_at_junctions(
+                path, maneuvers, match_tolerance)
+            route_edge_ids = [
+                int(edge.edgeid) for edge in route.edges
+            ]
+        else:
+            # Unit/legacy action adapters may return only a Path. They retain
+            # the safe F8A terminal-heading behavior without junction Spin.
+            segments = [copy.deepcopy(path)]
+            route_edge_ids = []
+        if final_heading is None:
+            final_heading = _last_path_segment_heading(segments[-1])
+        terminal_headings = [
+            maneuver.incoming_heading for maneuver in maneuvers
+        ] + [final_heading]
+        if len(segments) != len(terminal_headings):
+            raise MissionAbort('junction segment/heading sayisi tutarsiz')
+        self._event(
+            'route_execution_planned',
+            target=target,
+            route_edge_ids=route_edge_ids,
+            segment_count=len(segments),
+            junctions=[maneuver.node_name for maneuver in maneuvers],
+        )
+
+        for index, (segment, yaw) in enumerate(zip(
+            segments, terminal_headings
+        )):
+            segment.header.frame_id = 'map'
+            for pose in segment.poses:
+                pose.header.frame_id = 'map'
+            # Normal transit/q/gate/D hedefleri kayitli dugum yaw'ina
+            # zorlanmaz. Her FollowPath terminal yonu aktif edge
+            # geometrisidir; keskin junction yonu ayri Spin sorumlulugudur.
+            segment.poses[-1].pose.orientation.x = 0.0
+            segment.poses[-1].pose.orientation.y = 0.0
+            segment.poses[-1].pose.orientation.z = math.sin(yaw / 2.0)
+            segment.poses[-1].pose.orientation.w = math.cos(yaw / 2.0)
+            segment_target = (
+                maneuvers[index].node_name
+                if index < len(maneuvers)
+                else target
+            )
+            follow_goal = FollowPath.Goal()
+            follow_goal.path = segment
+            follow_goal.controller_id = 'FollowPath'
+            self._edge = f'{self._current_node}->{segment_target}'
+            self._event(
+                'route_segment_started',
+                target=target,
+                segment_target=segment_target,
+                segment_index=index + 1,
+                segment_count=len(segments),
+            )
+            try:
+                self._action(
+                    self._follow_path,
+                    follow_goal,
+                    f'follow_route:{segment_target}',
+                )
+            except MissionActionFailure as error:
+                if (
+                    error.status != GoalStatus.STATUS_ABORTED
+                    or self._pose is None
+                    or not self._localization_health().valid
+                ):
+                    raise
+                current = self._pose.pose.pose.position
+                current_yaw = self._yaw_from_pose(self._pose)
+                goal_position = segment.poses[-1].pose.position
+                position_tolerance = float(self.get_parameter(
+                    'route_terminal_position_tolerance_m').value)
+                yaw_tolerance = math.radians(float(self.get_parameter(
+                    'route_terminal_yaw_tolerance_deg').value))
+                accepted, position_error, yaw_error = (
+                    _terminal_abort_is_acceptable(
+                        target_x=float(goal_position.x),
+                        target_y=float(goal_position.y),
+                        target_yaw=yaw,
+                        robot_x=float(current.x),
+                        robot_y=float(current.y),
+                        robot_yaw=current_yaw,
+                        position_tolerance=position_tolerance,
+                        yaw_tolerance=yaw_tolerance,
+                    )
+                )
+                if not accepted:
+                    raise MissionAbort(
+                        f'follow_route:{segment_target} '
+                        f'status={error.status}, '
+                        f'konum hatasi={position_error:.3f} m, '
+                        f'yon hatasi={math.degrees(yaw_error):.1f} derece'
+                    ) from error
+                self._event(
+                    'route_terminal_abort_accepted',
+                    target=segment_target,
+                    position_error_m=position_error,
+                    yaw_error_rad=yaw_error,
+                )
+            self._current_node, self._edge = segment_target, ''
+            self._event(
+                'route_segment_completed',
+                target=target,
+                segment_target=segment_target,
+                segment_index=index + 1,
+                segment_count=len(segments),
+            )
+            if index < len(maneuvers):
+                maneuver = maneuvers[index]
+                self._wait_until_stopped(
+                    f'{maneuver.node_name} FollowPath sonu')
+                self._turn_at_junction(maneuver)
 
     def _do_dock(self, station: str, pickup: bool) -> None:
         goal = DockToStation.Goal()
@@ -1295,6 +1861,9 @@ class MissionManager(Node):
         self._mission_elapsed = 0.0
         try:
             self._gate_ok = False
+            self._gate_entry_node = ''
+            self._gate_direction = ''
+            self._gate_crossing_id = ''
             loaded = self._loaded
             self._set_state(RobotStatus.STATE_TASK_RECEIVED,
                             self._route_nodes[0])
@@ -1311,7 +1880,15 @@ class MissionManager(Node):
                     self._station_approach_target(station)
                     if configured_approach else station
                 )
-                self._navigate(navigation_target, loaded=loaded)
+                if index == 0:
+                    self._navigate(navigation_target, loaded=loaded)
+                else:
+                    direction = 'outbound' if not pickup else 'return'
+                    self._navigate_via_gate(
+                        navigation_target,
+                        loaded=loaded,
+                        direction=direction,
+                    )
                 if configured_approach:
                     self._wait_for_station_qr(station)
                     self._wait_until_stopped(
@@ -1321,24 +1898,17 @@ class MissionManager(Node):
                 self._do_dock(station, pickup=pickup)
                 self._current_node = station
                 self._do_lift(station, pickup=pickup)
-                self._finish_station_approach()
                 loaded = pickup
                 self._publish_load_state(loaded)
-                if pickup:
-                    self._navigate(self._gate_node, loaded=True)
-                    self._set_state(RobotStatus.STATE_WAITING_PLC, self._gate_node)
-                    gate_req = GatePermission.Request()
-                    gate_req.node_id = self._gate_node
-                    gate = self._service_call(self._gate, gate_req,
-                                              self._gate_timeout,
-                                              'PLC gate_permission')
-                    if not gate.granted:
-                        raise MissionAbort(f'kapi reddi: {gate.message}')
-                    self._gate_ok = True
+                self._exit_station(station, loaded=loaded)
             self._current_stop_index = len(self._route_nodes)
             if self._return_home:
                 self._set_state(RobotStatus.STATE_RETURNING, self._home_node)
-                self._navigate(self._home_node, loaded=False)
+                self._navigate_via_gate(
+                    self._home_node,
+                    loaded=False,
+                    direction='return',
+                )
             success = True
             self._set_state(RobotStatus.STATE_IDLE)
         except Exception as exc:  # mission boundary must always fail safe
@@ -1422,6 +1992,9 @@ class MissionManager(Node):
         msg.plc_connected = (self._plc_connected and
                              time.monotonic() - self._plc_seen <= self._plc_freshness)
         msg.gate_permission_granted = self._gate_ok
+        msg.gate_entry_node = self._gate_entry_node
+        msg.gate_direction = self._gate_direction
+        msg.gate_crossing_id = self._gate_crossing_id
         msg.station_phase = self._qr_gate.phase
         msg.qr_trigger_armed = self._qr_gate.armed
         msg.expected_qr_id = self._qr_gate.expected_qr_id

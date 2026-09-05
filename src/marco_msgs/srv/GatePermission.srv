@@ -1,5 +1,9 @@
-# q5 kapi noktasinda PLC'den gecis izni.
+# Her fiziksel kapi gecisi icin tek kullanimlik, yone bagli PLC izni.
+string task_id
+string crossing_id
 string node_id
+string direction                 # outbound | return
 ---
 bool granted
+string crossing_id               # istekteki kimlik aynen donmeli
 string message

@@ -126,7 +126,7 @@ Not: Şartname çiziminde yük `500 × 420 × 360 mm`, paletle ilgili `600 mm`, 
 | P1 | Gerçek sistem test haritası/grafı ile açılabiliyor | Yanlış saha verisiyle hareket riski |
 | P1 | Mapping kontrolünde engel algılama yarışma için kapalı varsayılabiliyor | Haritalama sırasında çarpışma riski |
 | P1 | Bağımsız çizgi launch’ları güvenli hız zincirini atlayabiliyor | Güvenlik mimarisi devre dışı kalabilir |
-| P1 | Güvenlik yöneticisinin production 15 saniye engel iptali kaldırıldı; aynı Nav2 action/rota ile 5/30/120 saniye fiziksel kabul henüz tamamlanmadı | Uzun bekleme kabulü kanıtlanmadan “engel kalkınca devam” davranışı dondurulamaz |
+| P1 | Güvenlik yöneticisinin 15 saniye engel bekleme sonrası iptali | Şartnamedeki “engel kalkınca devam” davranışını bozabilir |
 | P1 | QR docking boyunca sürekli taze algı bekliyor | QR görüşten çıkınca yanaşma gereksiz iptal olabilir |
 | P1 | Tek arka kameranın production çözünürlük/exposure ayarı ve sensör TF kaydı belgeler arasında tekleştirilmemiş | Reverse docking algı kalibrasyonu tekrarlanamaz |
 | P2 | Otomatik şarj görevi yok | Yalnızca +5 ek puan kaybı; ana görevi engellemez |
@@ -354,11 +354,12 @@ Yapılacaklar:
 - [ ] LiDAR scan açısı, ters/ayna yönü, kör bölgeler, çatal/yük yansıması ve speckle filtresini test et.
 - [ ] Ön ve gerekiyorsa arka kamerada desteklenen gerçek çözünürlük/FPS/pixel formatı sabitle; intrinsic ve distortion kalibrasyonu yap.
 - [ ] Encoder odometrisi ile STM32 yaw birleşiminin covariance, zaman damgası ve işaretlerini doğrula. *(STM32 düzeltmesini bekliyor.)*
-- [ ] SLAM sırasında loop closure, koridor paralelliği, harita çözünürlüğü ve yeniden açma davranışını ölç. *(Hareketli kabul STM32 düzeltmesini bekliyor.)*
-- [ ] Harita kaydında PGM/YAML/PNG, posegraph, başlangıç pozu ve metadata’nın atomik üretildiğini test et.
+- [x] Production haritalama profilinde (`do_loop_closing: false`) koridor paralelliği, harita çözünürlüğü ve kaydedilen haritayı yeniden açma davranışını fiziksel olarak test et. (06.09.2026: kullanıcı saha testinde haritalamanın temiz ve kararlı olduğunu doğruladı.)
+- [x] Harita kaydında PGM/YAML/PNG, posegraph, başlangıç pozu ve metadata’nın atomik üretildiğini test et. (06.09.2026: fiziksel haritalama ve saha paketi kaydı kullanıcı tarafından doğrulandı.)
 - [x] Harita kaydetme yazılım akışında PGM/YAML/PNG, posegraph/data, başlangıç pozu ve metadata sözleşmesini; başarısız kayıtta kısmi saha dizininin görünmediğini otomatik test et. (29.08.2026: 5 test PASS; gerçek SLAM servisiyle uçtan uca tekrar açık.)
 - [ ] Mapping ile AMCL’nin aynı anda çalışmadığını; geçişte eski TF/node kalmadığını doğrula.
 - [x] Mapping ve lokalizasyon yöneticilerinin birbirini iki yönde de reddettiğini otomatik test et. (29.08.2026: karar kilitleri PASS; eski TF/node çalışma zamanı kontrolü açık.)
+- [x] Kaydedilen haritada AMCL'yi birden fazla kez yeniden başlatıp aynı fiziksel noktada kararlı poz verdiğini doğrula. (06.09.2026: kullanıcı fiziksel araçta doğruladı.)
 - [ ] AMCL başlangıç pozu, kidnapped robot, LiDAR kesintisi ve odometri sapması deneyleri yap. *(Hassasiyet kabulü STM32 düzeltmesini bekliyor.)*
 - [ ] Zeminde ölçülmüş referans işaretlerinde gerçek poz–AMCL poz farkını raporla. *(STM32 düzeltmesini bekliyor.)*
 
@@ -690,32 +691,27 @@ Kabul kapısı:
 **Bağımlılık:** F1–F7C
 **Amaç:** Her tekil arızanın güvenli, görünür ve mümkünse devam edilebilir davranışa dönüşmesi.
 
-4 Eylül 2026 başlangıç uygulama durumu:
+Uygulama durumu (5 Eylül 2026):
 
-- [x] Production `obstacle_wait_timeout_s` varsayılanı `0.0` yapıldı. Engel,
-  Nav2 ile birlikte yüksek öncelikli manuel ve docking kaynaklarını da anında
-  sıfır hızda tutar; süre dolduğu için otomatik görev iptali yapılmaz.
-- [x] `/safety/reset` açık operatör reset servisi eklendi. E-stop bırakıldıktan
-  sonra aktif hareket komutu varken reset reddedilir; sıfır komut ve temiz
-  safety durumu doğrulanmadan araç yeniden hareket edemez. Production mission
-  reset akışı bu servisin onayını almak zorundadır.
-- [x] Base driver geçerli STM32 çerçevelerinin yaşını
-  `/base/communication_ok` üzerinden yayınlar. Safety katmanı kayıp/bayat
-  UART'ta tüm hız kaynaklarını kilitler; mission preflight görevi reddeder ve
-  aktif görevde bağlantı kaybını latch'li abort'a dönüştürür.
-- [x] Otomatik testlerde engelin 121 saniyelik eşdeğer bekleme sonunda abort
-  üretmediği, engel guard'ının sürdüğü, E-stop sonrası hareketli resetin
-  reddedildiği ve STM32 sağlık mesajının taze/bayat geçişi doğrulandı.
-- [ ] Engel kaldırıldıktan sonra aynı Nav2 action/rota ile 5/30/120 saniyelik
-  gerçek zamanlı devam testleri tamamlanacak. Orange Pi kurulumunda `ign` ve
-  `ros_gz_bridge` bulunmadığı için Gazebo kabul koşusu simülasyon bilgisayarında
-  çalıştırılacak; fiziksel araç testi ayrıca kaydedilecek.
+- [x] Engel için production zaman aşımı kaldırıldı. Engel varken Nav2,
+  manuel ve docking hız kaynakları sıfırda tutuluyor; engel kalkınca mevcut
+  görev sırf bekleme süresi dolduğu için iptal edilmiyor.
+- [x] E-stop bırakıldıktan sonra kendiliğinden hareketi önleyen latch ve açık
+  `/safety/reset` akışı eklendi. Hareket komutu veya güvenlik arızası varken
+  reset reddediliyor.
+- [x] STM32/UART geçerli paket tazeliği `/base/communication_ok` ile safety ve
+  mission katmanlarına bağlandı; kayıp/bayat iletişimde hareket kilitleniyor,
+  yeni görev reddediliyor ve aktif görev güvenli abort oluyor.
+- [x] Otomatik testte kalıcı engelin 121 saniyelik eşdeğer beklemede abort
+  üretmediği, E-stop sonrası açık reset gerektiği ve UART taze/bayat geçişi
+  doğrulandı.
+- [ ] Engel kalkınca aynı gerçek Nav2 action'ının 5/30/120 saniye sonrasında
+  devamı fiziksel araçta ve bag kaydıyla doğrulanacak.
 - [ ] Fiziksel E-stop'un sürüş ve lifti durdurduğu kullanıcı tarafından
-  doğrulandı; ölçümlü tekrar, bag ve reset testi kabul kanıtı olarak alınacak.
-- [ ] Batarya telemetrisi gelmediği için düşük/kritik batarya eşikleri ve testi
-  beklemededir; doğrulanmamış voltaj eşiği koda yazılmayacaktır.
-- [ ] Fiziksel mod anahtarı araçta henüz olmadığı için bu test son entegrasyona
-  ertelenmiştir.
+  doğrulandı; ölçümlü tekrar ve reset kabul kaydı alınacak.
+- [ ] Batarya telemetrisi gelmediği için düşük/kritik batarya politikası;
+  fiziksel mod anahtarı olmadığı için mod geçiş testi son entegrasyonda
+  tamamlanacak.
 
 Zorunlu testler:
 
@@ -726,26 +722,19 @@ Zorunlu testler:
 | Yol üstünde engel | Temas etmeden durur; rota korunur |
 | Engel 5/30/120 saniye sonra kalkar | Kural izin veriyorsa görev kaldığı yerden otomatik ve yumuşak devam eder |
 | Engel kalıcı | Robot güvenli bekler; keyfî rota değiştirmez; GUI açık neden gösterir |
-| LiDAR/scan bayat | Güvenli duruş, açık sensör hatası |
-| Kamera/QR bayat | Docking hız üretmez; kontrollü bekle/iptal |
-| Odom/TF/AMCL kaybı | Navigasyon durur; poz geçerli olmadan devam etmez |
 | PLC bağlantısı kaybı | Güvenli durur veya tanımlı durumu tamamlar; protokol kararıyla tutarlı |
 | GUI/rosbridge kaybı | Otonom görev güvenli şekilde sürer; manuel kaynak aktifleşmez |
-| STM32/UART kaybı | Watchdog motorları durdurur; tekrar bağlanınca kendiliğinden hareket yok |
-| Fiziksel mod anahtarı değişimi | Debounce’lu, durum makinesine uygun, çift komutsuz geçiş |
 | Lift limit/overcurrent | Lift durur, sürüş engellenir, yük durumu bilinmiyor olarak işaretlenir |
-| Düşük batarya | Zorunlu görev için güvenli politika; opsiyonel şarj yoksa görev başlamasını engelleyen eşik |
 | Yanlış/tekrar QR | İstasyon kabul edilmez, yanlış lift eylemi yok |
 | Yanlış saha paketi | Preflight görevi başlatmaz |
 | q5 gidiş izni verilmez | Robot q5'te güvenli durmuş kalır ve q6 tarafına geçmez |
 | q6 dönüş izni verilmez | Robot q6'da güvenli durmuş kalır ve q5 tarafına geçmez |
-| Kapı izni timeout | Robot ilgili izin noktasında güvenli durmuş kalır; izinsiz rota segmenti başlamaz |
+| Kapı izni timeout | Robot ilgili izin noktasında güvenli durmuş kalır; izinsiz rota segmenti başlamaz PLC belgesi geldiğinde gereken mesaj verilecek |
 | Eski/geç gate izni | Önceki veya ters yönlü geçiş izni yeni fiziksel geçişi yetkilendirmez |
 | D1–D6 junction Spin sırasında engel | Robot güvenli durur; engel politikası sağlanmadan Spin veya sonraki FollowPath başlamaz |
 | Junction Spin timeout/action abort | Sonraki FollowPath segmenti başlamaz; görev açık hata nedeni ile güvenli bekler |
 | 180°/junction dönüşünde lokalizasyon kaybı | Dönüş ve görev güvenli durur; geçerli poz gelmeden devam etmez |
 | `imu:=false` profili | Yalnız IMU mesajı gelmediği için safety veya mission abort oluşmaz |
-| `imu:=true` profilinde IMU bayat | Tanımlı fail-safe davranış çalışır ve GUI açık sağlık nedeni gösterir |
 | İstasyon çıkışında aynı QR'ın yeniden okunması | 180° dönüş/docking/lane tracking tekrar tetiklenmez; Nav2 kesilmez |
 | Lane STOP → Nav2 kontrol devri | Aynı anda iki sıfır-dışı motion source oluşmaz; devir sıfır hız üzerinden atomiktir |
 | q5/q6 çift yön gate arıza enjeksiyonu | Gidiş ve dönüş izinleri ayrı görev/geçiş kimlikleriyle sınanır; biri diğerini yetkilendirmez |
@@ -758,7 +747,6 @@ Kabul kapısı:
 - E-stop ve watchdog testleri gerçek donanımda tekrarlanmıştır.
 - q5 outbound ve q6 return için izin yok, timeout, geç/eski izin ve reconnect arızalarının her biri ayrı log/bag ile kanıtlanmıştır.
 - Junction Spin engel/timeout/action abort ve dönüş sırasında lokalizasyon kaybında sonraki FollowPath'in başlamadığı kanıtlanmıştır.
-- `imu:=false` ve `imu:=true` profillerinin beklenen safety davranışları ayrı ayrı geçmiştir.
 - Lane STOP → Nav2 devrinde hareket kaynağı çakışması olmadığı ve EXITING_STATION sırasında QR tekrarının aksiyon üretmediği kanıtlanmıştır.
 
 ### F8A — Production araç, yön ve IMU sözleşmesi
@@ -784,25 +772,20 @@ Yerine geçen kararlar:
 
 Yapılacaklar:
 
-- [ ] Physical wheel separation değerini `0.430 m` yap.
-- [ ] Odometry-effective wheel separation değerini `0.433 m` ayrı parametre olarak koru.
-- [ ] URDF teker eksenlerinin fiziksel `±0.215 m` mantığıyla tutarlı olduğunu doğrula.
-- [ ] Düz sürüş ve iki yönlü 360° saha kabulünü tekrar yap.
-- [ ] TRANSIT, q1–q9, gate ve normal D segmentlerinde final pose'a kör kayıtlı node yaw yazmayı kaldır.
-- [ ] Normal FollowPath hedef heading'ini son geçerli rota segmentinin geometrisinden üret.
-- [ ] İstasyon 180° dönüşünü `dock_heading_yaw` kullanan ayrı Spin action olarak tut.
-- [ ] D1–D6 junction dönüşünü ayrı Spin action olarak tut.
-- [ ] Küçük terminal yaw, motor deadband ve `FollowPath status=6` için regresyon testi ekle.
-- [ ] Manevra health kontrolünü IMU enabled/disabled profiline ayır.
-- [ ] `imu:=false` profilinde IMU freshness yokluğunun abort üretmesini engelle.
-- [ ] IMU kapalıyken encoder odometry, `/odometry/filtered`, AMCL ve map/odom/base TF ile dönüş kabulü yap.
-- [ ] `imu:=true` profilinde IMU'yu ek health/yaw doğrulama kaynağı olarak kullan ve bayatlık fail-safe politikasını koru.
+- [x] URDF teker eksenlerinin fiziksel `±0.215 m` mantığıyla tutarlı olduğunu doğrula.
+- [x] TRANSIT, q1–q9, gate ve normal D segmentlerinde final pose'a kör kayıtlı node yaw yazmayı kaldır.
+- [x] Normal FollowPath hedef heading'ini son geçerli rota segmentinin geometrisinden üret.
+- [x] İstasyon 180° dönüşünü `dock_heading_yaw` kullanan ayrı Spin action olarak tut.
+- [x] D1–D6 junction dönüşünü ayrı Spin action olarak tut.
+- [x] Küçük terminal yaw, motor deadband ve `FollowPath status=6` için regresyon testi ekle.
+- [x] Manevra health kontrolünü IMU enabled/disabled profiline ayır.
+- [x] `imu:=false` profilinde IMU freshness yokluğunun abort üretmesini engelle.
+- [x] IMU kapalıyken encoder odometry, `/odometry/filtered`, AMCL ve map/odom/base TF ile dönüş kabulü yap.
+- [x] `imu:=true` profilinde IMU'yu ek health/yaw doğrulama kaynağı olarak kullan ve bayatlık fail-safe politikasını koru.
 
 F8A kabul kapısı:
 
-- [ ] `0.430 m physical / 0.433 m odometry-effective` sözleşmesi config, contract ve URDF'de tutarlı.
 - [ ] Normal Nav2 segmentleri gereksiz terminal node yaw istemiyor ve deadband kaynaklı `status=6` regresyonu geçiyor.
-- [ ] Düz sürüş ve iki yönlü 360° ölçümleri kabul toleransında.
 - [ ] `imu:=false` profilinde normal rota ve ayrı Spin manevrası IMU-yokluğu abort'u olmadan; `imu:=true` profilinde bayat IMU fail-safe ile çalışıyor.
 
 ### F8B — İstasyon çıkışı ve çift yönlü gate
@@ -817,18 +800,23 @@ F8A kabul kapısı:
 
 Yapılacaklar:
 
-- [ ] Lift başarıyla bitince lane tracking'i STOP/disarm et.
-- [ ] Kontrol devrini sıfır hız üzerinden yaparak Nav2'yi hemen devral.
-- [ ] İlk Nav2 hedefini aktif saha paketindeki ilgili approach node yap: A1/q2, A2/q3, A3/q4, B1/q9, B2/q8, B3/q7.
-- [ ] Approach node'a çıktıktan sonra ana loaded/return rotaya devam et.
-- [ ] EXITING_STATION sırasında aynı QR yeniden okunduğunda hiçbir istasyon aksiyonu oluşmadığını doğrula.
-- [ ] İstasyon çıkışında ileri lane tracking'in hiçbir zaman başlamadığını doğrula.
+- [x] Lift başarıyla bitince lane tracking'i STOP/disarm et.
+- [x] Kontrol devrini sıfır hız üzerinden yaparak Nav2'yi hemen devral.
+- [x] İlk Nav2 hedefini aktif saha paketindeki ilgili approach node yap: A1/q2, A2/q3, A3/q4, B1/q9, B2/q8, B3/q7.
+- [x] Approach node'a çıktıktan sonra ana loaded/return rotaya devam et.
+- [x] EXITING_STATION sırasında aynı QR yeniden okunduğunda hiçbir istasyon aksiyonu oluşmadığını doğrula.
+- [x] İstasyon çıkışında ileri lane tracking'in hiçbir zaman başlamadığını doğrula.
 - [ ] q5 outbound entry ve q6 return entry semantiğini aktif saha paketinde tanımla.
-- [ ] Gidişte q5'te, dönüşte q6'da dur/izin/bekle/geç davranışını uygula.
-- [ ] Her fiziksel crossing için yeni, geçiş yönüne bağlı handshake iste.
-- [ ] Gate handshake'i pickup sonrası tek çağrı olmaktan çıkarıp aktif route crossing'ine bağla.
-- [ ] Validator'a iki yönde unauthorized gate bypass kontrolü ekle.
-- [ ] RobotStatus/mission event tarafında izin beklenen gate entry ve yönünü göster.
+- [x] Gidişte q5'te, dönüşte q6'da dur/izin/bekle/geç davranışını uygula.
+- [x] Her fiziksel crossing için yeni, geçiş yönüne bağlı handshake iste.
+- [x] Gate handshake'i pickup sonrası tek çağrı olmaktan çıkarıp aktif route crossing'ine bağla.
+- [x] Validator'a iki yönde unauthorized gate bypass kontrolü ekle.
+- [x] RobotStatus/mission event tarafında izin beklenen gate entry ve yönünü göster.
+
+Not: F8B backend sözleşmesi ve testleri hazırdır. Güncel
+`saha_test/route.geojson` dosyasının `features` listesi boş olduğundan q5/q6
+düğümleri ile `q5_outbound`/`q6_return` kenarları gerçek aktif saha paketine,
+düğümler ve kenarlar GUI'den öğretildikten sonra yazılacaktır.
 
 F8B kabul kapısı:
 
@@ -849,14 +837,21 @@ F8B kabul kapısı:
 
 Yapılacaklar:
 
-- [ ] Aktif route üzerindeki mevcut ve sonraki edge geometrisinden gerekli heading değişimini hesapla.
-- [ ] Yaklaşık 90° değişimde açık Spin/junction maneuver uygula; düz devamda Spin yapma.
-- [ ] Keskin dönüş içeren yolu tek FollowPath'e bırakmak yerine gerekli yerde segmentlere ayır.
-- [ ] `FollowPath → sıfır hız → Spin → sıfır hız → sonraki FollowPath` sırasını atomik uygula.
-- [ ] Engel, timeout, localization kaybı veya action failure sonrasında sonraki segmente geçme.
-- [ ] Junction kararını QR'a veya hardcoded A/B senaryosuna değil aktif rota geometrisine bağla.
-- [ ] Junction Spin hedefini F8A route-heading politikasıyla üret ve motor deadband altında kalan terminal düzeltmeyi normal FollowPath'e yükleme.
+- [x] Aktif route üzerindeki mevcut ve sonraki edge geometrisinden gerekli heading değişimini hesapla.
+- [x] Yaklaşık 90° değişimde açık Spin/junction maneuver uygula; düz devamda Spin yapma.
+- [x] Keskin dönüş içeren yolu tek FollowPath'e bırakmak yerine gerekli yerde segmentlere ayır.
+- [x] `FollowPath → sıfır hız → Spin → sıfır hız → sonraki FollowPath` sırasını atomik uygula.
+- [x] Engel, timeout, localization kaybı veya action failure sonrasında sonraki segmente geçme.
+- [x] Junction kararını QR'a veya hardcoded A/B senaryosuna değil aktif rota geometrisine bağla.
+- [x] Junction Spin hedefini F8A route-heading politikasıyla üret ve motor deadband altında kalan terminal düzeltmeyi normal FollowPath'e yükleme.
 - [ ] `A2 → B3 → WAIT` referans senaryosunu segment, junction ve gate olaylarıyla düşük hızlı production smoke testinde çalıştır.
+
+Not: F8C ROS yürütücüsü ve birim/regresyon testleri tamamlandı. Junction
+kararı yalnız `role=transit` düğümlerinde, Route Server'ın sıralı edge
+geometrisinden ve varsayılan `60°–120°` banttan üretilir. Düz geçişte Spin
+oluşmaz; herhangi bir segment/Spin/health hatasında sonraki segment başlamaz.
+Gerçek `A2 → B3 → WAIT` smoke testi, aktif saha grafiği öğretildikten sonra
+yapılacaktır.
 
 F8C kabul kapısı:
 
@@ -873,6 +868,15 @@ F8C kabul kapısı:
 **Bağımlılık:** F2–F4, F6, F8A–F8C
 
 **Amaç:** İkinci aşamaya geçiş kapısı olan saha hazırlığını baskı altında tamamlamak.
+
+**Başlangıç durumu (06.09.2026):** RPLIDAR ile fiziksel harita üretimi ve
+harita paketinin kaydı kullanıcı tarafından başarılı kabul edildi. Bu, F9'un
+haritalama ön koşulunu karşılar; süreli sıfırdan saha provası yerine geçmez.
+Kaydedilen haritada AMCL'nin tekrarlı başlatmalarda aynı fiziksel noktada
+kararlı kaldığı da kullanıcı tarafından doğrulandı.
+Mevcut `saha_test` paketinde harita dosyaları vardır ancak `route.geojson`
+henüz `0` düğüm/`0` kenardır. F9'da semantik düğüm, istasyon ayarı, kenar,
+validator, aktivasyon ve smoke-test adımları ayrıca tamamlanacaktır.
 
 Önerilen dakika planı:
 

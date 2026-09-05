@@ -302,14 +302,58 @@ def validate_field(
         node.node_id for node in graph.nodes.values()
         if node.role == "gate_q5"
     }
-    if competition_profile and not q5_nodes:
-        result.errors.append("required q5 gate node is missing")
+    q6_nodes = {
+        node.node_id for node in graph.nodes.values()
+        if node.role == "gate_q6"
+    }
+    if competition_profile and len(q5_nodes) != 1:
+        result.errors.append("exactly one outbound q5 gate node is required")
+    if competition_profile and len(q6_nodes) != 1:
+        result.errors.append("exactly one return q6 gate node is required")
+
+    outbound_crossings = []
+    return_crossings = []
     for edge in graph.edges.values():
-        if q5_nodes.intersection((edge.start_node_id, edge.end_node_id)):
-            if not edge.gate_event:
+        between_gate_entries = (
+            edge.start_node_id in q5_nodes
+            and edge.end_node_id in q6_nodes
+        ) or (
+            edge.start_node_id in q6_nodes
+            and edge.end_node_id in q5_nodes
+        )
+        if between_gate_entries:
+            expected = (
+                "q5_outbound"
+                if edge.start_node_id in q5_nodes
+                else "q6_return"
+            )
+            if edge.bidirectional:
                 result.errors.append(
-                    f"q5 edge {edge.edge_id} has no gate event"
+                    f"gate crossing edge {edge.edge_id} must be directed"
                 )
+            if edge.gate_event != expected:
+                result.errors.append(
+                    f"gate crossing edge {edge.edge_id} must use "
+                    f"gate_event={expected}"
+                )
+            elif not edge.bidirectional:
+                if expected == "q5_outbound":
+                    outbound_crossings.append(edge.edge_id)
+                else:
+                    return_crossings.append(edge.edge_id)
+        elif edge.gate_event in ("q5_outbound", "q6_return"):
+            result.errors.append(
+                f"gate event on edge {edge.edge_id} does not connect q5 and q6"
+            )
+
+    if competition_profile and not outbound_crossings:
+        result.errors.append(
+            "directed q5->q6 crossing with gate_event=q5_outbound is required"
+        )
+    if competition_profile and not return_crossings:
+        result.errors.append(
+            "directed q6->q5 crossing with gate_event=q6_return is required"
+        )
 
     if competition_profile:
         required = ["WAIT", "A1", "A2", "A3", "B1", "B2", "B3"]
@@ -350,4 +394,13 @@ def validate_field(
             for dropoff in ("B1", "B2", "B3"):
                 if not _reachable(graph, stations[dropoff], wait):
                     result.errors.append(f"{dropoff} cannot return to WAIT")
+                elif _reachable_without(
+                    graph,
+                    stations[dropoff],
+                    wait,
+                    q6_nodes,
+                ):
+                    result.errors.append(
+                        f"{dropoff}->WAIT has an unauthorized q6 bypass"
+                    )
     return result

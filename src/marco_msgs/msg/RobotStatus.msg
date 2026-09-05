@@ -59,6 +59,9 @@ string last_qr_camera_frame
 float32 last_qr_age_s           # son QR mesaji yasi [s], hic gelmediyse +Inf
 bool plc_connected
 bool gate_permission_granted
+string gate_entry_node          # q5 (outbound) veya q6 (return)
+string gate_direction           # outbound | return; aktif gecis yoksa bos
+string gate_crossing_id         # bu fiziksel gecise ait tek kullanimlik kimlik
 
 # --- Istasyon yaklasim/QR tetigi (F7A) ---
 # IDLE | APPROACHING_STATION | QR_VERIFIED | TURNING_180 |

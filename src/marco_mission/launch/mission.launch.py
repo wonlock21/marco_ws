@@ -22,9 +22,14 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('manual_task_enabled', default_value='true'),
         DeclareLaunchArgument('simulate_steps', default_value='false'),
         DeclareLaunchArgument('graph_file', default_value=graph),
+        DeclareLaunchArgument('gate_node', default_value='kapi_q5'),
+        DeclareLaunchArgument('return_gate_node', default_value='kapi_q6'),
         DeclareLaunchArgument('require_active_field', default_value='false'),
         DeclareLaunchArgument('require_safety_supervisor', default_value='true'),
         DeclareLaunchArgument('require_base_communication', default_value='true'),
+        DeclareLaunchArgument(
+            'imu', default_value='true',
+            description='Mission manevra sagliginda IMU freshness zorunlulugu'),
         DeclareLaunchArgument('test_only_lift', default_value='false'),
         DeclareLaunchArgument('qr_reader_adapter', default_value='true'),
         Node(package='marco_mission', executable='qr_reader_adapter',
@@ -43,11 +48,14 @@ def generate_launch_description() -> LaunchDescription:
                  'simulate_steps': LaunchConfiguration('simulate_steps'),
                  'manual_task_enabled': LaunchConfiguration('manual_task_enabled'),
                  'graph_file': LaunchConfiguration('graph_file'),
+                 'gate_node': LaunchConfiguration('gate_node'),
+                 'return_gate_node': LaunchConfiguration('return_gate_node'),
                  'require_active_field':
                      LaunchConfiguration('require_active_field'),
                  'require_safety_supervisor':
                      LaunchConfiguration('require_safety_supervisor'),
                  'require_base_communication':
                      LaunchConfiguration('require_base_communication'),
+                 'imu_enabled': LaunchConfiguration('imu'),
              }]),
     ])

@@ -34,6 +34,7 @@ def test_competition_station_aliases_and_roles_are_accepted(tmp_path):
             _point(1, "pickup_pose", "pickup_dock", "A1", 1.0, 0.0, 1.2),
             _point(2, "dropoff_pose", "dropoff_dock", "B1", 2.0, 0.0),
             _point(3, "gate_pose", "gate_q5", "q5", 1.5, 0.0),
+            _point(4, "return_gate_pose", "gate_q6", "q6", 1.7, 0.0),
         ],
     }), encoding="utf-8")
 
@@ -44,6 +45,7 @@ def test_competition_station_aliases_and_roles_are_accepted(tmp_path):
     manager._resolve_special_nodes()
 
     assert manager._gate_node == "q5"
+    assert manager._return_gate_node == "q6"
     assert manager._home_node == "WAIT"
     assert manager._nodes["A1"]["name"] == "pickup_pose"
     assert manager._nodes["A1"]["yaw"] == 1.2
@@ -150,6 +152,27 @@ def test_legacy_phase10_name_validation_is_preserved(tmp_path):
     manager._resolve_special_nodes()
 
     assert manager._validate_route(["alma_1", "birak_1"]) is None
+
+
+def test_production_route_rejects_legacy_single_gate(tmp_path):
+    graph_path = tmp_path / "legacy.geojson"
+    graph_path.write_text(json.dumps({
+        "type": "FeatureCollection",
+        "features": [
+            _point(0, "bekla_A", "", "", 0.0, 0.0),
+            _point(1, "alma_1", "", "", 1.0, 0.0),
+            _point(2, "birak_1", "", "", 2.0, 0.0),
+            _point(3, "kapi_q5", "", "", 1.5, 0.0),
+        ],
+    }), encoding="utf-8")
+    manager = MissionManager.__new__(MissionManager)
+    manager._configured_gate_node = "kapi_q5"
+    manager._configured_home_node = "bekla_A"
+    manager._nodes = MissionManager._load_graph(str(graph_path))
+    manager._resolve_special_nodes()
+    manager._require_active_field = True
+
+    assert "gate_q6" in manager._validate_route(["alma_1", "birak_1"])
 
 
 def test_production_mission_requires_verified_active_field():
