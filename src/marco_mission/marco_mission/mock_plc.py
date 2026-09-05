@@ -35,14 +35,12 @@ class MockPlc(Node):
             "dropoff_nodes",
             ["birak_1", "birak_2", "birak_3"],
         )
-        self.declare_parameter("gate_node", "kapi_q5")
         self.declare_parameter("gate_delay_s", 0.5)
         self.declare_parameter("gate_granted", True)
         self.declare_parameter("connected", True)
 
         self._pickups = list(self.get_parameter("pickup_nodes").value)
         self._dropoffs = list(self.get_parameter("dropoff_nodes").value)
-        self._gate = str(self.get_parameter("gate_node").value)
         self._gate_delay = float(self.get_parameter("gate_delay_s").value)
         self._gate_granted = bool(self.get_parameter("gate_granted").value)
         self._connected = bool(self.get_parameter("connected").value)
@@ -61,7 +59,7 @@ class MockPlc(Node):
         self.create_service(TaskComplete, "/plc/task_complete", self._on_complete)
         self.get_logger().info(
             f"mock_plc hazir | pickups={self._pickups} dropoffs={self._dropoffs} "
-            f"gate={self._gate}"
+            "gate=q5/outbound + q6/return"
         )
 
     def _publish_heartbeat(self) -> None:
@@ -90,13 +88,25 @@ class MockPlc(Node):
     def _on_gate(
         self, req: GatePermission.Request, res: GatePermission.Response
     ) -> GatePermission.Response:
-        node_id = req.node_id or self._gate
+        node_id = req.node_id
         if self._gate_delay > 0:
             time.sleep(self._gate_delay)
-        res.granted = self._gate_granted and self._connected
+        valid_request = (
+            bool(req.task_id)
+            and bool(req.crossing_id)
+            and bool(node_id)
+            and req.direction in ("outbound", "return")
+        )
+        res.granted = (
+            self._gate_granted and self._connected and valid_request
+        )
+        res.crossing_id = req.crossing_id
         res.message = (f"gecis izni: {node_id}" if res.granted else
-                       f"gecis reddedildi: {node_id}")
-        self.get_logger().info(f"GatePermission granted for {node_id}")
+                       f"gecis reddedildi: {node_id or 'bos'}")
+        self.get_logger().info(
+            f"GatePermission direction={req.direction} node={node_id} "
+            f"crossing={req.crossing_id} granted={res.granted}"
+        )
         return res
 
     def _on_complete(

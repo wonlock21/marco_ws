@@ -21,6 +21,7 @@ ROLES = frozenset({
     "dropoff_approach",
     "dropoff_dock",
     "gate_q5",
+    "gate_q6",
     "qr_trigger",
     "transit",
 })
