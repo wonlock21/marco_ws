@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 import rclpy
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
+from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry, Path
 from nav2_msgs.action import ComputeRoute, FollowPath, Spin
 from nav2_msgs.msg import SpeedLimit
@@ -251,6 +251,12 @@ class MissionManager(Node):
             ('station_turn_imu_timeout_s', 0.5),
             ('junction_turn_timeout_s', 20.0),
             ('junction_turn_yaw_tolerance_deg', 5.0),
+            ('junction_turn_correction_timeout_s', 5.0),
+            ('junction_turn_correction_angular_speed', 0.25),
+            ('junction_turn_correction_min_angular_speed', 0.16),
+            ('junction_turn_correction_slowdown_angle_deg', 10.0),
+            ('junction_turn_correction_stop_margin_deg', 2.5),
+            ('junction_turn_correction_max_angle_deg', 20.0),
             ('junction_turn_min_angle_deg', 60.0),
             ('junction_turn_max_angle_deg', 120.0),
             ('junction_path_match_tolerance_m', 0.25),
@@ -303,11 +309,23 @@ class MissionManager(Node):
             self.get_parameter('require_base_communication').value)
         self._base_communication_timeout = float(
             self.get_parameter('base_communication_timeout_s').value)
-        self._graph_file = os.path.realpath(
-            str(self.get_parameter('graph_file').value))
-        self._nodes = self._load_graph(self._graph_file)
-        self._edge_directions = self._load_edge_directions(self._graph_file)
-        self._resolve_special_nodes()
+        configured_graph = str(self.get_parameter('graph_file').value).strip()
+        if configured_graph:
+            self._graph_file = os.path.realpath(configured_graph)
+            self._nodes = self._load_graph(self._graph_file)
+            self._edge_directions = self._load_edge_directions(self._graph_file)
+            self._resolve_special_nodes()
+        elif self._require_active_field:
+            # Production starts without a packaged/bootstrap graph.  The
+            # verified active field publication supplies the only usable graph.
+            self._graph_file = ''
+            self._nodes = {}
+            self._edge_directions = {}
+            self._gate_node = self._configured_gate_node
+            self._return_gate_node = self._configured_return_gate_node
+            self._home_node = self._configured_home_node
+        else:
+            raise ValueError('graph_file cannot be empty outside production mode')
         if self._default_source not in ('plc', 'mock_plc'):
             raise ValueError('task_source plc veya mock_plc olmali')
 
@@ -354,11 +372,14 @@ class MissionManager(Node):
         self._odom_seen = 0.0
         self._filtered_odom_seen = 0.0
         self._imu_seen = 0.0
+        self._encoder_yaw = math.nan
         self._filtered_yaw = math.nan
         self._cross_track = math.nan
         self._route_speed_limit = 0.0
         self._route_guard_state = 'idle'
+        self._route_guard_stop_active = False
         self._route_stop_reason = ''
+        self._route_guard_state_seen = 0.0
         self._selected_route_edges = []
         self._route_constraints_ready = False
         self._linear_speed = 0.0
@@ -388,6 +409,11 @@ class MissionManager(Node):
         self._task_pub = self.create_publisher(String, '/task_command', 10)
         self._speed_reset_pub = self.create_publisher(
             Empty, '/route/speed_limit_reset', 10)
+        # Junction correction stays on the complete Nav2 safety path:
+        # cmd_vel_nav -> velocity_smoother -> collision_monitor -> twist_mux.
+        # It must never publish directly to the base driver's /cmd_vel input.
+        self._junction_correction_pub = self.create_publisher(
+            Twist, '/cmd_vel_nav', 10)
         load_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -623,9 +649,19 @@ class MissionManager(Node):
         self._odom_seen = time.monotonic()
         self._linear_speed = float(msg.twist.twist.linear.x)
         self._angular_speed = float(msg.twist.twist.angular.z)
+        orientation = msg.pose.pose.orientation
+        self._encoder_yaw = math.atan2(
+            2.0 * (
+                orientation.w * orientation.z
+                + orientation.x * orientation.y
+            ),
+            1.0 - 2.0 * (
+                orientation.y * orientation.y
+                + orientation.z * orientation.z
+            ),
+        )
 
     def _on_filtered_odom(self, msg: Odometry) -> None:
-        self._on_odom(msg)
         self._filtered_odom_seen = time.monotonic()
         orientation = msg.pose.pose.orientation
         self._filtered_yaw = math.atan2(
@@ -904,6 +940,19 @@ class MissionManager(Node):
         return math.atan2(math.sin(value), math.cos(value))
 
     @staticmethod
+    def _junction_correction_speed(
+        remaining: float,
+        maximum: float,
+        minimum: float,
+        slowdown_angle: float,
+    ) -> float:
+        """Reduce correction speed continuously near the requested angle."""
+        if remaining <= 0.0:
+            return 0.0
+        ratio = min(1.0, remaining / slowdown_angle)
+        return min(maximum, max(minimum, maximum * ratio))
+
+    @staticmethod
     def _directed_turn(current: float, target: float, direction: str) -> float:
         if direction == 'left':
             return (target - current) % (2.0 * math.pi)
@@ -914,15 +963,129 @@ class MissionManager(Node):
             'karsilastirilmadan kullanilamaz'
         )
 
-    def _turn_at_junction(self, maneuver: JunctionManeuver) -> None:
-        """Align to the next route edge with one explicit bounded Spin."""
+    def _run_junction_turn_correction(
+        self, node_name: str, correction_turn: float, correction_source: str
+    ) -> None:
+        """Apply one encoder-measured correction through the Nav2 safe path."""
+        maximum_speed = float(self.get_parameter(
+            'junction_turn_correction_angular_speed').value)
+        minimum_speed = float(self.get_parameter(
+            'junction_turn_correction_min_angular_speed').value)
+        timeout = float(self.get_parameter(
+            'junction_turn_correction_timeout_s').value)
+        slowdown_angle = math.radians(float(self.get_parameter(
+            'junction_turn_correction_slowdown_angle_deg').value))
+        stop_margin = math.radians(float(self.get_parameter(
+            'junction_turn_correction_stop_margin_deg').value))
+        max_angle = math.radians(float(self.get_parameter(
+            'junction_turn_correction_max_angle_deg').value))
+        if not all(math.isfinite(value) for value in (
+            maximum_speed, minimum_speed, timeout, slowdown_angle,
+            stop_margin, max_angle, correction_turn,
+        )):
+            raise MissionAbort(
+                f'{node_name}: junction duzeltme parametresi gecersiz')
+        if (
+            maximum_speed <= 0.0
+            or minimum_speed <= 0.0
+            or minimum_speed > maximum_speed
+            or timeout <= 0.0
+            or slowdown_angle <= stop_margin
+            or stop_margin < 0.0
+        ):
+            raise MissionAbort(
+                f'{node_name}: junction duzeltme parametresi gecersiz')
+        if abs(correction_turn) > max_angle:
+            raise MissionAbort(
+                f'{node_name}: junction duzeltme acisi guvenli siniri asiyor '
+                f'({math.degrees(abs(correction_turn)):.2f} derece)')
+        if not math.isfinite(self._encoder_yaw):
+            raise MissionAbort(
+                f'{node_name}: ham encoder odometri yonu gecersiz')
+
+        # Short relative motion must be closed against raw encoder odometry.
+        # EKF yaw has enough latency to make this fixed-distance correction
+        # stop late; AMCL remains the absolute post-turn authority.
+        start_yaw = self._encoder_yaw
+        previous_yaw = start_yaw
+        accumulated_turn = 0.0
+        direction = math.copysign(1.0, correction_turn)
+        deadline = time.monotonic() + timeout
+        self._status_detail = (
+            f'{node_name}: junction ince duzeltme '
+            f'{math.degrees(correction_turn):+.1f} derece'
+        )
+        self._event(
+            'junction_turn_correction_started',
+            junction=node_name,
+            correction_source=correction_source,
+            commanded_turn_rad=correction_turn,
+            odometry_source='/odom',
+            maximum_angular_speed=maximum_speed,
+            minimum_angular_speed=minimum_speed,
+            slowdown_angle_rad=slowdown_angle,
+        )
+        try:
+            while True:
+                self._check_abort()
+                self._check_action_health(require_turn_sensors=True)
+                if self._obstacle:
+                    raise MissionAbort(
+                        f'{node_name}: junction duzeltmede engel')
+                current_yaw = self._encoder_yaw
+                if not math.isfinite(current_yaw):
+                    raise MissionAbort(
+                        f'{node_name}: ham encoder odometri yonu gecersiz')
+                # Accumulate wrapped samples so crossing -pi/+pi cannot lose
+                # part of the relative correction angle.
+                accumulated_turn += self._wrap_angle(
+                    current_yaw - previous_yaw)
+                previous_yaw = current_yaw
+                directed_travel = max(0.0, direction * accumulated_turn)
+                remaining = abs(correction_turn) - directed_travel
+                if remaining <= stop_margin:
+                    break
+                if time.monotonic() >= deadline:
+                    raise MissionAbort(
+                        f'{node_name}: junction duzeltme timeout')
+                command = Twist()
+                command.angular.z = direction * self._junction_correction_speed(
+                    remaining,
+                    maximum_speed,
+                    minimum_speed,
+                    slowdown_angle,
+                )
+                self._junction_correction_pub.publish(command)
+                time.sleep(0.05)
+        finally:
+            # One zero target is sufficient for velocity_smoother to perform
+            # its configured deceleration; _wait_until_stopped verifies the
+            # physical encoder velocity afterwards.
+            self._junction_correction_pub.publish(Twist())
+
+        self._wait_until_stopped(
+            f'{node_name} junction duzeltme sonu')
         self._check_action_health(require_turn_sensors=True)
-        if self._pose is None or not math.isfinite(self._filtered_yaw):
+        measured_correction = self._wrap_angle(
+            self._encoder_yaw - start_yaw)
+        self._event(
+            'junction_turn_correction_finished',
+            junction=node_name,
+            correction_source=correction_source,
+            odometry_source='/odom',
+            commanded_turn_rad=correction_turn,
+            measured_turn_rad=measured_correction,
+        )
+
+    def _turn_at_junction(self, maneuver: JunctionManeuver) -> None:
+        """Align with one main Spin and at most one bounded correction."""
+        self._check_action_health(require_turn_sensors=True)
+        if self._pose is None or not math.isfinite(self._encoder_yaw):
             raise MissionAbort(
                 f'{maneuver.node_name}: junction yon bilgisi gecersiz'
             )
         start_map_yaw = self._yaw_from_pose(self._pose)
-        start_filtered_yaw = self._filtered_yaw
+        start_encoder_yaw = self._encoder_yaw
         relative_turn = self._wrap_angle(
             maneuver.outgoing_heading - start_map_yaw
         )
@@ -960,30 +1123,58 @@ class MissionManager(Node):
                     f'{maneuver.node_name}: junction donus sonu AMCL pozu yok'
                 )
             final_map_yaw = self._yaw_from_pose(self._pose)
-            yaw_error = abs(self._wrap_angle(
+            signed_yaw_error = self._wrap_angle(
                 maneuver.outgoing_heading - final_map_yaw
-            ))
-            measured_turn = self._wrap_angle(
-                self._filtered_yaw - start_filtered_yaw
             )
-            fused_turn_error = abs(self._wrap_angle(
+            yaw_error = abs(signed_yaw_error)
+            measured_turn = self._wrap_angle(
+                self._encoder_yaw - start_encoder_yaw
+            )
+            signed_encoder_turn_error = self._wrap_angle(
                 relative_turn - measured_turn
-            ))
+            )
+            encoder_turn_error = abs(signed_encoder_turn_error)
             tolerance = math.radians(float(self.get_parameter(
                 'junction_turn_yaw_tolerance_deg').value
             ))
+            turn_source = 'encoder'
+            correction_applied = False
+            correction_turn = 0.0
+            correction_source = ''
+            # The route heading is an absolute map-frame target.  AMCL decides
+            # whether a correction is needed; raw /odom only closes the short
+            # relative correction without EKF latency.
+            if yaw_error > tolerance:
+                correction_applied = True
+                correction_turn = signed_yaw_error
+                correction_source = 'map'
+                self._run_junction_turn_correction(
+                    maneuver.node_name,
+                    correction_turn,
+                    correction_source,
+                )
+                if self._pose is None:
+                    raise MissionAbort(
+                        f'{maneuver.node_name}: junction duzeltme sonu '
+                        'AMCL pozu yok'
+                    )
+                final_map_yaw = self._yaw_from_pose(self._pose)
+                signed_yaw_error = self._wrap_angle(
+                    maneuver.outgoing_heading - final_map_yaw
+                )
+                yaw_error = abs(signed_yaw_error)
+                measured_turn = self._wrap_angle(
+                    self._encoder_yaw - start_encoder_yaw
+                )
+                signed_encoder_turn_error = self._wrap_angle(
+                    relative_turn - measured_turn
+                )
+                encoder_turn_error = abs(signed_encoder_turn_error)
+
             if yaw_error > tolerance:
                 raise MissionAbort(
                     f'{maneuver.node_name}: junction yon hatasi '
                     f'{math.degrees(yaw_error):.2f} derece'
-                )
-            turn_source = (
-                'imu+encoder' if self._imu_enabled else 'encoder'
-            )
-            if fused_turn_error > tolerance:
-                raise MissionAbort(
-                    f'{maneuver.node_name}: {turn_source} junction donus '
-                    f'hatasi {math.degrees(fused_turn_error):.2f} derece'
                 )
         except MissionAbort as error:
             reason = 'obstacle' if self._obstacle else str(error)
@@ -1002,7 +1193,13 @@ class MissionManager(Node):
             measured_fused_turn=measured_turn,
             turn_source=turn_source,
             yaw_error_rad=yaw_error,
-            fused_turn_error_rad=fused_turn_error,
+            fused_turn_error_rad=encoder_turn_error,
+            measured_encoder_turn=measured_turn,
+            encoder_turn_error_rad=encoder_turn_error,
+            encoder_odometry_source='/odom',
+            correction_applied=correction_applied,
+            correction_turn_rad=correction_turn,
+            correction_source=correction_source,
         )
 
     def _turn_at_station(self, station: str) -> None:
@@ -1120,14 +1317,18 @@ class MissionManager(Node):
             if not isinstance(state, dict):
                 return
             self._route_guard_state = str(state.get('state', 'unavailable'))
+            self._route_guard_stop_active = bool(state.get('stop', False))
             self._route_stop_reason = str(state.get('stop_reason', ''))
+            self._route_guard_state_seen = time.monotonic()
             self._selected_route_edges = [
                 int(value) for value in state.get('selected_edges', [])
                 if 0 <= int(value) <= (1 << 64) - 1
             ]
         except (TypeError, ValueError, json.JSONDecodeError):
             self._route_guard_state = 'unavailable'
+            self._route_guard_stop_active = False
             self._route_stop_reason = 'invalid_route_state'
+            self._route_guard_state_seen = time.monotonic()
 
     def _publish_load_state(self, loaded: bool) -> None:
         loaded = bool(loaded)
@@ -1147,11 +1348,18 @@ class MissionManager(Node):
 
     def _on_active_field(self, msg: ActiveField) -> None:
         with self._lock:
-            if self._busy and msg.package_hash != self._active_field_hash:
+            if self._busy and (
+                not msg.active
+                or msg.package_hash != self._active_field_hash
+            ):
                 self._active_field_ready = False
                 self._event(
                     "active_field_rejected",
                     reason="field changed while mission was reserved",
+                )
+                self._request_abort(
+                    'aktif saha veya route runtime gorev sirasinda kayboldu',
+                    latch=True,
                 )
                 return
             if msg.active and msg.graph_file:
@@ -1177,6 +1385,14 @@ class MissionManager(Node):
             self._active_field_name = msg.field_name
             self._active_field_version = msg.package_version
             self._active_field_hash = msg.package_hash
+
+    def _production_route_ready(self) -> bool:
+        return bool(
+            self._active_field_ready
+            and self._active_field_hash
+            and self._graph_file
+            and self._route_constraints_ready
+        )
 
     def _on_estop(self, msg: Bool) -> None:
         self._estop = bool(msg.data)
@@ -1346,6 +1562,8 @@ class MissionManager(Node):
                 return f'aktif gorev var: {self._source}/{self._task_id}'
             if self._require_active_field and not self._active_field_ready:
                 return 'dogrulanmis etkin saha paketi hazir degil'
+            if self._require_active_field and not self._production_route_ready():
+                return 'aktif saha route runtime hazir degil'
             if self._estop or self._latched_abort:
                 return 'e-stop/safety kilidi aktif; operator reset gerekli'
             if self._obstacle:
@@ -1389,6 +1607,13 @@ class MissionManager(Node):
         with self._lock:
             if self._busy:
                 if self._source == 'gui' and not self._running:
+                    if (
+                        self._require_active_field
+                        and not self._production_route_ready()
+                    ):
+                        res.accepted = False
+                        res.message = 'aktif saha route runtime hazir degil'
+                        return res
                     if self._estop or self._latched_abort:
                         res.accepted, res.message = False, 'guvenlik kilidi aktif'
                         return res
@@ -1414,6 +1639,10 @@ class MissionManager(Node):
             if self._require_active_field and not self._active_field_ready:
                 res.accepted = False
                 res.message = 'dogrulanmis etkin saha paketi hazir degil'
+                return res
+            if self._require_active_field and not self._production_route_ready():
+                res.accepted = False
+                res.message = 'aktif saha route runtime hazir degil'
                 return res
             if self._estop or self._latched_abort:
                 res.accepted, res.message = False, 'guvenlik kilidi aktif'
@@ -1553,6 +1782,21 @@ class MissionManager(Node):
         if not self._localization_health().valid:
             raise MissionAbort('manevra sirasinda lokalizasyon/TF gecersiz')
 
+    def _route_guard_abort_for_action(
+        self, label: str, action_started_wall: float
+    ) -> str:
+        """Expose a fresh route hard-stop instead of a later Nav2 status=6."""
+        if not label.startswith('follow_route:'):
+            return ''
+        if not self._route_guard_stop_active:
+            return ''
+        # A latched stop from the previous path must not abort a new goal.  The
+        # guard publishes a fresh state after evaluating this action's /plan.
+        if self._route_guard_state_seen < action_started_wall:
+            return ''
+        reason = self._route_stop_reason or 'route_deviation_stop'
+        return f'{label}: route_guard durdurdu ({reason})'
+
     def _action(self, client, goal, label: str, timeout: Optional[float] = None,
                 require_turn_sensors: bool = False, feedback_callback=None):
         limit = timeout or self._action_timeout
@@ -1576,6 +1820,7 @@ class MissionManager(Node):
                 handle.cancel_goal_async()
                 raise MissionAbort('tek action sahipligi ihlali')
             self._active_goal, self._active_kind = handle, label
+        action_started_wall = time.monotonic()
         self._event('action_started', action=label)
         result_future = handle.get_result_async()
         try:
@@ -1583,6 +1828,11 @@ class MissionManager(Node):
                 handle.cancel_goal_async()
                 raise MissionAbort(self._abort_reason)
             while not result_future.done():
+                route_abort = self._route_guard_abort_for_action(
+                    label, action_started_wall)
+                if route_abort:
+                    handle.cancel_goal_async()
+                    raise MissionAbort(route_abort)
                 self._check_abort()
                 self._check_action_health(require_turn_sensors)
                 if time.monotonic() >= end:
@@ -2008,7 +2258,11 @@ class MissionManager(Node):
         msg.docking_camera_valid = self._docking_camera_valid
         msg.docking_stopped = self._docking_stopped
         msg.docking_error_reason = self._docking_error
-        msg.active_field_ready = self._active_field_ready
+        msg.active_field_ready = (
+            self._production_route_ready()
+            if self._require_active_field
+            else self._active_field_ready
+        )
         msg.active_field_name = self._active_field_name
         msg.active_field_version = self._active_field_version
         msg.active_field_hash = self._active_field_hash

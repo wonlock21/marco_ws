@@ -35,6 +35,10 @@ marco_base_driver:
     # STM32'ye giden RPM hedefi icin kalibrasyon carpani. Varsayilan davranis
     # degismez; gecici testte command_rpm_scale:=2.0 ile iki kat uygulanabilir.
     command_rpm_scale: 1.0
+    # Nav2'nin 0.01 RPM'den kucuk sayisal titresimini kablo hedefinde tutar.
+    # Float protokolu ve hassas serit takip duzeltmeleri korunur; durus, yon
+    # degisimi ve gercek hedef degisiklikleri bekletilmez.
+    rpm_command_deadband: 0.01
     # Encoder sayaci isaretli int32'de sarar. Iki okuma arasi |Δtick| bundan
     # buyukse cerceve atilir (UART copu / tek-kare bozulma). 3 ardısık redde
     # referans yeniden alinir (STM32 reset).

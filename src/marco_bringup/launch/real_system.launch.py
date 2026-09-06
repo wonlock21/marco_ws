@@ -90,15 +90,15 @@ def _setup(context, *args, **kwargs):
         LaunchConfiguration("data_root").perform(context)
     )
     nav_share = get_package_share_directory("marco_navigation")
-    # Mission manager, etkin saha daha secilmeden de ayakta kalabilmek icin
-    # salt-okunur paketli grafla kurulur. /fields/active geldigi anda aktif
-    # sahanin route.geojson dosyasini atomik olarak yukler. require_active_field
-    # production gorevinin bu bootstrap grafla baslamasini engeller.
-    graph_file = _resource(
-        LaunchConfiguration("graf").perform(context),
-        os.path.join(nav_share, "graphs"), ".geojson", "Bootstrap rota grafi",
-    )
-    _check_graph(graph_file)
+    # Paketli test grafi yalniz sahte mod icindir. Production mission manager
+    # bos baslar ve grafi sadece dogrulanmis /fields/active mesajindan alir.
+    graph_file = ""
+    if fake:
+        graph_file = _resource(
+            LaunchConfiguration("graf").perform(context),
+            os.path.join(nav_share, "graphs"), ".geojson", "Test rota grafi",
+        )
+        _check_graph(graph_file)
 
     port_text = LaunchConfiguration("rosbridge_port").perform(context)
     try:
@@ -192,8 +192,7 @@ def generate_launch_description():
             "graf",
             default_value="phase10_route.geojson",
             description=(
-                "Mission manager bootstrap grafi; production hareketi icin "
-                "GUI'den dogrulanmis etkin saha yine zorunludur"
+                "Yalniz sahte mod mission grafi; production tarafinda yok sayilir"
             ),
         ),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),

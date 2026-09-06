@@ -41,10 +41,10 @@ def test_projection_uses_nearest_segment_not_nearest_vertex():
 @pytest.mark.parametrize(
     "error,band,limit,stop",
     [
-        (0.049, "normal", 0.0, False),
-        (0.050, "warning", 0.0, False),
-        (0.080, "slowdown", 0.06, False),
-        (0.100, "stop", 0.06, True),
+        (0.099, "normal", 0.0, False),
+        (0.100, "warning", 0.0, False),
+        (0.150, "slowdown", 0.06, False),
+        (0.250, "stop", 0.06, True),
     ],
 )
 def test_guard_bands_are_deterministic(error, band, limit, stop):

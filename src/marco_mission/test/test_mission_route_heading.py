@@ -175,3 +175,37 @@ def test_imu_disabled_profile_still_requires_filtered_odometry():
 
     with pytest.raises(MissionAbort, match='filtreli odometri bayat'):
         manager._check_action_health(require_turn_sensors=True)
+
+
+def test_fresh_route_guard_stop_aborts_follow_route_with_specific_reason():
+    manager = MissionManager.__new__(MissionManager)
+    manager._route_guard_stop_active = True
+    manager._route_guard_state_seen = 11.0
+    manager._route_stop_reason = 'route_deviation_0.260m_exceeds_0.250m'
+
+    reason = manager._route_guard_abort_for_action('follow_route:D3', 10.0)
+
+    assert reason == (
+        'follow_route:D3: route_guard durdurdu '
+        '(route_deviation_0.260m_exceeds_0.250m)'
+    )
+
+
+def test_stale_route_guard_stop_does_not_abort_new_follow_route():
+    manager = MissionManager.__new__(MissionManager)
+    manager._route_guard_stop_active = True
+    manager._route_guard_state_seen = 9.0
+    manager._route_stop_reason = 'old_stop'
+
+    assert manager._route_guard_abort_for_action(
+        'follow_route:D3', 10.0
+    ) == ''
+
+
+def test_route_guard_stop_does_not_abort_spin_action():
+    manager = MissionManager.__new__(MissionManager)
+    manager._route_guard_stop_active = True
+    manager._route_guard_state_seen = 11.0
+    manager._route_stop_reason = 'route_deviation_stop'
+
+    assert manager._route_guard_abort_for_action('junction_turn:D3', 10.0) == ''

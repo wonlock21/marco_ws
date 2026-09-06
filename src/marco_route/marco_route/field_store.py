@@ -429,6 +429,42 @@ class FieldStore:
             _atomic_json(self.root / ACTIVE_POINTER, value)
             return value
 
+    def deactivate(
+        self,
+        field_name: str,
+        expected_hash: str = "",
+    ) -> dict[str, Any]:
+        """Atomically clear the active pointer without touching field files."""
+        with self._lock:
+            active = self.read_active()
+            if active is None:
+                raise StoreError("no active field to deactivate")
+            active_name = str(active.get("field_name", ""))
+            if active_name != str(field_name).strip():
+                raise StoreError(
+                    f"active field mismatch: requested {field_name}, "
+                    f"active {active_name}"
+                )
+            current_hash = self.package_hash(active_name)
+            active_hash = str(active.get("package_hash", ""))
+            if active_hash != current_hash:
+                raise StoreError("active package hash no longer matches disk")
+            if expected_hash and expected_hash != current_hash:
+                raise StoreError("expected_hash does not match active package")
+            path = self.root / ACTIVE_POINTER
+            try:
+                path.unlink()
+                directory_fd = os.open(self.root, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError as error:
+                raise StoreError(
+                    f"active field pointer could not be removed atomically: {error}"
+                ) from error
+            return active
+
     def archive(self, field_name: str) -> Path:
         with self._lock:
             field_dir = self.field_directory(field_name)

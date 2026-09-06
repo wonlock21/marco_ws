@@ -33,10 +33,11 @@ class RouteGuard(Node):
         self.declare_parameter("graph_file", "")
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("base_frame", "base_footprint")
-        self.declare_parameter("warning_threshold_m", 0.05)
-        self.declare_parameter("slowdown_threshold_m", 0.08)
-        self.declare_parameter("stop_threshold_m", 0.10)
+        self.declare_parameter("warning_threshold_m", 0.10)
+        self.declare_parameter("slowdown_threshold_m", 0.15)
+        self.declare_parameter("stop_threshold_m", 0.25)
         self.declare_parameter("slowdown_speed_mps", 0.06)
+        self.declare_parameter("stop_debounce_s", 0.50)
         self.declare_parameter("command_freshness_s", 0.50)
         graph_file = str(self.get_parameter("graph_file").value).strip()
         if not graph_file:
@@ -48,6 +49,9 @@ class RouteGuard(Node):
         self._slowdown = float(self.get_parameter("slowdown_threshold_m").value)
         self._stop = float(self.get_parameter("stop_threshold_m").value)
         self._slow_speed = float(self.get_parameter("slowdown_speed_mps").value)
+        self._stop_debounce = float(
+            self.get_parameter("stop_debounce_s").value
+        )
         self._command_freshness = float(
             self.get_parameter("command_freshness_s").value
         )
@@ -55,6 +59,8 @@ class RouteGuard(Node):
         guard_decision(
             0.0, self._warning, self._slowdown, self._stop, self._slow_speed
         )
+        if not math.isfinite(self._stop_debounce) or self._stop_debounce < 0.0:
+            raise ValueError("stop_debounce_s must be finite and non-negative")
 
         latched = QoSProfile(
             depth=1,
@@ -82,7 +88,9 @@ class RouteGuard(Node):
             Twist, "/cmd_vel_safety_guard", 10
         )
 
-        self.create_subscription(Path, "/received_global_plan", self._on_path, 10)
+        # RPP publishes /received_global_plan in base_footprint after pruning and
+        # transforming the controller-local plan.  Cross-track monitoring must
+        # use Nav2's original map-frame /plan instead.
         self.create_subscription(Path, "/plan", self._on_path, 10)
         self.create_subscription(Twist, "/cmd_vel_raw", self._on_command, 10)
         self.create_subscription(Bool, "/route/load_state", self._on_load, latched)
@@ -101,16 +109,25 @@ class RouteGuard(Node):
         self._loaded = False
         self._desired_closed: set[int] = set()
         self._applied_closed: set[int] = set()
+        # A matching empty set is not proof that Route Server accepted the
+        # current load state.  Every startup/load transition must complete a
+        # real DynamicEdges request before readiness may become true.
+        self._constraints_applied_once = False
+        self._constraint_generation = 0
+        self._dynamic_generation = -1
         self._dynamic_future = None
         self._constraints_ready = False
         self._last_band = "idle"
         self._last_state = ""
+        self._stop_candidate_wall: float | None = None
+        self._stop_active = False
         self._update_load_constraints()
         self._constraints_pub.publish(Bool(data=False))
         self.create_timer(0.05, self._tick)
         self.get_logger().info(
             f"route_guard ready: {len(self._graph.edges)} edges, "
-            f"bands={self._warning:.2f}/{self._slowdown:.2f}/{self._stop:.2f} m"
+            f"bands={self._warning:.2f}/{self._slowdown:.2f}/{self._stop:.2f} m, "
+            f"stop_debounce={self._stop_debounce:.2f} s"
         )
 
     def _event(self, event: str, **fields) -> None:
@@ -137,6 +154,8 @@ class RouteGuard(Node):
             return
         self._loaded = loaded
         self._update_load_constraints()
+        self._constraint_generation += 1
+        self._constraints_applied_once = False
         self._set_constraints_ready(False)
         self._event("load_state_changed", loaded=loaded)
 
@@ -158,21 +177,41 @@ class RouteGuard(Node):
                     self._set_constraints_ready(False)
                     self._dynamic_future = None
                     return
-                self._applied_closed = set(self._dynamic_target)
-                self._set_constraints_ready(True)
+                if self._dynamic_generation == self._constraint_generation:
+                    self._applied_closed = set(self._dynamic_target)
+                    self._constraints_applied_once = True
+                    self._set_constraints_ready(True)
+                else:
+                    self._set_constraints_ready(False)
             except Exception as error:  # ROS future boundary
                 self.get_logger().error(f"Route Server load edge update failed: {error}")
                 self._set_constraints_ready(False)
             self._dynamic_future = None
-        if self._desired_closed == self._applied_closed:
+        if (
+            self._constraints_applied_once
+            and self._desired_closed == self._applied_closed
+        ):
             self._set_constraints_ready(True)
             return
         if not self._dynamic.service_is_ready():
             return
         request = DynamicEdges.Request()
-        request.closed_edges = sorted(self._desired_closed - self._applied_closed)
-        request.opened_edges = sorted(self._applied_closed - self._desired_closed)
+        if self._constraints_applied_once:
+            request.closed_edges = sorted(
+                self._desired_closed - self._applied_closed
+            )
+            request.opened_edges = sorted(
+                self._applied_closed - self._desired_closed
+            )
+        else:
+            # Idempotently send the complete desired state on first apply.
+            request.closed_edges = sorted(self._desired_closed)
+            request.opened_edges = sorted(
+                edge.feature_id for edge in self._graph.edges
+                if edge.feature_id not in self._desired_closed
+            )
         self._dynamic_target = set(self._desired_closed)
+        self._dynamic_generation = self._constraint_generation
         self._dynamic_future = self._dynamic.call_async(request)
 
     def _set_constraints_ready(self, ready: bool) -> None:
@@ -259,9 +298,23 @@ class RouteGuard(Node):
                 gate_event=edge.gate_event,
             )
 
+    def _confirmed_stop(self, requested: bool, now: float) -> bool:
+        """Require a continuous deviation before enforcing a hard stop."""
+        if not requested:
+            self._stop_candidate_wall = None
+            return False
+        if self._stop_candidate_wall is None:
+            self._stop_candidate_wall = now
+        return now - self._stop_candidate_wall >= self._stop_debounce
+
+    def _clear_stop_confirmation(self) -> None:
+        self._stop_candidate_wall = None
+        self._stop_active = False
+
     def _tick(self) -> None:
         self._update_dynamic_edges()
         if len(self._path) < 2:
+            self._clear_stop_confirmation()
             self._publish_state({"state": "idle", "reason": "no_selected_path"})
             return
         try:
@@ -269,6 +322,7 @@ class RouteGuard(Node):
                 self._map_frame, self._base_frame, Time()
             )
         except TransformException as error:
+            self._clear_stop_confirmation()
             self._publish_state({"state": "unavailable", "reason": str(error)})
             return
         point = (
@@ -296,12 +350,21 @@ class RouteGuard(Node):
         ))
         self._publish_limit(decision.speed_limit)
         self._publish_edge_limit(active_edge.max_speed if active_edge else 0.0)
+        now = time.monotonic()
+        confirmed_stop = self._confirmed_stop(decision.stop, now)
+        if confirmed_stop != self._stop_active:
+            self._event(
+                "route_stop_confirmed" if confirmed_stop else "route_stop_cleared",
+                cross_track_error=projection.distance,
+                stop_reason=decision.reason if confirmed_stop else "",
+            )
+            self._stop_active = confirmed_stop
         command_active = (
             self._command_moving
-            and time.monotonic() - self._last_command_wall
+            and now - self._last_command_wall
             <= self._command_freshness
         )
-        if decision.stop and command_active:
+        if confirmed_stop and command_active:
             self._guard_pub.publish(Twist())
         if decision.band != self._last_band:
             self._event(
@@ -315,8 +378,9 @@ class RouteGuard(Node):
             "state": decision.band,
             "cross_track_error": projection.distance,
             "speed_limit": decision.speed_limit,
-            "stop": bool(decision.stop and command_active),
-            "stop_reason": decision.reason if decision.stop else "",
+            "stop": confirmed_stop,
+            "stop_pending": bool(decision.stop and not confirmed_stop),
+            "stop_reason": decision.reason if confirmed_stop else "",
             "active_edge": active_edge.logical_id if active_edge else None,
             "next_node": active_edge.end_name if active_edge else "",
             "selected_edges": [edge.logical_id for edge in self._selected_edges],

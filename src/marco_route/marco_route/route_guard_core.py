@@ -77,12 +77,12 @@ def nearest_projection(
 
 def guard_decision(
     error: float,
-    warning_threshold: float = 0.05,
-    slowdown_threshold: float = 0.08,
-    stop_threshold: float = 0.10,
+    warning_threshold: float = 0.10,
+    slowdown_threshold: float = 0.15,
+    stop_threshold: float = 0.25,
     slowdown_speed: float = 0.06,
 ) -> GuardDecision:
-    """Return the deterministic 5/8/10 cm route-deviation policy."""
+    """Return the deterministic configured route-deviation policy."""
     values = (
         float(error), float(warning_threshold), float(slowdown_threshold),
         float(stop_threshold), float(slowdown_speed),

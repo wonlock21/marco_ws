@@ -261,10 +261,11 @@ def _kur(context, *args, **kwargs):
         output="screen",
         parameters=[{
             "graph_file": graph_file,
-            "warning_threshold_m": 0.05,
-            "slowdown_threshold_m": 0.08,
-            "stop_threshold_m": 0.10,
+            "warning_threshold_m": 0.10,
+            "slowdown_threshold_m": 0.15,
+            "stop_threshold_m": 0.25,
             "slowdown_speed_mps": 0.06,
+            "stop_debounce_s": 0.50,
         }],
     )
 

@@ -28,6 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/DockToStation.action"
   "action/LiftLoad.action"
   "srv/ActivateField.srv"
+  "srv/DeactivateField.srv"
   "srv/ArchiveField.srv"
   "srv/AssignTask.srv"
   "srv/DeleteFieldEdge.srv"

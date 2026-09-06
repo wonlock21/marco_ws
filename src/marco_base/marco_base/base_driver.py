@@ -47,6 +47,46 @@ from .transport import SerialTransport
 HEARTBEAT_PERIOD = 0.1
 
 
+def stabilize_wheel_rpm(
+    previous: tuple[float, float],
+    requested: tuple[float, float],
+    deadband: float,
+) -> tuple[float, float]:
+    """Kablo hedefindeki anlamsiz float titresimini bastir.
+
+    STM32 ayni yondeki her farkli float hedefte hiz rampasini yeniden
+    baslatiyor. Nav2'nin sayisal gurultusu bu nedenle ilk PID cevrimini
+    surekli erteleyebiliyor. Durus, ilk hareket ve yon degisimi gecikmeden
+    uygulanir; yalniz iki teker de esigin altinda degistiyse onceki kablo
+    hedefi korunur.
+    """
+    previous_left, previous_right = previous
+    requested_left, requested_right = requested
+
+    if deadband <= 0.0:
+        return requested
+
+    previous_stopped = previous_left == 0.0 and previous_right == 0.0
+    requested_stopped = requested_left == 0.0 and requested_right == 0.0
+    if previous_stopped or requested_stopped:
+        return requested
+
+    direction_changed = (
+        previous_left * requested_left <= 0.0
+        or previous_right * requested_right <= 0.0
+    )
+    if direction_changed:
+        return requested
+
+    if (
+        abs(requested_left - previous_left) >= deadband
+        or abs(requested_right - previous_right) >= deadband
+    ):
+        return requested
+
+    return previous
+
+
 class BaseDriver(Node):
     """Alt seviye kontrolcu koprusu."""
 
@@ -63,6 +103,14 @@ class BaseDriver(Node):
         )
         if not math.isfinite(self.command_rpm_scale) or self.command_rpm_scale <= 0.0:
             raise ValueError("command_rpm_scale sonlu ve 0'dan buyuk olmali")
+        self.rpm_command_deadband = float(
+            self.get_parameter("rpm_command_deadband").value
+        )
+        if (
+            not math.isfinite(self.rpm_command_deadband)
+            or self.rpm_command_deadband < 0.0
+        ):
+            raise ValueError("rpm_command_deadband sonlu ve negatif olmamali")
         self.cmd_timeout = self.get_parameter("cmd_vel_timeout").value
         self.communication_timeout = float(
             self.get_parameter("communication_timeout").value
@@ -169,6 +217,9 @@ class BaseDriver(Node):
         # Gecici saha kalibrasyonu icin komut RPM carpani. Normal kullanimda
         # 1.0 kalir; testte --ros-args -p command_rpm_scale:=2.0 verilebilir.
         self.declare_parameter("command_rpm_scale", 1.0)
+        # Nav2'nin mikroskobik float titresiminin STM32 hiz rampasini her
+        # pakette yeniden baslatmasini engeller. Float protokolu korunur.
+        self.declare_parameter("rpm_command_deadband", 0.01)
         # Encoder int32'de sarar. Tek orneklemede bundan buyuk |Δtick| islenmez.
         self.declare_parameter("max_tick_delta", 2000)
         self.declare_parameter("max_consecutive_tick_rejects", 3)
@@ -313,6 +364,12 @@ class BaseDriver(Node):
         )
         right_rpm = (
             wheel_speed_to_rpm(right, self.wheel_radius) * self.command_rpm_scale
+        )
+
+        left_rpm, right_rpm = stabilize_wheel_rpm(
+            self._last_sent_target_rpm,
+            (left_rpm, right_rpm),
+            self.rpm_command_deadband,
         )
 
         try:

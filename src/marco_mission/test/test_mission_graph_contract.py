@@ -185,3 +185,18 @@ def test_production_mission_requires_verified_active_field():
     error = manager._reserve("task-1", ["A1", "B1"], "gui")
 
     assert error == "dogrulanmis etkin saha paketi hazir degil"
+
+
+def test_production_mission_requires_ready_route_runtime():
+    manager = MissionManager.__new__(MissionManager)
+    manager._lock = threading.RLock()
+    manager._busy = False
+    manager._require_active_field = True
+    manager._active_field_ready = True
+    manager._active_field_hash = "verified-hash"
+    manager._graph_file = "/data/field/route.geojson"
+    manager._route_constraints_ready = False
+
+    error = manager._reserve("task-1", ["A1", "B1"], "gui")
+
+    assert error == "aktif saha route runtime hazir degil"

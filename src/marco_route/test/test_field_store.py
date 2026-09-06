@@ -130,3 +130,34 @@ def test_archive_rejects_active_field(field_store):
 
     with pytest.raises(StoreError, match="active field cannot be archived"):
         field_store.archive("field")
+
+
+def test_deactivate_clears_only_active_pointer(field_store):
+    package_hash = field_store.save_graph(basic_graph())
+    field_store.write_validation(
+        "field", package_hash, True, [], [], competition_profile=False
+    )
+    field_store.activate("field", package_hash, competition_profile=False)
+    field_dir = field_store.field_directory("field")
+    files_before = sorted(path.name for path in field_dir.iterdir())
+
+    previous = field_store.deactivate("field", package_hash)
+
+    assert previous["package_hash"] == package_hash
+    assert field_store.read_active() is None
+    assert sorted(path.name for path in field_dir.iterdir()) == files_before
+
+
+def test_deactivate_rejects_wrong_field_and_hash(field_store):
+    package_hash = field_store.save_graph(basic_graph())
+    field_store.write_validation(
+        "field", package_hash, True, [], [], competition_profile=False
+    )
+    field_store.activate("field", package_hash, competition_profile=False)
+
+    with pytest.raises(StoreError, match="active field mismatch"):
+        field_store.deactivate("another", package_hash)
+    with pytest.raises(StoreError, match="expected_hash"):
+        field_store.deactivate("field", "stale-hash")
+
+    assert field_store.read_active()["field_name"] == "field"

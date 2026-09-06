@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-from nav_msgs.msg import Path
+from nav_msgs.msg import Odometry, Path
 from nav2_msgs.msg import Route, RouteEdge, RouteNode
 
 from marco_mission.mission_manager import JunctionManeuver
@@ -134,6 +134,7 @@ def test_path_is_split_at_the_ordered_junction_pose():
 def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
     manager = MissionManager.__new__(MissionManager)
     manager._pose = _localized_pose(1.0, 0.0, 0.0)
+    manager._encoder_yaw = 0.0
     manager._filtered_yaw = 0.0
     manager._filtered_odom_seen = time.monotonic()
     manager._odom_freshness = 1.0
@@ -156,6 +157,7 @@ def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
     def action(_client, goal, _label, _timeout, require_turn_sensors=False):
         operations.append(('spin', goal.target_yaw, require_turn_sensors))
         manager._pose = _localized_pose(1.0, 0.0, math.pi / 2.0)
+        manager._encoder_yaw = math.pi / 2.0
         manager._filtered_yaw = math.pi / 2.0
         manager._filtered_odom_seen = time.monotonic()
 
@@ -182,6 +184,196 @@ def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
     assert operations[1] == ('stop', None, None)
     assert events[-1][0] == 'junction_turn_completed'
     assert events[-1][1]['turn_source'] == 'encoder'
+    assert events[-1][1]['correction_applied'] is False
+
+
+def _junction_correction_probe(correct_after_retry):
+    manager = MissionManager.__new__(MissionManager)
+    manager._pose = _localized_pose(1.0, 0.0, 0.0)
+    manager._encoder_yaw = 0.0
+    manager._filtered_yaw = 0.0
+    manager._filtered_odom_seen = time.monotonic()
+    manager._odom_freshness = 1.0
+    manager._imu_enabled = False
+    manager._imu_seen = 0.0
+    manager._spin = object()
+    manager._obstacle = False
+    manager._status_detail = ''
+    manager._localization_health = lambda: SimpleNamespace(valid=True)
+    parameters = {
+        'junction_turn_timeout_s': 20.0,
+        'junction_turn_yaw_tolerance_deg': 5.0,
+    }
+    manager.get_parameter = lambda name: SimpleNamespace(
+        value=parameters[name]
+    )
+    operations = []
+    events = []
+
+    def action(_client, goal, _label, _timeout, require_turn_sensors=False):
+        operations.append(('spin', goal.target_yaw, require_turn_sensors))
+        # Main Spin stops ten degrees short in the absolute map frame.
+        manager._pose = _localized_pose(1.0, 0.0, math.radians(80.0))
+        manager._encoder_yaw = math.radians(80.0)
+        manager._filtered_yaw = math.radians(80.0)
+        manager._filtered_odom_seen = time.monotonic()
+
+    def correction(node_name, correction_turn, correction_source):
+        operations.append((
+            'correction', node_name, correction_turn, correction_source))
+        if correct_after_retry:
+            manager._pose = _localized_pose(1.0, 0.0, math.pi / 2.0)
+            manager._encoder_yaw = math.pi / 2.0
+            manager._filtered_yaw = math.pi / 2.0
+            manager._filtered_odom_seen = time.monotonic()
+
+    manager._action = action
+    manager._run_junction_turn_correction = correction
+    manager._wait_until_stopped = lambda _label: operations.append(
+        ('stop', None, None)
+    )
+    manager._event = lambda event, **fields: events.append((event, fields))
+    maneuver = JunctionManeuver(
+        node_id=2,
+        node_name='D1',
+        x=1.0,
+        y=0.0,
+        incoming_heading=0.0,
+        outgoing_heading=math.pi / 2.0,
+        turn_angle=math.pi / 2.0,
+    )
+    return manager, maneuver, operations, events
+
+
+def test_junction_spin_corrects_map_heading_once_then_continues():
+    manager, maneuver, operations, events = _junction_correction_probe(True)
+
+    manager._turn_at_junction(maneuver)
+
+    corrections = [item for item in operations if item[0] == 'correction']
+    assert len(corrections) == 1
+    assert corrections[0][1] == 'D1'
+    assert math.degrees(corrections[0][2]) == pytest.approx(10.0)
+    assert corrections[0][3] == 'map'
+    assert events[-1][0] == 'junction_turn_completed'
+    assert events[-1][1]['correction_applied'] is True
+    assert events[-1][1]['fused_turn_error_rad'] == pytest.approx(0.0)
+
+
+def test_junction_spin_aborts_after_one_unsuccessful_map_correction():
+    manager, maneuver, operations, _events = _junction_correction_probe(False)
+
+    with pytest.raises(
+        MissionAbort, match='junction yon hatasi 10.00 derece'
+    ):
+        manager._turn_at_junction(maneuver)
+
+    assert len([
+        item for item in operations if item[0] == 'correction'
+    ]) == 1
+
+
+def test_encoder_turn_difference_is_telemetry_when_map_heading_is_correct():
+    manager, maneuver, operations, events = _junction_correction_probe(True)
+
+    def action(_client, goal, _label, _timeout, require_turn_sensors=False):
+        operations.append(('spin', goal.target_yaw, require_turn_sensors))
+        manager._pose = _localized_pose(1.0, 0.0, math.pi / 2.0)
+        manager._encoder_yaw = math.radians(100.0)
+        manager._filtered_yaw = math.radians(100.0)
+
+    manager._action = action
+
+    manager._turn_at_junction(maneuver)
+
+    assert not [item for item in operations if item[0] == 'correction']
+    assert events[-1][0] == 'junction_turn_completed'
+    assert events[-1][1]['yaw_error_rad'] == pytest.approx(0.0)
+    assert math.degrees(
+        events[-1][1]['encoder_turn_error_rad']
+    ) == pytest.approx(10.0)
+
+
+def test_correction_speed_slows_down_near_target():
+    speed = MissionManager._junction_correction_speed
+
+    assert speed(math.radians(15.0), 0.25, 0.16, math.radians(10.0)) \
+        == pytest.approx(0.25)
+    assert speed(math.radians(7.0), 0.25, 0.16, math.radians(10.0)) \
+        == pytest.approx(0.175)
+    assert speed(math.radians(3.0), 0.25, 0.16, math.radians(10.0)) \
+        == pytest.approx(0.16)
+
+
+def test_raw_and_filtered_odometry_callbacks_remain_separate():
+    manager = MissionManager.__new__(MissionManager)
+    raw = Odometry()
+    raw.pose.pose.orientation.z = math.sin(0.4 / 2.0)
+    raw.pose.pose.orientation.w = math.cos(0.4 / 2.0)
+    raw.twist.twist.linear.x = 0.12
+    raw.twist.twist.angular.z = 0.23
+    filtered = Odometry()
+    filtered.pose.pose.orientation.z = math.sin(0.9 / 2.0)
+    filtered.pose.pose.orientation.w = math.cos(0.9 / 2.0)
+    filtered.twist.twist.linear.x = 9.0
+    filtered.twist.twist.angular.z = 8.0
+
+    manager._on_odom(raw)
+    raw_seen = manager._odom_seen
+    manager._on_filtered_odom(filtered)
+
+    assert manager._encoder_yaw == pytest.approx(0.4)
+    assert manager._filtered_yaw == pytest.approx(0.9)
+    assert manager._linear_speed == pytest.approx(0.12)
+    assert manager._angular_speed == pytest.approx(0.23)
+    assert manager._odom_seen == raw_seen
+    assert manager._filtered_odom_seen > 0.0
+
+
+def test_junction_correction_uses_raw_yaw_and_decreasing_speed():
+    manager = MissionManager.__new__(MissionManager)
+    manager._encoder_yaw = 0.0
+    manager._filtered_yaw = math.radians(-45.0)
+    manager._obstacle = False
+    manager._status_detail = ''
+    manager._check_abort = lambda: None
+    manager._check_action_health = lambda require_turn_sensors: None
+    manager._wait_until_stopped = lambda _label: None
+    parameters = {
+        'junction_turn_correction_angular_speed': 0.25,
+        'junction_turn_correction_min_angular_speed': 0.16,
+        'junction_turn_correction_timeout_s': 5.0,
+        'junction_turn_correction_slowdown_angle_deg': 10.0,
+        'junction_turn_correction_stop_margin_deg': 2.5,
+        'junction_turn_correction_max_angle_deg': 20.0,
+    }
+    manager.get_parameter = lambda name: SimpleNamespace(
+        value=parameters[name]
+    )
+    commands = []
+    events = []
+    manager._event = lambda event, **fields: events.append((event, fields))
+
+    class _Publisher:
+        def publish(self, command):
+            commands.append(float(command.angular.z))
+            if abs(command.angular.z) > 0.0:
+                manager._encoder_yaw = MissionManager._wrap_angle(
+                    manager._encoder_yaw + math.radians(3.0)
+                )
+
+    manager._junction_correction_pub = _Publisher()
+
+    manager._run_junction_turn_correction('D3', math.radians(10.0), 'map')
+
+    moving = [value for value in commands if value > 0.0]
+    assert moving == pytest.approx([0.25, 0.175, 0.16])
+    assert commands[-1] == pytest.approx(0.0)
+    assert manager._filtered_yaw == pytest.approx(math.radians(-45.0))
+    assert events[-1][0] == 'junction_turn_correction_finished'
+    assert events[-1][1]['odometry_source'] == '/odom'
+    assert math.degrees(events[-1][1]['measured_turn_rad']) \
+        == pytest.approx(9.0)
 
 
 class _ExecutionProbe:
