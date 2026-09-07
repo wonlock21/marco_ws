@@ -1,0 +1,10 @@
+<library path="marco_obstacle_aware_progress_checker">
+  <class
+    type="marco_navigation::ObstacleAwareProgressChecker"
+    base_class_type="nav2_core::ProgressChecker">
+    <description>
+      Checks real translational progress while excluding safety-obstacle dwell
+      time from the no-progress allowance.
+    </description>
+  </class>
+</library>

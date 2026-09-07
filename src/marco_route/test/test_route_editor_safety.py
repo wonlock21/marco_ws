@@ -6,6 +6,8 @@ import pytest
 
 from marco_msgs.msg import MappingStatus, RobotStatus
 from marco_route.field_store import StoreError
+from marco_route.graph_model import EdgeData, FieldGraph, NodeData
+import marco_route.route_editor_node as route_editor_module
 from marco_route.route_editor_node import RouteEditorNode
 
 
@@ -133,6 +135,72 @@ def test_persisted_runtime_waits_for_localization_tf_before_starting():
 
     assert started == []
     assert editor._startup_reconcile_done is False
+
+
+def test_active_and_graph_reads_reuse_hash_bound_validation(
+    field_store, monkeypatch
+):
+    graph = FieldGraph("field")
+    graph.upsert_node(NodeData(
+        10, "wait", "wait", "WAIT", 1.0, 1.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        20, "q5", "gate_q5", "q5", 2.0, 1.0, 0.0
+    ))
+    graph.upsert_edge(EdgeData(
+        30, 10, 20, bidirectional=True, max_speed=0.2
+    ))
+    package_hash = field_store.save_graph(graph)
+    field_store.write_validation(
+        "field", package_hash, True, [], ["cached warning"],
+        competition_profile=True,
+    )
+    active = field_store.activate(
+        "field", package_hash, competition_profile=True
+    )
+
+    editor = RouteEditorNode.__new__(RouteEditorNode)
+    editor._store = field_store
+    editor.get_parameter = lambda _name: SimpleNamespace(value=True)
+
+    def unexpected_validation(*_args, **_kwargs):
+        raise AssertionError("read-only graph access ran heavy validation")
+
+    monkeypatch.setattr(
+        route_editor_module, "validate_field", unexpected_validation
+    )
+
+    assert editor._verified_active() == active
+    loaded, result, loaded_hash = editor._read_graph("field")
+    assert loaded == graph
+    assert loaded_hash == package_hash
+    assert result is not None
+    assert result.errors == []
+    assert result.warnings == ["cached warning"]
+
+
+def test_graph_read_marks_stale_validation_as_draft(field_store):
+    graph = FieldGraph("field")
+    graph.upsert_node(NodeData(
+        10, "wait", "wait", "WAIT", 1.0, 1.0, 0.0
+    ))
+    first_hash = field_store.save_graph(graph)
+    field_store.write_validation(
+        "field", first_hash, True, [], [], competition_profile=True
+    )
+    graph.upsert_node(NodeData(
+        20, "transit", "transit", "", 2.0, 1.0, 0.0
+    ))
+    current_hash = field_store.save_graph(graph)
+
+    editor = RouteEditorNode.__new__(RouteEditorNode)
+    editor._store = field_store
+    editor.get_parameter = lambda _name: SimpleNamespace(value=True)
+
+    loaded, result, loaded_hash = editor._read_graph("field")
+    assert loaded == graph
+    assert loaded_hash == current_hash
+    assert result is None
 
 
 def test_adopted_runtime_is_stopped_by_exact_pid_and_graph():

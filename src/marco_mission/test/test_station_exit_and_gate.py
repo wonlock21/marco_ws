@@ -80,9 +80,12 @@ def _gate_manager(reply_crossing_id=None):
     manager._gate_timeout = 1.0
     manager.calls = []
     manager.requests = []
-    manager._navigate = lambda target, loaded: manager.calls.append(
-        ("nav", target, loaded)
-    )
+
+    def navigate(target, loaded):
+        manager.calls.append(("nav", target, loaded))
+        return 0.75
+
+    manager._navigate = navigate
     manager._wait_until_stopped = lambda label: manager.calls.append(
         ("stopped", label)
     )
@@ -112,10 +115,10 @@ def _gate_manager(reply_crossing_id=None):
 def test_each_direction_uses_its_own_entry_and_fresh_permission():
     manager = _gate_manager()
 
-    MissionManager._navigate_via_gate(
+    outbound_heading = MissionManager._navigate_via_gate(
         manager, "B2_approach", loaded=True, direction="outbound"
     )
-    MissionManager._navigate_via_gate(
+    return_heading = MissionManager._navigate_via_gate(
         manager, "WAIT", loaded=False, direction="return"
     )
 
@@ -133,6 +136,8 @@ def test_each_direction_uses_its_own_entry_and_fresh_permission():
     ]
     assert manager._gate_ok is False
     assert manager._gate_direction == ""
+    assert outbound_heading == pytest.approx(0.75)
+    assert return_heading == pytest.approx(0.75)
 
 
 def test_stale_gate_reply_cannot_authorize_crossing():

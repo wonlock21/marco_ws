@@ -71,6 +71,8 @@ def test_station_approach_config_is_loaded_from_graph(tmp_path):
     nodes = MissionManager._load_graph(str(graph_path))
     assert nodes["A1"]["approach_qr_id"] == "q2"
     assert nodes["A1"]["line_follow_duration_s"] == 4.8
+    assert "dock_heading_yaw" not in nodes["A1"]
+    assert "turn_direction" not in nodes["A1"]
 
 
 def test_station_id_alias_stays_on_dock_and_approach_is_resolved(tmp_path):
@@ -89,21 +91,21 @@ def test_station_id_alias_stays_on_dock_and_approach_is_resolved(tmp_path):
     assert manager._station_approach_target("A1") == "q2_pose"
 
 
-def test_turn_direction_is_deterministic_and_auto_is_fail_safe():
+def test_calculated_turn_direction_is_deterministic():
     left = MissionManager._directed_turn(0.0, 3.141592653589793, "left")
     right = MissionManager._directed_turn(0.0, 3.141592653589793, "right")
     assert left > 0.0
     assert right < 0.0
 
     try:
-        MissionManager._directed_turn(0.0, 3.141592653589793, "auto")
+        MissionManager._directed_turn(0.0, 3.141592653589793, "invalid")
     except MissionAbort as error:
-        assert "auto" in str(error)
+        assert "gecersiz" in str(error)
     else:
-        raise AssertionError("auto direction must fail until costmap comparison exists")
+        raise AssertionError("an invalid calculated direction must fail")
 
 
-def test_configured_station_turn_contract_is_checked_before_mission(tmp_path):
+def test_legacy_station_turn_direction_is_ignored_before_mission(tmp_path):
     graph_path = tmp_path / "route.geojson"
     graph_path.write_text(json.dumps({
         "type": "FeatureCollection",
@@ -114,6 +116,7 @@ def test_configured_station_turn_contract_is_checked_before_mission(tmp_path):
                     "approach_qr_id": "q2",
                     "dock_heading_yaw": 3.14159,
                     "turn_direction": "auto",
+                    "line_follow_duration_s": 4.8,
                 },
             ),
             _point(2, "q2_pose", "pickup_approach", "A1", 0.5, 0.0),
@@ -130,7 +133,7 @@ def test_configured_station_turn_contract_is_checked_before_mission(tmp_path):
 
     error = manager._validate_route(["A1", "B1"])
 
-    assert "turn_direction" in error
+    assert error is None
 
 
 def test_legacy_phase10_name_validation_is_preserved(tmp_path):

@@ -147,6 +147,8 @@ def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
     parameters = {
         'junction_turn_timeout_s': 20.0,
         'junction_turn_yaw_tolerance_deg': 5.0,
+        'junction_turn_max_correction_attempts': 5,
+        'junction_turn_correction_total_timeout_s': 30.0,
     }
     manager.get_parameter = lambda name: SimpleNamespace(
         value=parameters[name]
@@ -162,6 +164,7 @@ def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
         manager._filtered_odom_seen = time.monotonic()
 
     manager._action = action
+    manager._fresh_map_base_yaw = lambda _label: math.pi / 2.0
     manager._wait_until_stopped = lambda _label: operations.append(
         ('stop', None, None)
     )
@@ -187,7 +190,7 @@ def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
     assert events[-1][1]['correction_applied'] is False
 
 
-def _junction_correction_probe(correct_after_retry):
+def _junction_correction_probe(fresh_yaws):
     manager = MissionManager.__new__(MissionManager)
     manager._pose = _localized_pose(1.0, 0.0, 0.0)
     manager._encoder_yaw = 0.0
@@ -203,6 +206,8 @@ def _junction_correction_probe(correct_after_retry):
     parameters = {
         'junction_turn_timeout_s': 20.0,
         'junction_turn_yaw_tolerance_deg': 5.0,
+        'junction_turn_max_correction_attempts': 5,
+        'junction_turn_correction_total_timeout_s': 30.0,
     }
     manager.get_parameter = lambda name: SimpleNamespace(
         value=parameters[name]
@@ -218,17 +223,22 @@ def _junction_correction_probe(correct_after_retry):
         manager._filtered_yaw = math.radians(80.0)
         manager._filtered_odom_seen = time.monotonic()
 
-    def correction(node_name, correction_turn, correction_source):
+    def correction(
+        node_name, correction_turn, correction_source, timeout_limit_s=None
+    ):
         operations.append((
-            'correction', node_name, correction_turn, correction_source))
-        if correct_after_retry:
-            manager._pose = _localized_pose(1.0, 0.0, math.pi / 2.0)
-            manager._encoder_yaw = math.pi / 2.0
-            manager._filtered_yaw = math.pi / 2.0
-            manager._filtered_odom_seen = time.monotonic()
+            'correction', node_name, correction_turn, correction_source,
+            timeout_limit_s))
+        manager._encoder_yaw = MissionManager._wrap_angle(
+            manager._encoder_yaw + correction_turn
+        )
+        manager._filtered_yaw = manager._encoder_yaw
+        manager._filtered_odom_seen = time.monotonic()
 
     manager._action = action
     manager._run_junction_turn_correction = correction
+    samples = iter(fresh_yaws)
+    manager._fresh_map_base_yaw = lambda _label: next(samples)
     manager._wait_until_stopped = lambda _label: operations.append(
         ('stop', None, None)
     )
@@ -246,7 +256,10 @@ def _junction_correction_probe(correct_after_retry):
 
 
 def test_junction_spin_corrects_map_heading_once_then_continues():
-    manager, maneuver, operations, events = _junction_correction_probe(True)
+    manager, maneuver, operations, events = _junction_correction_probe([
+        math.radians(80.0),
+        math.radians(90.0),
+    ])
 
     manager._turn_at_junction(maneuver)
 
@@ -257,24 +270,54 @@ def test_junction_spin_corrects_map_heading_once_then_continues():
     assert corrections[0][3] == 'map'
     assert events[-1][0] == 'junction_turn_completed'
     assert events[-1][1]['correction_applied'] is True
+    assert events[-1][1]['correction_attempts'] == 1
     assert events[-1][1]['fused_turn_error_rad'] == pytest.approx(0.0)
 
 
-def test_junction_spin_aborts_after_one_unsuccessful_map_correction():
-    manager, maneuver, operations, _events = _junction_correction_probe(False)
+def test_junction_spin_aborts_after_five_unsuccessful_fresh_tf_corrections():
+    manager, maneuver, operations, _events = _junction_correction_probe([
+        math.radians(80.0),
+        math.radians(80.0),
+        math.radians(80.0),
+        math.radians(80.0),
+        math.radians(80.0),
+        math.radians(80.0),
+    ])
 
     with pytest.raises(
-        MissionAbort, match='junction yon hatasi 10.00 derece'
+        MissionAbort, match=r'junction yon hatasi 10.00 derece; correction 5/5'
     ):
         manager._turn_at_junction(maneuver)
 
     assert len([
         item for item in operations if item[0] == 'correction'
-    ]) == 1
+    ]) == 5
+
+
+def test_junction_final_validation_ignores_stale_cached_amcl_pose():
+    manager, maneuver, operations, events = _junction_correction_probe([
+        math.radians(84.8),
+        math.radians(90.0),
+    ])
+    # The action stub leaves the cached AMCL message at 80 degrees even
+    # though the live TF samples advance from 84.8 to 90 degrees.
+
+    manager._turn_at_junction(maneuver)
+
+    corrections = [item for item in operations if item[0] == 'correction']
+    assert len(corrections) == 1
+    assert math.degrees(corrections[0][2]) == pytest.approx(5.2)
+    assert MissionManager._yaw_from_pose(manager._pose) == pytest.approx(
+        math.radians(80.0)
+    )
+    assert events[-1][0] == 'junction_turn_completed'
+    assert events[-1][1]['yaw_error_rad'] == pytest.approx(0.0)
 
 
 def test_encoder_turn_difference_is_telemetry_when_map_heading_is_correct():
-    manager, maneuver, operations, events = _junction_correction_probe(True)
+    manager, maneuver, operations, events = _junction_correction_probe([
+        math.pi / 2.0,
+    ])
 
     def action(_client, goal, _label, _timeout, require_turn_sensors=False):
         operations.append(('spin', goal.target_yaw, require_turn_sensors))
@@ -397,6 +440,7 @@ class _ExecutionProbe:
         self.fail_on_first_follow = fail_on_first_follow
         self.operations = []
         self.events = []
+        self.follow_goal_checkers = []
 
     def _await_route_constraints(self):
         return None
@@ -407,6 +451,7 @@ class _ExecutionProbe:
     def _action(self, client, goal, _label):
         if client is self._compute_route:
             return SimpleNamespace(path=self._path, route=self._route)
+        self.follow_goal_checkers.append(goal.goal_checker_id)
         self.operations.append(('follow', len(goal.path.poses)))
         if self.fail_on_first_follow and len([
             item for item in self.operations if item[0] == 'follow'
@@ -441,7 +486,7 @@ class _ExecutionProbe:
 def test_navigation_executes_atomic_follow_stop_spin_stop_follow_order():
     probe = _ExecutionProbe()
 
-    MissionManager._navigate(probe, 'TARGET', loaded=False)
+    final_heading = MissionManager._navigate(probe, 'TARGET', loaded=False)
 
     assert probe.operations == [
         ('follow', 2),
@@ -450,7 +495,12 @@ def test_navigation_executes_atomic_follow_stop_spin_stop_follow_order():
         ('stop', None),
         ('follow', 2),
     ]
+    assert probe.follow_goal_checkers == [
+        'position_goal_checker',
+        'general_goal_checker',
+    ]
     assert probe._current_node == 'TARGET'
+    assert final_heading == pytest.approx(math.pi / 2.0)
 
 
 def test_spin_failure_prevents_the_next_follow_segment():

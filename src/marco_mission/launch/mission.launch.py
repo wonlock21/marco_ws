@@ -32,6 +32,7 @@ def generate_launch_description() -> LaunchDescription:
             description='Mission manevra sagliginda IMU freshness zorunlulugu'),
         DeclareLaunchArgument('test_only_lift', default_value='false'),
         DeclareLaunchArgument('qr_reader_adapter', default_value='true'),
+        DeclareLaunchArgument('station_qr_mock_enabled', default_value='false'),
         Node(package='marco_mission', executable='qr_reader_adapter',
              name='qr_reader_adapter', output='screen',
              condition=IfCondition(qr_adapter)),
@@ -57,5 +58,7 @@ def generate_launch_description() -> LaunchDescription:
                  'require_base_communication':
                      LaunchConfiguration('require_base_communication'),
                  'imu_enabled': LaunchConfiguration('imu'),
+                 'station_qr_mock_enabled':
+                     LaunchConfiguration('station_qr_mock_enabled'),
              }]),
     ])

@@ -61,8 +61,12 @@ from tf2_ros import Buffer, TransformException, TransformListener
 
 from .coordinates import pixel_to_map
 from .field_store import FieldStore, StoreError
-from .graph_model import EdgeData, GraphError, NodeData
-from .station_config import config_from_node, update_station
+from .graph_model import EdgeData, FieldGraph, GraphError, NodeData
+from .station_config import (
+    config_from_node,
+    derived_dock_heading,
+    update_station,
+)
 from .validator import ValidationResult, validate_field
 
 
@@ -967,20 +971,18 @@ class RouteEditorNode(Node):
             raise StoreError("active package hash no longer matches disk")
         report = self._store.read_validation(field_name)
         if (
-            report.get("package_hash") != current_hash
+            report.get("field_name") != field_name
+            or report.get("package_hash") != current_hash
             or report.get("valid") is not True
             or report.get("competition_profile")
             is not bool(self.get_parameter("competition_profile").value)
         ):
             raise StoreError("active package has no matching successful validation")
-        graph = self._store.load_graph(field_name)
-        result = validate_field(
-            self._store,
-            graph,
-            bool(self.get_parameter("competition_profile").value),
-        )
-        if not result.valid:
-            raise StoreError("active package is invalid: " + "; ".join(result.errors))
+        # The report is bound to the hash of every canonical field artifact.
+        # Re-running validate_field() here scans the complete PGM map for every
+        # route edge and used to block read-only GUI calls for several seconds.
+        # A matching successful report therefore is the validation proof; an
+        # explicit /fields/validate call remains the only expensive validator.
         return value
 
     def _is_currently_active(self, field_name: str) -> bool:
@@ -1002,6 +1004,39 @@ class RouteEditorNode(Node):
         )
         package_hash = self._store.package_hash(field_name)
         return graph, result, package_hash
+
+    def _stored_validation(
+        self, field_name: str, package_hash: str
+    ) -> ValidationResult | None:
+        """Return only a validation report bound to the current package hash."""
+        try:
+            report = self._store.read_validation(field_name)
+        except StoreError:
+            return None
+        if (
+            report.get("field_name") != field_name
+            or report.get("package_hash") != package_hash
+            or report.get("competition_profile")
+            is not bool(self.get_parameter("competition_profile").value)
+        ):
+            return None
+        errors = report.get("errors", [])
+        warnings = report.get("warnings", [])
+        if not isinstance(errors, list) or not isinstance(warnings, list):
+            return None
+        errors = [str(value) for value in errors]
+        warnings = [str(value) for value in warnings]
+        if report.get("valid") is not True and not errors:
+            errors.append("stored validation report marks the package invalid")
+        return ValidationResult(errors=errors, warnings=warnings)
+
+    def _read_graph(
+        self, field_name: str
+    ) -> tuple[object, ValidationResult | None, str]:
+        """Fast graph read for UI services; never performs map clearance scans."""
+        graph = self._store.load_graph(field_name)
+        package_hash = self._store.package_hash(field_name)
+        return graph, self._stored_validation(field_name, package_hash), package_hash
 
     def _status_message(
         self,
@@ -1038,7 +1073,9 @@ class RouteEditorNode(Node):
         self._status_pub.publish(status)
         return status
 
-    def _publish_draft(self, field_name: str, graph, package_hash: str) -> None:
+    def _publish_draft(
+        self, field_name: str, graph, package_hash: str
+    ) -> FieldPackageStatus:
         status = FieldPackageStatus()
         status.header.stamp = self._now()
         status.header.frame_id = str(self.get_parameter("map_frame").value)
@@ -1049,10 +1086,11 @@ class RouteEditorNode(Node):
         status.edge_count = len(graph.edges)
         status.message = "Field graph changed; validation is required"
         self._status_pub.publish(status)
+        return status
 
     def _on_get_graph(self, request, response):
         try:
-            graph, result, package_hash = self._validate(request.field_name)
+            graph, result, package_hash = self._read_graph(request.field_name)
             response.nodes = [
                 self._node_msg(node)
                 for node in sorted(graph.nodes.values(), key=lambda item: item.node_id)
@@ -1061,8 +1099,14 @@ class RouteEditorNode(Node):
                 self._edge_msg(edge)
                 for edge in sorted(graph.edges.values(), key=lambda item: item.edge_id)
             ]
-            response.status = self._status_message(
-                request.field_name, graph, result, package_hash
+            response.status = (
+                self._status_message(
+                    request.field_name, graph, result, package_hash
+                )
+                if result is not None
+                else self._publish_draft(
+                    request.field_name, graph, package_hash
+                )
             )
             response.success = True
             response.message = "Field graph loaded"
@@ -1072,7 +1116,9 @@ class RouteEditorNode(Node):
         return response
 
     @staticmethod
-    def _station_config_msg(node: NodeData) -> StationApproachConfig:
+    def _station_config_msg(
+        graph: FieldGraph, node: NodeData
+    ) -> StationApproachConfig:
         values = config_from_node(node)
         if values is None:
             raise GraphError(
@@ -1082,8 +1128,13 @@ class RouteEditorNode(Node):
         message.station_id = node.station
         message.station_node_id = node.node_id
         message.approach_qr_id = values["approach_qr_id"]
-        message.dock_heading_yaw = values["dock_heading_yaw"]
-        message.turn_direction = values["turn_direction"]
+        # Compatibility field: read-only/debug value derived from graph
+        # geometry. Save requests cannot set or persist this heading.
+        message.dock_heading_yaw = derived_dock_heading(
+            graph, node.station
+        )
+        # Compatibility field: selection is automatic in mission runtime.
+        message.turn_direction = "auto"
         message.line_follow_duration_s = values["line_follow_duration_s"]
         return message
 
@@ -1091,7 +1142,7 @@ class RouteEditorNode(Node):
         try:
             graph = self._store.load_graph(request.field_name)
             response.configs = [
-                self._station_config_msg(node)
+                self._station_config_msg(graph, node)
                 for node in sorted(graph.nodes.values(), key=lambda item: item.node_id)
                 if node.role in ("pickup_dock", "dropoff_dock")
                 and config_from_node(node) is not None
@@ -1129,7 +1180,7 @@ class RouteEditorNode(Node):
                 self._publish_draft(
                     request.field_name, graph, response.package_hash
                 )
-                response.saved_config = self._station_config_msg(node)
+                response.saved_config = self._station_config_msg(graph, node)
                 response.success = True
                 response.message = "Station approach configuration saved atomically"
             except (StoreError, GraphError, ValueError, TypeError) as error:
@@ -1430,9 +1481,13 @@ class RouteEditorNode(Node):
                 response.active_field = self._active_message(None, response.message)
                 return response
             field_name = str(value.get("field_name", ""))
-            graph, result, package_hash = self._validate(field_name)
-            response.status = self._status_message(
-                field_name, graph, result, package_hash
+            graph, result, package_hash = self._read_graph(field_name)
+            # _verified_active() already requires the matching successful
+            # report, so this branch is defensive against an external race.
+            response.status = (
+                self._status_message(field_name, graph, result, package_hash)
+                if result is not None
+                else self._publish_draft(field_name, graph, package_hash)
             )
             response.active_field = self._active_message(
                 value,

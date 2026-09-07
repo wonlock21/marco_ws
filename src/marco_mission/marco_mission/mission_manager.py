@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import heapq
 import json
 import math
 import os
@@ -15,10 +16,15 @@ from typing import Any, Dict, Optional
 import rclpy
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped, Twist
+from geometry_msgs.msg import (
+    PolygonStamped,
+    Pose2D,
+    PoseWithCovarianceStamped,
+    Twist,
+)
 from nav_msgs.msg import Odometry, Path
 from nav2_msgs.action import ComputeRoute, FollowPath, Spin
-from nav2_msgs.msg import SpeedLimit
+from nav2_msgs.msg import Costmap, SpeedLimit
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
@@ -69,6 +75,19 @@ class JunctionManeuver:
     incoming_heading: float
     outgoing_heading: float
     turn_angle: float
+
+
+@dataclass(frozen=True)
+class TurnArcEvaluation:
+    """Collision and clearance result for one station rotation arc."""
+
+    direction: str
+    turn_angle: float
+    safe: bool
+    minimum_clearance: float
+    maximum_cost: int
+    mean_cost: float
+    reason: str = ''
 
 
 def _route_edge_heading(edge, movement_direction: str = 'forward') -> float:
@@ -221,6 +240,189 @@ def _terminal_abort_is_acceptable(
     return accepted, position_error, yaw_error
 
 
+def _yaw_from_quaternion(orientation) -> float:
+    """Return planar yaw from a quaternion-like ROS message."""
+    return math.atan2(
+        2.0 * (
+            orientation.w * orientation.z
+            + orientation.x * orientation.y
+        ),
+        1.0 - 2.0 * (
+            orientation.y * orientation.y
+            + orientation.z * orientation.z
+        ),
+    )
+
+
+def _point_in_polygon(x: float, y: float, polygon) -> bool:
+    """Return whether a point lies inside an arbitrary simple polygon."""
+    inside = False
+    previous = polygon[-1]
+    for current in polygon:
+        x1, y1 = previous
+        x2, y2 = current
+        if (y1 > y) != (y2 > y):
+            crossing_x = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+            if x <= crossing_x:
+                inside = not inside
+        previous = current
+    return inside
+
+
+def _sample_polygon(polygon, spacing: float):
+    """Return conservative interior and boundary samples of a footprint."""
+    if len(polygon) < 3 or spacing <= 0.0:
+        raise MissionAbort('station turn footprint gecersiz')
+    samples = list(polygon)
+    previous = polygon[-1]
+    for current in polygon:
+        length = math.hypot(
+            current[0] - previous[0], current[1] - previous[1]
+        )
+        count = max(1, int(math.ceil(length / spacing)))
+        samples.extend((
+            previous[0] + (current[0] - previous[0]) * index / count,
+            previous[1] + (current[1] - previous[1]) * index / count,
+        ) for index in range(1, count))
+        previous = current
+
+    minimum_x = min(point[0] for point in polygon)
+    maximum_x = max(point[0] for point in polygon)
+    minimum_y = min(point[1] for point in polygon)
+    maximum_y = max(point[1] for point in polygon)
+    rows = max(1, int(math.ceil((maximum_y - minimum_y) / spacing)))
+    columns = max(1, int(math.ceil((maximum_x - minimum_x) / spacing)))
+    for row in range(rows + 1):
+        y = minimum_y + (maximum_y - minimum_y) * row / rows
+        for column in range(columns + 1):
+            x = minimum_x + (maximum_x - minimum_x) * column / columns
+            if _point_in_polygon(x, y, polygon):
+                samples.append((x, y))
+    return samples
+
+
+def _costmap_clearance(costmap: Costmap, collision_cost: int):
+    """Compute an eight-connected distance field from blocked cells."""
+    width = int(costmap.metadata.size_x)
+    height = int(costmap.metadata.size_y)
+    resolution = float(costmap.metadata.resolution)
+    if (
+        width <= 0
+        or height <= 0
+        or not math.isfinite(resolution)
+        or resolution <= 0.0
+        or len(costmap.data) != width * height
+    ):
+        raise MissionAbort('station turn local costmap geometrisi gecersiz')
+    distances = [math.inf] * (width * height)
+    queue = []
+    for index, raw_cost in enumerate(costmap.data):
+        if int(raw_cost) >= collision_cost:
+            distances[index] = 0.0
+            heapq.heappush(queue, (0.0, index))
+    neighbours = (
+        (-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0),
+        (-1, -1, math.sqrt(2.0)), (-1, 1, math.sqrt(2.0)),
+        (1, -1, math.sqrt(2.0)), (1, 1, math.sqrt(2.0)),
+    )
+    while queue:
+        distance, index = heapq.heappop(queue)
+        if distance != distances[index]:
+            continue
+        x = index % width
+        y = index // width
+        for dx, dy, step in neighbours:
+            next_x, next_y = x + dx, y + dy
+            if not (0 <= next_x < width and 0 <= next_y < height):
+                continue
+            next_index = next_y * width + next_x
+            candidate = distance + step
+            if candidate < distances[next_index]:
+                distances[next_index] = candidate
+                heapq.heappush(queue, (candidate, next_index))
+    return [distance * resolution for distance in distances]
+
+
+def _costmap_cell(costmap: Costmap, x: float, y: float):
+    """Convert a world point into a costmap cell respecting origin yaw."""
+    origin = costmap.metadata.origin
+    origin_yaw = _yaw_from_quaternion(origin.orientation)
+    cosine = math.cos(origin_yaw)
+    sine = math.sin(origin_yaw)
+    dx = x - float(origin.position.x)
+    dy = y - float(origin.position.y)
+    local_x = cosine * dx + sine * dy
+    local_y = -sine * dx + cosine * dy
+    resolution = float(costmap.metadata.resolution)
+    cell_x = math.floor(local_x / resolution)
+    cell_y = math.floor(local_y / resolution)
+    if not (
+        0 <= cell_x < int(costmap.metadata.size_x)
+        and 0 <= cell_y < int(costmap.metadata.size_y)
+    ):
+        return None
+    return int(cell_y * int(costmap.metadata.size_x) + cell_x)
+
+
+def _evaluate_turn_arc(
+    costmap: Costmap,
+    footprint,
+    center,
+    direction: str,
+    turn_angle: float,
+    angular_step: float,
+    collision_cost: int,
+) -> TurnArcEvaluation:
+    """Evaluate a complete in-place footprint sweep through one turn arc."""
+    resolution = float(costmap.metadata.resolution)
+    footprint_samples = _sample_polygon(footprint, resolution * 0.5)
+    clearance = _costmap_clearance(costmap, collision_cost)
+    steps = max(1, int(math.ceil(abs(turn_angle) / angular_step)))
+    minimum_clearance = math.inf
+    maximum_cost = 0
+    total_cost = 0
+    sample_count = 0
+    center_x, center_y = center
+    for step in range(steps + 1):
+        angle = turn_angle * step / steps
+        cosine = math.cos(angle)
+        sine = math.sin(angle)
+        for x, y in footprint_samples:
+            relative_x = x - center_x
+            relative_y = y - center_y
+            rotated_x = center_x + cosine * relative_x - sine * relative_y
+            rotated_y = center_y + sine * relative_x + cosine * relative_y
+            cell = _costmap_cell(costmap, rotated_x, rotated_y)
+            if cell is None:
+                return TurnArcEvaluation(
+                    direction, turn_angle, False, 0.0,
+                    maximum_cost, 0.0, 'costmap_disinda',
+                )
+            cost = int(costmap.data[cell])
+            if cost == 255:
+                return TurnArcEvaluation(
+                    direction, turn_angle, False, 0.0,
+                    max(maximum_cost, cost), 0.0, 'bilinmeyen_hucre',
+                )
+            if cost >= collision_cost:
+                return TurnArcEvaluation(
+                    direction, turn_angle, False, 0.0,
+                    max(maximum_cost, cost), 0.0, 'carpisma',
+                )
+            minimum_clearance = min(minimum_clearance, clearance[cell])
+            maximum_cost = max(maximum_cost, cost)
+            total_cost += cost
+            sample_count += 1
+    return TurnArcEvaluation(
+        direction=direction,
+        turn_angle=turn_angle,
+        safe=True,
+        minimum_clearance=minimum_clearance,
+        maximum_cost=maximum_cost,
+        mean_cost=(total_cost / sample_count if sample_count else math.inf),
+    )
+
+
 class MissionManager(Node):
     """Own exactly one mission and one motion action at a time."""
 
@@ -244,10 +446,17 @@ class MissionManager(Node):
             ('station_qr_max_age_s', 0.75),
             ('station_qr_debounce_s', 0.15),
             ('station_qr_wait_s', 3.0),
+            ('station_qr_mock_enabled', False),
             ('station_turn_timeout_s', 30.0),
             ('station_turn_yaw_tolerance_deg', 3.0),
             ('station_turn_min_angle_deg', 150.0),
             ('station_turn_max_angle_deg', 210.0),
+            ('station_turn_max_correction_attempts', 5),
+            ('station_turn_correction_total_timeout_s', 30.0),
+            ('station_turn_costmap_max_age_s', 1.5),
+            ('station_turn_footprint_max_age_s', 1.5),
+            ('station_turn_arc_step_deg', 5.0),
+            ('station_turn_collision_cost', 253),
             ('station_turn_imu_timeout_s', 0.5),
             ('junction_turn_timeout_s', 20.0),
             ('junction_turn_yaw_tolerance_deg', 5.0),
@@ -257,6 +466,8 @@ class MissionManager(Node):
             ('junction_turn_correction_slowdown_angle_deg', 10.0),
             ('junction_turn_correction_stop_margin_deg', 2.5),
             ('junction_turn_correction_max_angle_deg', 20.0),
+            ('junction_turn_max_correction_attempts', 5),
+            ('junction_turn_correction_total_timeout_s', 30.0),
             ('junction_turn_min_angle_deg', 60.0),
             ('junction_turn_max_angle_deg', 120.0),
             ('junction_path_match_tolerance_m', 0.25),
@@ -278,6 +489,9 @@ class MissionManager(Node):
         if bool(self.get_parameter('simulate_steps').value):
             raise ValueError('Faz 10 sahte sleep modu kaldirildi; simulate_steps:=false kullan')
         self._manual_enabled = bool(self.get_parameter('manual_task_enabled').value)
+        self._station_qr_mock_enabled = bool(
+            self.get_parameter('station_qr_mock_enabled').value
+        )
         self._configured_gate_node = str(self.get_parameter('gate_node').value)
         self._configured_return_gate_node = str(
             self.get_parameter('return_gate_node').value)
@@ -399,6 +613,10 @@ class MissionManager(Node):
         self._docking_camera_valid = False
         self._docking_stopped = True
         self._docking_error = ''
+        self._local_costmap: Optional[Costmap] = None
+        self._local_costmap_seen = 0.0
+        self._local_footprint: Optional[PolygonStamped] = None
+        self._local_footprint_seen = 0.0
 
         self._tf_buffer = Buffer(cache_time=Duration(seconds=10.0))
         self._tf_listener = TransformListener(
@@ -440,6 +658,12 @@ class MissionManager(Node):
         self.create_subscription(LaserScan, '/scan', self._on_scan,
                                  qos_profile_sensor_data,
                                  callback_group=self._cb)
+        self.create_subscription(
+            Costmap, '/local_costmap/costmap_raw', self._on_local_costmap,
+            1, callback_group=self._cb)
+        self.create_subscription(
+            PolygonStamped, '/local_costmap/published_footprint',
+            self._on_local_footprint, 1, callback_group=self._cb)
         self.create_subscription(Odometry, '/odom', self._on_odom, 10,
                                  callback_group=self._cb)
         self.create_subscription(Odometry, '/odometry/filtered',
@@ -546,9 +770,6 @@ class MissionManager(Node):
                 'role': str(metadata.get('role', '')).strip().lower(),
                 'approach_qr_id': str(
                     custom.get('approach_qr_id', '')).strip(),
-                'dock_heading_yaw': custom.get('dock_heading_yaw'),
-                'turn_direction': str(
-                    custom.get('turn_direction', '')).strip().lower(),
                 'line_follow_duration_s': custom.get(
                     'line_follow_duration_s'),
             }
@@ -644,6 +865,16 @@ class MissionManager(Node):
 
     def _on_scan(self, _msg: LaserScan) -> None:
         self._scan_seen = time.monotonic()
+
+    def _on_local_costmap(self, msg: Costmap) -> None:
+        with self._lock:
+            self._local_costmap = msg
+            self._local_costmap_seen = time.monotonic()
+
+    def _on_local_footprint(self, msg: PolygonStamped) -> None:
+        with self._lock:
+            self._local_footprint = msg
+            self._local_footprint_seen = time.monotonic()
 
     def _on_odom(self, msg: Odometry) -> None:
         self._odom_seen = time.monotonic()
@@ -788,7 +1019,7 @@ class MissionManager(Node):
 
     def _navigate_via_gate(
         self, target: str, loaded: bool, direction: str
-    ) -> None:
+    ) -> float:
         """Acquire a fresh permission at q5/q6, then consume it once."""
         entry = self._gate_entry_for_direction(direction)
         self._gate_sequence += 1
@@ -841,7 +1072,7 @@ class MissionManager(Node):
                 crossing_id=crossing_id,
                 target=target,
             )
-            self._navigate(target, loaded=loaded)
+            final_heading = self._navigate(target, loaded=loaded)
             self._event(
                 'gate_crossing_completed',
                 gate_entry=entry,
@@ -854,6 +1085,7 @@ class MissionManager(Node):
             self._gate_entry_node = ''
             self._gate_direction = ''
             self._gate_crossing_id = ''
+        return final_heading
 
     def _unique_graph_nodes(self):
         """Return graph records once even though aliases share records."""
@@ -882,7 +1114,39 @@ class MissionManager(Node):
             )
         return str(selected[0]['name'])
 
+    def _inject_mock_station_qr_if_enabled(self, station: str) -> bool:
+        """Inject the expected QR only after a GUI approach reaches its node."""
+        if not self._station_qr_mock_enabled or self._source != 'gui':
+            return False
+        if (
+            self._qr_gate.phase != StationQrGate.APPROACHING
+            or self._qr_gate.target_station != station
+            or not self._qr_gate.expected_qr_id
+        ):
+            raise MissionAbort(
+                f'{station}: QR mock icin armed yaklasim oturumu yok'
+            )
+
+        detection = QrDetection()
+        detection.header.stamp = self.get_clock().now().to_msg()
+        detection.header.frame_id = 'qr_mock'
+        detection.detected = True
+        detection.data = self._qr_gate.expected_qr_id
+        detection.confidence = 1.0
+        detection.camera_frame = 'qr_mock'
+        self._event(
+            'station_qr_mock_injected',
+            station=station,
+            qr_id=detection.data,
+            test_only=True,
+        )
+        self._on_qr(detection)
+        return True
+
     def _wait_for_station_qr(self, station: str) -> None:
+        # Nav2 yaklasim dugumune ulastiktan sonra ve yalniz qr:=false GUI
+        # testlerinde gercek okuyucunun tek seferlik tespitini taklit et.
+        self._inject_mock_station_qr_if_enabled(station)
         timeout = float(self.get_parameter('station_qr_wait_s').value)
         deadline = time.monotonic() + timeout
         while self._qr_gate.phase == StationQrGate.APPROACHING:
@@ -935,6 +1199,218 @@ class MissionManager(Node):
             ),
         )
 
+    def _fresh_map_base_yaw(self, label: str) -> float:
+        """
+        Return current map-frame body yaw from the live TF chain.
+
+        ``/amcl_pose`` is intentionally not used here. AMCL may retain its
+        last particle-filter pose while odom -> base_footprint continues to
+        change between laser updates. The composed map -> base_footprint TF
+        therefore is the current absolute heading authority for a stopped
+        precision maneuver.
+        """
+        self._check_action_health(require_turn_sensors=True)
+        try:
+            transform = self._tf_buffer.lookup_transform(
+                'map', 'base_footprint', Time(),
+                timeout=Duration(seconds=self._tf_lookup_timeout),
+            )
+        except TransformException as error:
+            raise MissionAbort(
+                f'{label}: fresh map->base_footprint TF alinamadi'
+            ) from error
+
+        stamp = transform.header.stamp
+        stamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+        if stamp_ns <= 0:
+            raise MissionAbort(
+                f'{label}: map->base_footprint TF zaman damgasi gecersiz'
+            )
+        age = max(
+            0.0,
+            (self.get_clock().now().nanoseconds - stamp_ns) / 1.0e9,
+        )
+        if age > self._tf_freshness:
+            raise MissionAbort(
+                f'{label}: map->base_footprint TF bayat ({age:.2f} s)'
+            )
+
+        orientation = transform.transform.rotation
+        values = (
+            orientation.x, orientation.y, orientation.z, orientation.w,
+        )
+        if not all(math.isfinite(float(value)) for value in values):
+            raise MissionAbort(
+                f'{label}: map->base_footprint TF yonelimi gecersiz'
+            )
+        norm = math.sqrt(sum(float(value) ** 2 for value in values))
+        if norm <= 1.0e-6:
+            raise MissionAbort(
+                f'{label}: map->base_footprint TF quaternion sifir'
+            )
+        yaw = math.atan2(
+            2.0 * (
+                orientation.w * orientation.z
+                + orientation.x * orientation.y
+            ),
+            1.0 - 2.0 * (
+                orientation.y * orientation.y
+                + orientation.z * orientation.z
+            ),
+        )
+        if not math.isfinite(yaw):
+            raise MissionAbort(
+                f'{label}: map->base_footprint TF yaw gecersiz'
+            )
+        return yaw
+
+    def _fresh_base_transform(self, target_frame: str, label: str):
+        """Return a fresh target-frame transform of the robot body."""
+        self._check_action_health(require_turn_sensors=True)
+        try:
+            transform = self._tf_buffer.lookup_transform(
+                target_frame, 'base_footprint', Time(),
+                timeout=Duration(seconds=self._tf_lookup_timeout),
+            )
+        except TransformException as error:
+            raise MissionAbort(
+                f'{label}: {target_frame}->base_footprint TF alinamadi'
+            ) from error
+        stamp = transform.header.stamp
+        stamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+        if stamp_ns <= 0:
+            raise MissionAbort(f'{label}: costmap TF zaman damgasi gecersiz')
+        age = max(
+            0.0,
+            (self.get_clock().now().nanoseconds - stamp_ns) / 1.0e9,
+        )
+        if age > self._tf_freshness:
+            raise MissionAbort(
+                f'{label}: costmap TF bayat ({age:.2f} s)'
+            )
+        translation = transform.transform.translation
+        if not all(math.isfinite(float(value)) for value in (
+            translation.x, translation.y,
+        )):
+            raise MissionAbort(f'{label}: costmap TF konumu gecersiz')
+        return transform
+
+    @staticmethod
+    def _turn_arc_event_fields(evaluation: TurnArcEvaluation) -> dict:
+        clearance = evaluation.minimum_clearance
+        return {
+            'safe': evaluation.safe,
+            'turn_angle_rad': evaluation.turn_angle,
+            'minimum_clearance_m': (
+                clearance if math.isfinite(clearance) else None
+            ),
+            'maximum_cost': evaluation.maximum_cost,
+            'mean_cost': evaluation.mean_cost,
+            'reason': evaluation.reason,
+        }
+
+    def _select_station_turn_direction(
+        self, station: str, current_yaw: float, target_yaw: float
+    ) -> str:
+        """Choose the safer 180-degree direction from live local costmap."""
+        now = time.monotonic()
+        with self._lock:
+            costmap = copy.deepcopy(self._local_costmap)
+            footprint = copy.deepcopy(self._local_footprint)
+            costmap_age = (
+                now - self._local_costmap_seen
+                if self._local_costmap_seen else math.inf
+            )
+            footprint_age = (
+                now - self._local_footprint_seen
+                if self._local_footprint_seen else math.inf
+            )
+        max_costmap_age = float(self.get_parameter(
+            'station_turn_costmap_max_age_s').value)
+        max_footprint_age = float(self.get_parameter(
+            'station_turn_footprint_max_age_s').value)
+        angular_step = math.radians(float(self.get_parameter(
+            'station_turn_arc_step_deg').value))
+        collision_cost = int(self.get_parameter(
+            'station_turn_collision_cost').value)
+        if not all(math.isfinite(value) and value > 0.0 for value in (
+            max_costmap_age, max_footprint_age, angular_step,
+        )) or not 1 <= collision_cost <= 255:
+            raise MissionAbort(
+                f'{station}: otomatik donus secim parametresi gecersiz'
+            )
+        if costmap is None or costmap_age > max_costmap_age:
+            raise MissionAbort(
+                f'{station}: local costmap yok/bayat ({costmap_age:.2f} s)'
+            )
+        if footprint is None or footprint_age > max_footprint_age:
+            raise MissionAbort(
+                f'{station}: footprint yok/bayat ({footprint_age:.2f} s)'
+            )
+        costmap_frame = str(costmap.header.frame_id).strip().lstrip('/')
+        footprint_frame = str(footprint.header.frame_id).strip().lstrip('/')
+        if not costmap_frame or footprint_frame != costmap_frame:
+            raise MissionAbort(
+                f'{station}: costmap/footprint frame uyusmazligi '
+                f'({costmap_frame or "bos"}/{footprint_frame or "bos"})'
+            )
+        polygon = [(float(point.x), float(point.y))
+                   for point in footprint.polygon.points]
+        if len(polygon) < 3 or not all(
+            math.isfinite(value) for point in polygon for value in point
+        ):
+            raise MissionAbort(f'{station}: footprint geometrisi gecersiz')
+        transform = self._fresh_base_transform(
+            costmap_frame, f'{station} otomatik donus secimi'
+        )
+        center = (
+            float(transform.transform.translation.x),
+            float(transform.transform.translation.y),
+        )
+        candidates = [
+            _evaluate_turn_arc(
+                costmap,
+                polygon,
+                center,
+                direction,
+                self._directed_turn(current_yaw, target_yaw, direction),
+                angular_step,
+                collision_cost,
+            )
+            for direction in ('left', 'right')
+        ]
+        safe = [candidate for candidate in candidates if candidate.safe]
+        if not safe:
+            reasons = ', '.join(
+                f'{candidate.direction}={candidate.reason}'
+                for candidate in candidates
+            )
+            self._event(
+                'station_turn_direction_unavailable',
+                station=station,
+                left=self._turn_arc_event_fields(candidates[0]),
+                right=self._turn_arc_event_fields(candidates[1]),
+            )
+            raise MissionAbort(
+                f'{station}: guvenli 180 derece donus yayi yok ({reasons})'
+            )
+        # Inflation costs are a secondary tie-breaker. The first criterion is
+        # actual distance from the swept padded footprint to blocked cells.
+        selected = max(safe, key=lambda candidate: (
+            candidate.minimum_clearance,
+            -candidate.maximum_cost,
+            -candidate.mean_cost,
+            candidate.direction == 'left',
+        ))
+        self._event(
+            'station_turn_direction_selected',
+            station=station,
+            selected_direction=selected.direction,
+            left=self._turn_arc_event_fields(candidates[0]),
+            right=self._turn_arc_event_fields(candidates[1]),
+        )
+        return selected.direction
+
     @staticmethod
     def _wrap_angle(value: float) -> float:
         return math.atan2(math.sin(value), math.cos(value))
@@ -958,13 +1434,14 @@ class MissionManager(Node):
             return (target - current) % (2.0 * math.pi)
         if direction == 'right':
             return -((current - target) % (2.0 * math.pi))
-        raise MissionAbort(
-            'turn_direction=auto henuz iki costmap yayi '
-            'karsilastirilmadan kullanilamaz'
-        )
+        raise MissionAbort(f'gecersiz hesaplanmis donus yonu: {direction}')
 
     def _run_junction_turn_correction(
-        self, node_name: str, correction_turn: float, correction_source: str
+        self,
+        node_name: str,
+        correction_turn: float,
+        correction_source: str,
+        timeout_limit_s: float | None = None,
     ) -> None:
         """Apply one encoder-measured correction through the Nav2 safe path."""
         maximum_speed = float(self.get_parameter(
@@ -973,6 +1450,11 @@ class MissionManager(Node):
             'junction_turn_correction_min_angular_speed').value)
         timeout = float(self.get_parameter(
             'junction_turn_correction_timeout_s').value)
+        if timeout_limit_s is not None:
+            if not math.isfinite(timeout_limit_s) or timeout_limit_s <= 0.0:
+                raise MissionAbort(
+                    f'{node_name}: junction duzeltme toplam suresi doldu')
+            timeout = min(timeout, timeout_limit_s)
         slowdown_angle = math.radians(float(self.get_parameter(
             'junction_turn_correction_slowdown_angle_deg').value))
         stop_margin = math.radians(float(self.get_parameter(
@@ -1005,7 +1487,8 @@ class MissionManager(Node):
 
         # Short relative motion must be closed against raw encoder odometry.
         # EKF yaw has enough latency to make this fixed-distance correction
-        # stop late; AMCL remains the absolute post-turn authority.
+        # stop late; a fresh map -> base_footprint TF remains the absolute
+        # post-turn authority.
         start_yaw = self._encoder_yaw
         previous_yaw = start_yaw
         accumulated_turn = 0.0
@@ -1078,7 +1561,7 @@ class MissionManager(Node):
         )
 
     def _turn_at_junction(self, maneuver: JunctionManeuver) -> None:
-        """Align with one main Spin and at most one bounded correction."""
+        """Align with one main Spin and bounded fresh-TF corrections."""
         self._check_action_health(require_turn_sensors=True)
         if self._pose is None or not math.isfinite(self._encoder_yaw):
             raise MissionAbort(
@@ -1118,11 +1601,9 @@ class MissionManager(Node):
             self._wait_until_stopped(
                 f'{maneuver.node_name} junction donus sonu')
             self._check_action_health(require_turn_sensors=True)
-            if self._pose is None:
-                raise MissionAbort(
-                    f'{maneuver.node_name}: junction donus sonu AMCL pozu yok'
-                )
-            final_map_yaw = self._yaw_from_pose(self._pose)
+            final_map_yaw = self._fresh_map_base_yaw(
+                f'{maneuver.node_name} junction ana donus sonu'
+            )
             signed_yaw_error = self._wrap_angle(
                 maneuver.outgoing_heading - final_map_yaw
             )
@@ -1137,28 +1618,63 @@ class MissionManager(Node):
             tolerance = math.radians(float(self.get_parameter(
                 'junction_turn_yaw_tolerance_deg').value
             ))
+            max_attempts = int(self.get_parameter(
+                'junction_turn_max_correction_attempts').value)
+            correction_budget = float(self.get_parameter(
+                'junction_turn_correction_total_timeout_s').value)
+            if (
+                not math.isfinite(tolerance)
+                or not math.isfinite(correction_budget)
+                or tolerance <= 0.0
+                or max_attempts < 1
+                or correction_budget <= 0.0
+            ):
+                raise MissionAbort(
+                    f'{maneuver.node_name}: junction correction '
+                    'parametresi gecersiz'
+                )
             turn_source = 'encoder'
             correction_applied = False
             correction_turn = 0.0
             correction_source = ''
-            # The route heading is an absolute map-frame target.  AMCL decides
-            # whether a correction is needed; raw /odom only closes the short
-            # relative correction without EKF latency.
-            if yaw_error > tolerance:
+            correction_started = time.monotonic()
+            correction_deadline = correction_started + correction_budget
+            correction_attempts = 0
+            # The route heading is an absolute map-frame target. A live
+            # map->base_footprint TF decides whether another correction is
+            # needed; raw /odom closes each short relative correction without
+            # waiting for a new AMCL pose message.
+            while yaw_error > tolerance:
+                elapsed = time.monotonic() - correction_started
+                if (
+                    correction_attempts >= max_attempts
+                    or elapsed >= correction_budget
+                ):
+                    raise MissionAbort(
+                        f'{maneuver.node_name}: junction yon hatasi '
+                        f'{math.degrees(yaw_error):.2f} derece; '
+                        f'correction {correction_attempts}/{max_attempts}, '
+                        f'{min(elapsed, correction_budget):.1f}/'
+                        f'{correction_budget:.1f} s'
+                    )
+
                 correction_applied = True
                 correction_turn = signed_yaw_error
                 correction_source = 'map'
+                correction_attempts += 1
+                remaining_budget = correction_deadline - time.monotonic()
                 self._run_junction_turn_correction(
                     maneuver.node_name,
                     correction_turn,
                     correction_source,
+                    timeout_limit_s=remaining_budget,
                 )
-                if self._pose is None:
-                    raise MissionAbort(
-                        f'{maneuver.node_name}: junction duzeltme sonu '
-                        'AMCL pozu yok'
-                    )
-                final_map_yaw = self._yaw_from_pose(self._pose)
+                # _run_junction_turn_correction publishes zero and waits for
+                # physical encoder speed to settle before this measurement.
+                final_map_yaw = self._fresh_map_base_yaw(
+                    f'{maneuver.node_name} junction duzeltme '
+                    f'{correction_attempts} sonu'
+                )
                 signed_yaw_error = self._wrap_angle(
                     maneuver.outgoing_heading - final_map_yaw
                 )
@@ -1170,11 +1686,13 @@ class MissionManager(Node):
                     relative_turn - measured_turn
                 )
                 encoder_turn_error = abs(signed_encoder_turn_error)
-
-            if yaw_error > tolerance:
-                raise MissionAbort(
-                    f'{maneuver.node_name}: junction yon hatasi '
-                    f'{math.degrees(yaw_error):.2f} derece'
+                self._event(
+                    'junction_turn_correction_remeasured',
+                    junction=maneuver.node_name,
+                    attempt=correction_attempts,
+                    max_attempts=max_attempts,
+                    final_map_yaw=final_map_yaw,
+                    remaining_error_rad=signed_yaw_error,
                 )
         except MissionAbort as error:
             reason = 'obstacle' if self._obstacle else str(error)
@@ -1200,22 +1718,23 @@ class MissionManager(Node):
             correction_applied=correction_applied,
             correction_turn_rad=correction_turn,
             correction_source=correction_source,
+            correction_attempts=correction_attempts,
         )
 
-    def _turn_at_station(self, station: str) -> None:
-        config = self._nodes[station]
-        direction = str(config.get('turn_direction', '')).lower()
-        try:
-            target_yaw = float(config.get('dock_heading_yaw'))
-        except (TypeError, ValueError) as error:
-            raise MissionAbort(
-                f'{station}: dock_heading_yaw gecersiz'
-            ) from error
+    def _turn_at_station(self, station: str, approach_heading: float) -> None:
+        if not math.isfinite(approach_heading):
+            raise MissionAbort(f'{station}: route approach heading gecersiz')
+        target_yaw = self._wrap_angle(approach_heading + math.pi)
         self._check_action_health(require_turn_sensors=True)
-        if self._pose is None or not math.isfinite(self._filtered_yaw):
+        if not math.isfinite(self._filtered_yaw):
             raise MissionAbort(f'{station}: donus oncesi yon bilgisi gecersiz')
-        start_map_yaw = self._yaw_from_pose(self._pose)
+        start_map_yaw = self._fresh_map_base_yaw(
+            f'{station} donus baslangici'
+        )
         start_filtered_yaw = self._filtered_yaw
+        direction = self._select_station_turn_direction(
+            station, start_map_yaw, target_yaw
+        )
         relative_turn = self._directed_turn(
             start_map_yaw, target_yaw, direction
         )
@@ -1240,9 +1759,11 @@ class MissionManager(Node):
             'station_turn_started',
             station=station,
             direction=direction,
+            approach_heading=approach_heading,
             relative_turn_rad=relative_turn,
             target_yaw=target_yaw,
         )
+        main_action_status = 'success'
         try:
             self._action(
                 self._spin,
@@ -1251,6 +1772,18 @@ class MissionManager(Node):
                 timeout + 2.0,
                 require_turn_sensors=True,
             )
+        except MissionActionFailure as error:
+            # Spin may report ABORTED after physically completing most of the
+            # turn. Stop, re-measure from live TF and recover only that status
+            # through the same bounded correction loop. Other goal terminal
+            # states remain fatal.
+            if error.status != GoalStatus.STATUS_ABORTED:
+                reason = 'obstacle' if self._obstacle else str(error)
+                self._event(
+                    'station_turn_failed', station=station, reason=reason
+                )
+                raise
+            main_action_status = f'action_status_{error.status}'
         except MissionAbort as error:
             reason = 'obstacle' if self._obstacle else str(error)
             self._event(
@@ -1259,11 +1792,100 @@ class MissionManager(Node):
             raise
 
         self._wait_until_stopped(f'{station} donus sonu')
-        self._check_action_health(require_turn_sensors=True)
-        if self._pose is None:
-            raise MissionAbort(f'{station}: donus sonu AMCL pozu yok')
-        final_map_yaw = self._yaw_from_pose(self._pose)
-        yaw_error = abs(self._wrap_angle(target_yaw - final_map_yaw))
+        tolerance = math.radians(float(
+            self.get_parameter('station_turn_yaw_tolerance_deg').value
+        ))
+        max_attempts = int(self.get_parameter(
+            'station_turn_max_correction_attempts').value)
+        correction_budget = float(self.get_parameter(
+            'station_turn_correction_total_timeout_s').value)
+        if (
+            not math.isfinite(tolerance)
+            or not math.isfinite(correction_budget)
+            or tolerance <= 0.0
+            or max_attempts < 1
+            or correction_budget <= 0.0
+        ):
+            raise MissionAbort(
+                f'{station}: station correction parametresi gecersiz'
+            )
+
+        correction_started = time.monotonic()
+        correction_deadline = correction_started + correction_budget
+        attempts = 0
+        final_map_yaw = self._fresh_map_base_yaw(
+            f'{station} ana donus sonu'
+        )
+        signed_yaw_error = self._wrap_angle(target_yaw - final_map_yaw)
+        yaw_error = abs(signed_yaw_error)
+        while yaw_error > tolerance:
+            elapsed = time.monotonic() - correction_started
+            if attempts >= max_attempts or elapsed >= correction_budget:
+                raise MissionAbort(
+                    f'{station}: donus yon hatasi '
+                    f'{math.degrees(yaw_error):.2f} derece; '
+                    f'correction {attempts}/{max_attempts}, '
+                    f'{min(elapsed, correction_budget):.1f}/'
+                    f'{correction_budget:.1f} s'
+                )
+
+            attempts += 1
+            remaining_budget = correction_deadline - time.monotonic()
+            if remaining_budget <= 0.0:
+                continue
+            correction_goal = Spin.Goal()
+            correction_goal.target_yaw = float(signed_yaw_error)
+            correction_goal.time_allowance = Duration(
+                seconds=remaining_budget
+            ).to_msg()
+            self._status_detail = (
+                f'{station}: 180 derece ince duzeltme '
+                f'{attempts}/{max_attempts} '
+                f'({math.degrees(signed_yaw_error):+.1f} derece)'
+            )
+            self._event(
+                'station_turn_correction_started',
+                station=station,
+                attempt=attempts,
+                max_attempts=max_attempts,
+                commanded_turn_rad=signed_yaw_error,
+                remaining_budget_s=remaining_budget,
+            )
+            action_status = 'success'
+            try:
+                self._action(
+                    self._spin,
+                    correction_goal,
+                    f'station_turn_correction:{station}:{attempts}',
+                    remaining_budget,
+                    require_turn_sensors=True,
+                )
+            except MissionActionFailure as error:
+                # A correction action may report ABORTED after moving most of
+                # the requested angle. Re-measure from fresh TF and use the
+                # remaining bounded attempts instead of failing immediately.
+                if error.status != GoalStatus.STATUS_ABORTED:
+                    raise
+                action_status = f'action_status_{error.status}'
+            self._wait_until_stopped(
+                f'{station} correction {attempts} sonu'
+            )
+            final_map_yaw = self._fresh_map_base_yaw(
+                f'{station} correction {attempts} sonu'
+            )
+            signed_yaw_error = self._wrap_angle(
+                target_yaw - final_map_yaw
+            )
+            yaw_error = abs(signed_yaw_error)
+            self._event(
+                'station_turn_correction_finished',
+                station=station,
+                attempt=attempts,
+                outcome=action_status,
+                final_map_yaw=final_map_yaw,
+                remaining_error_rad=signed_yaw_error,
+            )
+
         measured_turn = self._wrap_angle(
             self._filtered_yaw - start_filtered_yaw
         )
@@ -1271,29 +1893,20 @@ class MissionManager(Node):
             relative_turn - measured_turn
         ))
         turn_source = 'imu+encoder' if self._imu_enabled else 'encoder'
-        tolerance = math.radians(float(
-            self.get_parameter('station_turn_yaw_tolerance_deg').value
-        ))
-        if yaw_error > tolerance:
-            raise MissionAbort(
-                f'{station}: donus yon hatasi '
-                f'{math.degrees(yaw_error):.2f} derece'
-            )
-        if fused_turn_error > tolerance:
-            raise MissionAbort(
-                f'{station}: {turn_source} donus hatasi '
-                f'{math.degrees(fused_turn_error):.2f} derece'
-            )
         self._qr_gate.line_follow_ready()
         self._status_detail = f'{station}: docking devrine hazir'
         self._event(
             'station_turn_completed',
             station=station,
+            approach_heading=approach_heading,
+            target_yaw=target_yaw,
+            main_action_outcome=main_action_status,
             final_map_yaw=final_map_yaw,
             measured_fused_turn=measured_turn,
             turn_source=turn_source,
             yaw_error_rad=yaw_error,
             fused_turn_error_rad=fused_turn_error,
+            correction_attempts=attempts,
         )
 
     def _on_plc_connected(self, msg: Bool) -> None:
@@ -1490,19 +2103,6 @@ class MissionManager(Node):
                     self._station_approach_target(node)
                 except MissionAbort as error:
                     return str(error)
-                direction = str(
-                    config.get('turn_direction', '')
-                ).strip().lower()
-                if direction not in ('left', 'right'):
-                    return (
-                        f'{node}: turn_direction left veya right olmali'
-                    )
-                try:
-                    target_yaw = float(config.get('dock_heading_yaw'))
-                except (TypeError, ValueError):
-                    return f'{node}: dock_heading_yaw gecersiz'
-                if not math.isfinite(target_yaw):
-                    return f'{node}: dock_heading_yaw sonlu olmali'
                 try:
                     duration = float(config.get('line_follow_duration_s'))
                 except (TypeError, ValueError):
@@ -1873,7 +2473,7 @@ class MissionManager(Node):
             self._status_detail += f': {next_node}'
         self._event('state_transition', next_node=next_node)
 
-    def _navigate(self, target: str, loaded: bool) -> None:
+    def _navigate(self, target: str, loaded: bool) -> float:
         self._await_route_constraints()
         self._set_state(RobotStatus.STATE_MOVING_LOADED if loaded else
                         RobotStatus.STATE_MOVING_UNLOADED, target)
@@ -1964,6 +2564,11 @@ class MissionManager(Node):
             follow_goal = FollowPath.Goal()
             follow_goal.path = segment
             follow_goal.controller_id = 'FollowPath'
+            follow_goal.goal_checker_id = (
+                'position_goal_checker'
+                if index < len(maneuvers)
+                else 'general_goal_checker'
+            )
             self._edge = f'{self._current_node}->{segment_target}'
             self._event(
                 'route_segment_started',
@@ -1971,6 +2576,7 @@ class MissionManager(Node):
                 segment_target=segment_target,
                 segment_index=index + 1,
                 segment_count=len(segments),
+                goal_checker_id=follow_goal.goal_checker_id,
             )
             try:
                 self._action(
@@ -2030,6 +2636,7 @@ class MissionManager(Node):
                 self._wait_until_stopped(
                     f'{maneuver.node_name} FollowPath sonu')
                 self._turn_at_junction(maneuver)
+        return final_heading
 
     def _do_dock(self, station: str, pickup: bool) -> None:
         goal = DockToStation.Goal()
@@ -2131,10 +2738,12 @@ class MissionManager(Node):
                     if configured_approach else station
                 )
                 if index == 0:
-                    self._navigate(navigation_target, loaded=loaded)
+                    approach_heading = self._navigate(
+                        navigation_target, loaded=loaded
+                    )
                 else:
                     direction = 'outbound' if not pickup else 'return'
-                    self._navigate_via_gate(
+                    approach_heading = self._navigate_via_gate(
                         navigation_target,
                         loaded=loaded,
                         direction=direction,
@@ -2144,7 +2753,7 @@ class MissionManager(Node):
                     self._wait_until_stopped(
                         f'{station} Nav2-donus devri'
                     )
-                    self._turn_at_station(station)
+                    self._turn_at_station(station, approach_heading)
                 self._do_dock(station, pickup=pickup)
                 self._current_node = station
                 self._do_lift(station, pickup=pickup)

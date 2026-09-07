@@ -281,12 +281,6 @@ def validate_field(
                             f"station '{node.station}' must have exactly one "
                             "QR/approach node for F7B"
                         )
-                    if config["turn_direction"] == "auto":
-                        result.errors.append(
-                            f"station '{node.station}' uses turn_direction=auto; "
-                            "F7B requires left or right until both costmap arcs "
-                            "can be compared"
-                        )
             except (ValueError, TypeError) as error:
                 result.errors.append(str(error))
 

@@ -57,6 +57,7 @@ def _check_graph(graph_file):
 def _setup(context, *args, **kwargs):
     fake = _bool(context, "sahte")
     imu_enabled = _bool(context, "imu")
+    qr_enabled = _bool(context, "qr")
 
     required = {
         "lane_tracking", "marco_demo",
@@ -158,6 +159,8 @@ def _setup(context, *args, **kwargs):
             "manual_task_enabled": "true",
             "test_only_lift": "true" if fake else "false",
             "imu": "true" if imu_enabled else "false",
+            "qr_reader_adapter": "true" if qr_enabled else "false",
+            "station_qr_mock_enabled": "false" if qr_enabled else "true",
         }.items(),
     )
     mode = "SAHTE (motor ve seri cihazlar kapali)" if fake else "GERCEK DONANIM"
@@ -168,6 +171,11 @@ def _setup(context, *args, **kwargs):
                     "AMCL ve donanim katmanini baslatir"),
         LogInfo(msg="Demo Nav2, GUI'deki Demoyu Baslat eyleminde baslatilir"),
         LogInfo(msg="Production gorevi dogrulanmis etkin saha gelene kadar kilitli"),
+        LogInfo(msg=(
+            "QR modu: gercek okuyucu"
+            if qr_enabled else
+            "UYARI: QR MOCK aktif; yalniz GUI test gorevlerinde hedef QR otomatik dogrulanir"
+        )),
         control_plane, docking, mission,
     ]
 
@@ -200,6 +208,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "obstacle_detection", default_value="true",
             description="Gercek sistem guvenlik engel algilamasi",
+        ),
+        DeclareLaunchArgument(
+            "qr", default_value="true",
+            description=(
+                "true: gercek QR adapter; false: yalniz GUI testlerinde "
+                "hedef QR'yi yaklasim dugumunde otomatik dogrula"
+            ),
         ),
         DeclareLaunchArgument(
             "demo_use_lane_tracking", default_value="false",

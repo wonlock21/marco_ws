@@ -5,7 +5,11 @@ import pytest
 from conftest import create_field
 from marco_route.field_store import StoreError
 from marco_route.graph_model import EdgeData, FieldGraph, NodeData
-from marco_route.station_config import config_from_node, update_station
+from marco_route.station_config import (
+    config_from_node,
+    derived_dock_heading,
+    update_station,
+)
 
 
 def basic_graph(name="field"):
@@ -49,22 +53,30 @@ def test_crud_roundtrip_and_derived_stations(field_store):
 def test_station_approach_config_roundtrip(field_store):
     graph = basic_graph()
     graph.upsert_node(NodeData(
+        25, "q2", "pickup_approach", "A1", 2.5, 1.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
         30, "pickup_a1", "pickup_dock", "A1", 3.0, 1.0, 0.0
     ))
-    graph.upsert_edge(EdgeData(8, 20, 30, max_speed=0.15))
+    graph.upsert_edge(EdgeData(8, 20, 25, max_speed=0.15))
+    graph.upsert_edge(EdgeData(9, 25, 30, max_speed=0.15))
     update_station(graph, "A1", "q2", 1.57, "left", 4.8)
 
     field_store.save_graph(graph)
     loaded = field_store.load_graph("field")
     values = config_from_node(loaded.nodes[30])
     assert values["approach_qr_id"] == "q2"
-    assert values["turn_direction"] == "left"
     assert values["line_follow_duration_s"] == pytest.approx(4.8)
+    assert "dock_heading_yaw" not in values
+    assert "turn_direction" not in values
+    assert "dock_heading_yaw" not in loaded.nodes[30].metadata
+    assert "turn_direction" not in loaded.nodes[30].metadata
+    assert derived_dock_heading(loaded, "A1") == pytest.approx(3.141592653589793)
     station = next(
         item for item in field_store.read_stations("field")["nodes"]
-        if item["station_id"] == "A1"
+        if item["station_id"] == "A1" and item["role"] == "pickup_dock"
     )
-    assert station["station_approach"]["dock_heading_yaw"] == pytest.approx(1.57)
+    assert "dock_heading_yaw" not in station["station_approach"]
 
 
 def test_hash_covers_stations_and_calibration(field_store):

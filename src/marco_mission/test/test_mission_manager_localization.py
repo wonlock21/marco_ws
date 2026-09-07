@@ -90,6 +90,38 @@ def test_qr_gui_telemetry_keeps_full_detection_contract():
         rclpy.shutdown()
 
 
+def test_qr_mock_verifies_expected_code_only_for_gui_test_task():
+    """QR-less real launch emulates one timely detection at the approach node."""
+    rclpy.init()
+    node = MissionManager()
+    try:
+        events = []
+        node._event = lambda name, **fields: events.append((name, fields))
+        node._station_qr_mock_enabled = True
+        node._source = 'gui'
+        node._qr_gate.arm('A3', 'q4')
+
+        node._wait_for_station_qr('A3')
+
+        assert node._qr_gate.phase == node._qr_gate.VERIFIED
+        assert node._last_qr == 'q4'
+        assert node._last_qr_detected
+        assert node._last_qr_confidence == 1.0
+        assert node._last_qr_camera == 'qr_mock'
+        assert [name for name, _fields in events] == [
+            'station_qr_mock_injected',
+            'station_qr_verified',
+        ]
+
+        node._qr_gate.arm('B3', 'q7')
+        node._source = 'plc'
+        assert not node._inject_mock_station_qr_if_enabled('B3')
+        assert node._qr_gate.phase == node._qr_gate.APPROACHING
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
 def test_production_mission_requires_fresh_stm32_communication():
     """A task cannot start from a missing, false or stale UART health state."""
     rclpy.init()
