@@ -1,27 +1,16 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>marco_mission</name>
+  <name>marco_plc</name>
   <version>0.1.0</version>
-  <description>
-    Gorev durum makinesi ve PLC/GUI arayuzu (Faz 10).
-    Gercek PLC protokolu gelince mock_plc yerine protokol koprusu konur.
-  </description>
+  <description>Protocol-independent, fail-closed production PLC adapter.</description>
   <maintainer email="marco@marmara.edu.tr">MarCO Yazilim Ekibi</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
-  <depend>std_srvs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>nav_msgs</depend>
-  <depend>action_msgs</depend>
-  <depend>nav2_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>tf2_ros</depend>
-  <depend>ament_index_python</depend>
   <depend>marco_msgs</depend>
-  <exec_depend>marco_plc</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

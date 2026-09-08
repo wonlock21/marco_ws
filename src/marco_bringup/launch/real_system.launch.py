@@ -63,6 +63,7 @@ def _setup(context, *args, **kwargs):
         "lane_tracking", "marco_demo",
         "marco_base", "marco_bringup", "marco_description", "marco_docking",
         "marco_localization", "marco_mission", "marco_msgs", "marco_navigation",
+        "marco_plc",
         "marco_route",
         "marco_safety", "nav2_amcl", "nav2_bringup", "nav2_collision_monitor",
         "nav2_map_server", "nav2_route", "robot_localization",
@@ -153,10 +154,14 @@ def _setup(context, *args, **kwargs):
         ),
         launch_arguments={
             "task_source": "mock_plc" if fake else "plc",
+            "plc_backend": "mock" if fake else "real",
             "simulate_steps": "false",
             "graph_file": graph_file,
             "require_active_field": "false" if fake else "true",
             "manual_task_enabled": "true",
+            "temporary_gui_manual_mode": LaunchConfiguration(
+                "temporary_gui_manual_mode"
+            ),
             "test_only_lift": "true" if fake else "false",
             "imu": "true" if imu_enabled else "false",
             "qr_reader_adapter": "true" if qr_enabled else "false",
@@ -219,6 +224,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "demo_use_lane_tracking", default_value="false",
             description="Kayitli A/B demosunda serit takibini etkinlestir",
+        ),
+        DeclareLaunchArgument(
+            "temporary_gui_manual_mode",
+            default_value="true",
+            description=(
+                "Fiziksel manuel/otonom switch takilana kadar GUI manuel "
+                "kontrolunu gorev baslangicina gore yonet"
+            ),
         ),
         DeclareLaunchArgument("rosbridge_port", default_value="9090"),
         DeclareLaunchArgument(

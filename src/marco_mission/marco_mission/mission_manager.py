@@ -90,6 +90,22 @@ class TurnArcEvaluation:
     reason: str = ''
 
 
+def _gui_manual_mode_enabled(
+    *,
+    hardware_manual_mode: bool,
+    mission_running: bool,
+    estop_active: bool,
+    safety_latched: bool,
+    temporary_fallback: bool,
+) -> bool:
+    """Return the control permission exposed to the GUI."""
+    # Until the physical switch is installed, the mission lifecycle acts as
+    # the selector. Disabling the fallback restores STM32 as the sole authority.
+    if not temporary_fallback:
+        return bool(hardware_manual_mode)
+    return not mission_running and not estop_active and not safety_latched
+
+
 def _route_edge_heading(edge, movement_direction: str = 'forward') -> float:
     """Return robot body heading on one directed route edge."""
     dx = float(edge.end.x - edge.start.x)
@@ -482,6 +498,7 @@ class MissionManager(Node):
             ('require_base_communication', True),
             ('base_communication_timeout_s', 1.0),
             ('require_active_field', False),
+            ('temporary_gui_manual_mode', True),
             ('status_rate_hz', 5.0),
         ):
             self.declare_parameter(name, default)
@@ -521,6 +538,8 @@ class MissionManager(Node):
             self.get_parameter('require_safety_supervisor').value)
         self._require_base_communication = bool(
             self.get_parameter('require_base_communication').value)
+        self._temporary_gui_manual_mode = bool(
+            self.get_parameter('temporary_gui_manual_mode').value)
         self._base_communication_timeout = float(
             self.get_parameter('base_communication_timeout_s').value)
         configured_graph = str(self.get_parameter('graph_file').value).strip()
@@ -2812,7 +2831,14 @@ class MissionManager(Node):
         else:
             msg.mission_elapsed_s = float(self._mission_elapsed)
         msg.status_detail = self._abort_reason or self._status_detail
-        msg.manual_mode_enabled, msg.estop_active = self._manual, self._estop
+        msg.manual_mode_enabled = _gui_manual_mode_enabled(
+            hardware_manual_mode=self._manual,
+            mission_running=self._running,
+            estop_active=self._estop,
+            safety_latched=self._latched_abort,
+            temporary_fallback=self._temporary_gui_manual_mode,
+        )
+        msg.estop_active = self._estop
         if self._pose is not None:
             msg.pose = self._pose
             cov = self._pose.pose.covariance

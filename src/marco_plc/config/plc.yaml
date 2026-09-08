@@ -1,0 +1,11 @@
+real_plc_bridge:
+  ros__parameters:
+    protocol: "unset"
+    host: ""
+    port: 0
+
+    connect_timeout_s: 3.0
+    request_timeout_s: 3.0
+    retry_count: 2
+    reconnect_enabled: true
+    reconnect_interval_s: 2.0

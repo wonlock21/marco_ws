@@ -18,7 +18,8 @@ float32 mission_elapsed_s       # gorev basladigindan beri gecen sure [s]
 string status_detail            # hata/bekleme gibi operator aciklamasi
 
 # --- Kontrol modu ---
-# Fiziksel mod anahtari henuz takili degil; alan gelecekteki donanim icin ayrildi.
+# Gecici olarak gorev calismiyorken true, otonom gorev baslayinca false olur.
+# Fiziksel switch takilinca temporary_gui_manual_mode=false ile STM32 belirler.
 bool manual_mode_enabled
 bool estop_active
 
