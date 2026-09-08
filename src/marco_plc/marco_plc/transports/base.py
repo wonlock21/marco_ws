@@ -7,6 +7,17 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class RobotStatusSnapshot:
+    """Protocol-neutral subset of RobotStatus required by PLC transports."""
+
+    mission_state: int
+    pickup_node: str
+    dropoff_node: str
+    x_m: float
+    y_m: float
+
+
+@dataclass(frozen=True)
 class TaskAssignmentResult:
     """Result of requesting one task from the PLC."""
 
@@ -50,6 +61,10 @@ class PlcTransport(ABC):
         """Return whether requests can currently reach the PLC."""
 
     @abstractmethod
+    def update_robot_status(self, status: RobotStatusSnapshot) -> None:
+        """Cache the latest robot state without performing blocking I/O."""
+
+    @abstractmethod
     def request_task(self) -> TaskAssignmentResult:
         """Request a task assignment from the PLC."""
 
@@ -86,6 +101,10 @@ class UnconfiguredTransport(PlcTransport):
     def is_connected(self) -> bool:
         """Remain disconnected by definition."""
         return False
+
+    def update_robot_status(self, status: RobotStatusSnapshot) -> None:
+        """Discard telemetry because no wire transport is configured."""
+        del status
 
     def request_task(self) -> TaskAssignmentResult:
         """Reject task requests while unconfigured."""

@@ -23,7 +23,7 @@ setup(
     zip_safe=True,
     maintainer='MarCO Yazilim Ekibi',
     maintainer_email='marco@marmara.edu.tr',
-    description='Protocol-independent production PLC adapter',
+    description='Protocol-independent production PLC adapter with SRU UDP',
     license='Apache-2.0',
     extras_require={'test': ['pytest']},
     entry_points={

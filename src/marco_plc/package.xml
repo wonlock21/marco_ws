@@ -3,7 +3,7 @@
 <package format="3">
   <name>marco_plc</name>
   <version>0.1.0</version>
-  <description>Protocol-independent, fail-closed production PLC adapter.</description>
+  <description>Protocol-independent production PLC adapter with SRU UDP.</description>
   <maintainer email="marco@marmara.edu.tr">MarCO Yazilim Ekibi</maintainer>
   <license>Apache-2.0</license>
 

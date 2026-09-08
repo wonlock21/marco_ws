@@ -1,8 +1,17 @@
 real_plc_bridge:
   ros__parameters:
-    protocol: "unset"
+    protocol: "sru_udp"
+    # Generic placeholders are retained for future non-SRU transports.
     host: ""
     port: 0
+
+    server_host: "192.168.100.100"
+    server_port: 1515
+    local_host: "192.168.100.10"
+
+    tx_period_s: 1.0
+    # Local robot safety policy; this value is not specified by the organizer.
+    rx_stale_timeout_s: 2.5
 
     connect_timeout_s: 3.0
     request_timeout_s: 3.0
