@@ -2,6 +2,7 @@
 
 import json
 import threading
+from types import SimpleNamespace
 
 from marco_mission.mission_manager import MissionManager
 from marco_mission.mission_manager import MissionAbort
@@ -116,7 +117,6 @@ def test_legacy_station_turn_direction_is_ignored_before_mission(tmp_path):
                     "approach_qr_id": "q2",
                     "dock_heading_yaw": 3.14159,
                     "turn_direction": "auto",
-                    "line_follow_duration_s": 4.8,
                 },
             ),
             _point(2, "q2_pose", "pickup_approach", "A1", 0.5, 0.0),
@@ -134,6 +134,68 @@ def test_legacy_station_turn_direction_is_ignored_before_mission(tmp_path):
     error = manager._validate_route(["A1", "B1"])
 
     assert error is None
+
+
+def test_production_docking_uses_lane_end_without_station_duration():
+    manager = MissionManager.__new__(MissionManager)
+    manager._nodes = {
+        "A3": {"approach_qr_id": "q4"},
+    }
+    manager._action_timeout = 120.0
+    manager._docking_duration = 0.0
+    manager._docking_elapsed = 0.0
+    manager._docking_remaining = 0.0
+    manager._docking_lane_active = False
+    manager._docking_camera_valid = False
+    manager._docking_stopped = True
+    manager._docking_error = ""
+    manager._dock = object()
+    manager._qr_gate = SimpleNamespace(phase="LINE_FOLLOW_READY")
+    manager._qr_gate.docking = lambda: setattr(
+        manager._qr_gate, "phase", "LINE_FOLLOW_DOCKING"
+    )
+    manager._qr_gate.docking_complete = lambda _pickup: setattr(
+        manager._qr_gate, "phase", "PICKUP_READY"
+    )
+    manager.events = []
+    manager._event = lambda event, **fields: manager.events.append(
+        (event, fields)
+    )
+    manager._wait_until_stopped = lambda _label: None
+    captured = {}
+
+    def action(
+        _client, goal, label, timeout, require_turn_sensors=False,
+        feedback_callback=None,
+    ):
+        captured.update(
+            goal=goal,
+            label=label,
+            timeout=timeout,
+            require_turn_sensors=require_turn_sensors,
+        )
+        feedback_callback(SimpleNamespace(feedback=SimpleNamespace(
+            configured_duration_s=30.0,
+            elapsed_s=4.2,
+            remaining_s=25.8,
+            lane_control_active=False,
+            camera_valid=True,
+            stopped=True,
+        )))
+
+    manager._action = action
+
+    manager._do_dock("A3", pickup=True)
+
+    assert captured["goal"].line_follow_duration_s == 0.0
+    assert captured["goal"].reverse_motion is True
+    assert captured["goal"].camera_source == "rear_camera"
+    assert captured["goal"].timeout == 0.0
+    assert captured["label"] == "lane_end_docking:A3"
+    assert captured["timeout"] == 120.0
+    assert captured["require_turn_sensors"] is True
+    assert manager._qr_gate.phase == "PICKUP_READY"
+    assert manager.events[-1][0] == "lane_end_reverse_docking_completed"
 
 
 def test_legacy_phase10_name_validation_is_preserved(tmp_path):

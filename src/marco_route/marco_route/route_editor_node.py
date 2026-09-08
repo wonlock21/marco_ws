@@ -1135,7 +1135,8 @@ class RouteEditorNode(Node):
         )
         # Compatibility field: selection is automatic in mission runtime.
         message.turn_direction = "auto"
-        message.line_follow_duration_s = values["line_follow_duration_s"]
+        # Wire-compatibility field; lane-end now completes production docking.
+        message.line_follow_duration_s = 0.0
         return message
 
     def _on_get_station_configs(self, request, response):

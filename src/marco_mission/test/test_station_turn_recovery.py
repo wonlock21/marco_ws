@@ -37,6 +37,7 @@ def _station_manager(yaw_samples, failed_action_calls=()):
     manager._spin = object()
     manager._obstacle = False
     manager._imu_enabled = False
+    manager._encoder_yaw = 0.0
     manager._filtered_yaw = 0.0
     manager._status_detail = ''
     manager._check_action_health = lambda require_turn_sensors=False: None
@@ -59,16 +60,33 @@ def _station_manager(yaw_samples, failed_action_calls=()):
     manager.operations = []
     manager.events = []
     failed = set(failed_action_calls)
+    manager.action_calls = 0
 
     def action(
         _client, goal, label, _timeout, require_turn_sensors=False
     ):
-        call = len(manager.operations) + 1
-        manager.operations.append((label, goal.target_yaw, require_turn_sensors))
-        if call in failed:
+        manager.action_calls += 1
+        manager.operations.append((
+            label, goal.target_yaw, require_turn_sensors
+        ))
+        if manager.action_calls in failed:
             raise MissionActionFailure(label, GoalStatus.STATUS_ABORTED)
 
+    def precise_correction(
+        target_name, correction_turn, correction_kind, timeout_limit_s=None
+    ):
+        manager.operations.append((
+            f'{correction_kind}_turn_correction:{target_name}',
+            correction_turn,
+            timeout_limit_s,
+        ))
+        manager._encoder_yaw = MissionManager._wrap_angle(
+            manager._encoder_yaw + correction_turn
+        )
+        return correction_turn
+
     manager._action = action
+    manager._run_precise_turn_correction = precise_correction
     manager._wait_until_stopped = lambda label: manager.events.append(
         ('stopped', {'label': label})
     )
@@ -197,6 +215,7 @@ def test_station_turn_remeasures_fresh_tf_after_each_correction():
 
     assert [math.degrees(item[1]) for item in manager.operations] \
         == pytest.approx([-180.0, 10.0, 4.0])
+    assert manager.action_calls == 1
     completed = next(
         fields for event, fields in manager.events
         if event == 'station_turn_completed'
@@ -205,13 +224,13 @@ def test_station_turn_remeasures_fresh_tf_after_each_correction():
     assert math.degrees(completed['yaw_error_rad']) == pytest.approx(1.0)
 
 
-def test_aborted_main_and_correction_spins_use_bounded_remeasurement():
+def test_aborted_main_spin_uses_raw_bounded_corrections():
     manager = _station_manager([
         0.0,
         math.radians(170.0),
         math.radians(175.0),
         math.radians(179.0),
-    ], failed_action_calls=(1, 2))
+    ], failed_action_calls=(1,))
 
     manager._turn_at_station('A3', 0.0)
 
@@ -225,7 +244,8 @@ def test_aborted_main_and_correction_spins_use_bounded_remeasurement():
         fields for event, fields in manager.events
         if event == 'station_turn_correction_finished'
     ]
-    assert corrections[0]['outcome'] == 'action_status_6'
+    assert corrections[0]['outcome'] == 'success'
+    assert corrections[0]['odometry_source'] == '/odom'
     assert completed['correction_attempts'] == 2
 
 

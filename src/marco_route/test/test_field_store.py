@@ -66,11 +66,12 @@ def test_station_approach_config_roundtrip(field_store):
     loaded = field_store.load_graph("field")
     values = config_from_node(loaded.nodes[30])
     assert values["approach_qr_id"] == "q2"
-    assert values["line_follow_duration_s"] == pytest.approx(4.8)
+    assert "line_follow_duration_s" not in values
     assert "dock_heading_yaw" not in values
     assert "turn_direction" not in values
     assert "dock_heading_yaw" not in loaded.nodes[30].metadata
     assert "turn_direction" not in loaded.nodes[30].metadata
+    assert "line_follow_duration_s" not in loaded.nodes[30].metadata
     assert derived_dock_heading(loaded, "A1") == pytest.approx(3.141592653589793)
     station = next(
         item for item in field_store.read_stations("field")["nodes"]

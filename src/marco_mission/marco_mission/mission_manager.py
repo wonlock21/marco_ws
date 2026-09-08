@@ -627,10 +627,10 @@ class MissionManager(Node):
         self._task_pub = self.create_publisher(String, '/task_command', 10)
         self._speed_reset_pub = self.create_publisher(
             Empty, '/route/speed_limit_reset', 10)
-        # Junction correction stays on the complete Nav2 safety path:
+        # Precise turn correction stays on the complete Nav2 safety path:
         # cmd_vel_nav -> velocity_smoother -> collision_monitor -> twist_mux.
         # It must never publish directly to the base driver's /cmd_vel input.
-        self._junction_correction_pub = self.create_publisher(
+        self._precise_turn_correction_pub = self.create_publisher(
             Twist, '/cmd_vel_nav', 10)
         load_qos = QoSProfile(
             depth=1,
@@ -1416,7 +1416,7 @@ class MissionManager(Node):
         return math.atan2(math.sin(value), math.cos(value))
 
     @staticmethod
-    def _junction_correction_speed(
+    def _precise_turn_correction_speed(
         remaining: float,
         maximum: float,
         minimum: float,
@@ -1436,14 +1436,22 @@ class MissionManager(Node):
             return -((current - target) % (2.0 * math.pi))
         raise MissionAbort(f'gecersiz hesaplanmis donus yonu: {direction}')
 
-    def _run_junction_turn_correction(
+    def _run_precise_turn_correction(
         self,
-        node_name: str,
+        target_name: str,
         correction_turn: float,
-        correction_source: str,
+        correction_kind: str,
         timeout_limit_s: float | None = None,
-    ) -> None:
-        """Apply one encoder-measured correction through the Nav2 safe path."""
+    ) -> float:
+        """Apply one raw-encoder closed-loop turn through the safe path."""
+        if correction_kind not in ('junction', 'station'):
+            raise MissionAbort(
+                f'{target_name}: gecersiz ince donus duzeltme turu')
+        correction_label = (
+            'junction duzeltme'
+            if correction_kind == 'junction'
+            else 'station duzeltme'
+        )
         maximum_speed = float(self.get_parameter(
             'junction_turn_correction_angular_speed').value)
         minimum_speed = float(self.get_parameter(
@@ -1453,7 +1461,7 @@ class MissionManager(Node):
         if timeout_limit_s is not None:
             if not math.isfinite(timeout_limit_s) or timeout_limit_s <= 0.0:
                 raise MissionAbort(
-                    f'{node_name}: junction duzeltme toplam suresi doldu')
+                    f'{target_name}: {correction_label} toplam suresi doldu')
             timeout = min(timeout, timeout_limit_s)
         slowdown_angle = math.radians(float(self.get_parameter(
             'junction_turn_correction_slowdown_angle_deg').value))
@@ -1466,7 +1474,7 @@ class MissionManager(Node):
             stop_margin, max_angle, correction_turn,
         )):
             raise MissionAbort(
-                f'{node_name}: junction duzeltme parametresi gecersiz')
+                f'{target_name}: {correction_label} parametresi gecersiz')
         if (
             maximum_speed <= 0.0
             or minimum_speed <= 0.0
@@ -1476,14 +1484,15 @@ class MissionManager(Node):
             or stop_margin < 0.0
         ):
             raise MissionAbort(
-                f'{node_name}: junction duzeltme parametresi gecersiz')
+                f'{target_name}: {correction_label} parametresi gecersiz')
         if abs(correction_turn) > max_angle:
             raise MissionAbort(
-                f'{node_name}: junction duzeltme acisi guvenli siniri asiyor '
+                f'{target_name}: {correction_label} acisi guvenli siniri '
+                'asiyor '
                 f'({math.degrees(abs(correction_turn)):.2f} derece)')
         if not math.isfinite(self._encoder_yaw):
             raise MissionAbort(
-                f'{node_name}: ham encoder odometri yonu gecersiz')
+                f'{target_name}: ham encoder odometri yonu gecersiz')
 
         # Short relative motion must be closed against raw encoder odometry.
         # EKF yaw has enough latency to make this fixed-distance correction
@@ -1495,30 +1504,25 @@ class MissionManager(Node):
         direction = math.copysign(1.0, correction_turn)
         deadline = time.monotonic() + timeout
         self._status_detail = (
-            f'{node_name}: junction ince duzeltme '
+            f'{target_name}: {correction_kind} ince duzeltme '
             f'{math.degrees(correction_turn):+.1f} derece'
-        )
-        self._event(
-            'junction_turn_correction_started',
-            junction=node_name,
-            correction_source=correction_source,
-            commanded_turn_rad=correction_turn,
-            odometry_source='/odom',
-            maximum_angular_speed=maximum_speed,
-            minimum_angular_speed=minimum_speed,
-            slowdown_angle_rad=slowdown_angle,
         )
         try:
             while True:
                 self._check_abort()
                 self._check_action_health(require_turn_sensors=True)
                 if self._obstacle:
+                    obstacle_reason = (
+                        'junction duzeltmede engel'
+                        if correction_kind == 'junction'
+                        else 'station duzeltmede engel'
+                    )
                     raise MissionAbort(
-                        f'{node_name}: junction duzeltmede engel')
+                        f'{target_name}: {obstacle_reason}')
                 current_yaw = self._encoder_yaw
                 if not math.isfinite(current_yaw):
                     raise MissionAbort(
-                        f'{node_name}: ham encoder odometri yonu gecersiz')
+                        f'{target_name}: ham encoder odometri yonu gecersiz')
                 # Accumulate wrapped samples so crossing -pi/+pi cannot lose
                 # part of the relative correction angle.
                 accumulated_turn += self._wrap_angle(
@@ -1530,35 +1534,28 @@ class MissionManager(Node):
                     break
                 if time.monotonic() >= deadline:
                     raise MissionAbort(
-                        f'{node_name}: junction duzeltme timeout')
+                        f'{target_name}: {correction_label} timeout')
                 command = Twist()
-                command.angular.z = direction * self._junction_correction_speed(
-                    remaining,
-                    maximum_speed,
-                    minimum_speed,
-                    slowdown_angle,
+                command.angular.z = (
+                    direction * self._precise_turn_correction_speed(
+                        remaining,
+                        maximum_speed,
+                        minimum_speed,
+                        slowdown_angle,
+                    )
                 )
-                self._junction_correction_pub.publish(command)
+                self._precise_turn_correction_pub.publish(command)
                 time.sleep(0.05)
         finally:
             # One zero target is sufficient for velocity_smoother to perform
             # its configured deceleration; _wait_until_stopped verifies the
             # physical encoder velocity afterwards.
-            self._junction_correction_pub.publish(Twist())
+            self._precise_turn_correction_pub.publish(Twist())
 
         self._wait_until_stopped(
-            f'{node_name} junction duzeltme sonu')
+            f'{target_name} {correction_kind} duzeltme sonu')
         self._check_action_health(require_turn_sensors=True)
-        measured_correction = self._wrap_angle(
-            self._encoder_yaw - start_yaw)
-        self._event(
-            'junction_turn_correction_finished',
-            junction=node_name,
-            correction_source=correction_source,
-            odometry_source='/odom',
-            commanded_turn_rad=correction_turn,
-            measured_turn_rad=measured_correction,
-        )
+        return self._wrap_angle(self._encoder_yaw - start_yaw)
 
     def _turn_at_junction(self, maneuver: JunctionManeuver) -> None:
         """Align with one main Spin and bounded fresh-TF corrections."""
@@ -1663,13 +1660,37 @@ class MissionManager(Node):
                 correction_source = 'map'
                 correction_attempts += 1
                 remaining_budget = correction_deadline - time.monotonic()
-                self._run_junction_turn_correction(
+                self._event(
+                    'junction_turn_correction_started',
+                    junction=maneuver.node_name,
+                    correction_source=correction_source,
+                    commanded_turn_rad=correction_turn,
+                    odometry_source='/odom',
+                    maximum_angular_speed=float(self.get_parameter(
+                        'junction_turn_correction_angular_speed').value),
+                    minimum_angular_speed=float(self.get_parameter(
+                        'junction_turn_correction_min_angular_speed').value),
+                    slowdown_angle_rad=math.radians(float(
+                        self.get_parameter(
+                            'junction_turn_correction_slowdown_angle_deg'
+                        ).value
+                    )),
+                )
+                measured_correction = self._run_precise_turn_correction(
                     maneuver.node_name,
                     correction_turn,
-                    correction_source,
+                    'junction',
                     timeout_limit_s=remaining_budget,
                 )
-                # _run_junction_turn_correction publishes zero and waits for
+                self._event(
+                    'junction_turn_correction_finished',
+                    junction=maneuver.node_name,
+                    correction_source=correction_source,
+                    odometry_source='/odom',
+                    commanded_turn_rad=correction_turn,
+                    measured_turn_rad=measured_correction,
+                )
+                # _run_precise_turn_correction publishes zero and waits for
                 # physical encoder speed to settle before this measurement.
                 final_map_yaw = self._fresh_map_base_yaw(
                     f'{maneuver.node_name} junction duzeltme '
@@ -1833,11 +1854,6 @@ class MissionManager(Node):
             remaining_budget = correction_deadline - time.monotonic()
             if remaining_budget <= 0.0:
                 continue
-            correction_goal = Spin.Goal()
-            correction_goal.target_yaw = float(signed_yaw_error)
-            correction_goal.time_allowance = Duration(
-                seconds=remaining_budget
-            ).to_msg()
             self._status_detail = (
                 f'{station}: 180 derece ince duzeltme '
                 f'{attempts}/{max_attempts} '
@@ -1850,25 +1866,13 @@ class MissionManager(Node):
                 max_attempts=max_attempts,
                 commanded_turn_rad=signed_yaw_error,
                 remaining_budget_s=remaining_budget,
+                odometry_source='/odom',
             )
-            action_status = 'success'
-            try:
-                self._action(
-                    self._spin,
-                    correction_goal,
-                    f'station_turn_correction:{station}:{attempts}',
-                    remaining_budget,
-                    require_turn_sensors=True,
-                )
-            except MissionActionFailure as error:
-                # A correction action may report ABORTED after moving most of
-                # the requested angle. Re-measure from fresh TF and use the
-                # remaining bounded attempts instead of failing immediately.
-                if error.status != GoalStatus.STATUS_ABORTED:
-                    raise
-                action_status = f'action_status_{error.status}'
-            self._wait_until_stopped(
-                f'{station} correction {attempts} sonu'
+            measured_correction = self._run_precise_turn_correction(
+                station,
+                signed_yaw_error,
+                'station',
+                timeout_limit_s=remaining_budget,
             )
             final_map_yaw = self._fresh_map_base_yaw(
                 f'{station} correction {attempts} sonu'
@@ -1881,7 +1885,9 @@ class MissionManager(Node):
                 'station_turn_correction_finished',
                 station=station,
                 attempt=attempts,
-                outcome=action_status,
+                outcome='success',
+                odometry_source='/odom',
+                measured_turn_rad=measured_correction,
                 final_map_yaw=final_map_yaw,
                 remaining_error_rad=signed_yaw_error,
             )
@@ -2103,15 +2109,6 @@ class MissionManager(Node):
                     self._station_approach_target(node)
                 except MissionAbort as error:
                     return str(error)
-                try:
-                    duration = float(config.get('line_follow_duration_s'))
-                except (TypeError, ValueError):
-                    return f'{node}: line_follow_duration_s gecersiz'
-                if not math.isfinite(duration) or not 0.1 <= duration <= 120.0:
-                    return (
-                        f'{node}: line_follow_duration_s 0.1-120.0 '
-                        'araliginda olmali'
-                    )
         return None
 
     def _transform_age(self, target: str, source: str) -> Optional[float]:
@@ -2647,27 +2644,29 @@ class MissionManager(Node):
                               DockToStation.Goal.APPROACH_DROPOFF)
         configured = bool(self._nodes[station].get('approach_qr_id'))
         if configured:
-            duration = float(
-                self._nodes[station].get('line_follow_duration_s'))
-            goal.line_follow_duration_s = duration
+            # Compatibility field stays zero: production completion is the
+            # fresh lane-end event, never a station-specific duration.
+            goal.line_follow_duration_s = 0.0
             goal.reverse_motion = True
             goal.camera_source = 'rear_camera'
-            goal.timeout = min(self._action_timeout, duration + 8.0)
+            goal.timeout = 0.0
             self._qr_gate.docking()
             self._docking_target = station
-            self._docking_duration = duration
+            self._docking_duration = 0.0
             self._docking_elapsed = 0.0
-            self._docking_remaining = duration
+            self._docking_remaining = 0.0
             self._docking_lane_active = False
             self._docking_camera_valid = False
             self._docking_stopped = False
             self._docking_error = ''
             self._event(
-                'timed_reverse_docking_started', station=station,
-                duration_s=duration, camera='rear_camera')
+                'lane_end_reverse_docking_started', station=station,
+                camera='rear_camera')
 
             def feedback_callback(message):
                 feedback = message.feedback
+                self._docking_duration = float(
+                    feedback.configured_duration_s)
                 self._docking_elapsed = float(feedback.elapsed_s)
                 self._docking_remaining = float(feedback.remaining_s)
                 self._docking_lane_active = bool(
@@ -2675,29 +2674,28 @@ class MissionManager(Node):
                 self._docking_camera_valid = bool(feedback.camera_valid)
                 self._docking_stopped = bool(feedback.stopped)
                 self._status_detail = (
-                    f'{station}: geri serit '
-                    f'{self._docking_elapsed:.1f}/{duration:.1f} s')
+                    f'{station}: geri serit sonu bekleniyor '
+                    f'({self._docking_elapsed:.1f} s)')
 
             try:
                 self._action(
-                    self._dock, goal, f'timed_docking:{station}',
-                    goal.timeout + 2.0, require_turn_sensors=True,
+                    self._dock, goal, f'lane_end_docking:{station}',
+                    self._action_timeout, require_turn_sensors=True,
                     feedback_callback=feedback_callback)
                 self._wait_until_stopped(f'{station} docking sonu')
             except Exception as error:
                 self._docking_error = str(error)
                 self._event(
-                    'timed_reverse_docking_failed', station=station,
+                    'lane_end_reverse_docking_failed', station=station,
                     reason=str(error))
                 raise
-            self._docking_elapsed = duration
             self._docking_remaining = 0.0
             self._docking_lane_active = False
             self._docking_stopped = True
             self._qr_gate.docking_complete(pickup)
             self._event(
-                'timed_reverse_docking_completed', station=station,
-                duration_s=duration,
+                'lane_end_reverse_docking_completed', station=station,
+                elapsed_s=self._docking_elapsed,
                 next_phase=self._qr_gate.phase)
             return
         goal.timeout = min(self._action_timeout, 60.0)

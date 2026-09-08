@@ -14,20 +14,17 @@ STATION_ROLES = frozenset({"pickup_dock", "dropoff_dock"})
 
 def checked_values(
     approach_qr_id: str,
-    line_follow_duration_s: float,
+    line_follow_duration_s: float = 0.0,
 ) -> dict[str, Any]:
     """Return a normalized, safe station configuration."""
+    del line_follow_duration_s
     qr_id = str(approach_qr_id).strip()
-    duration = float(line_follow_duration_s)
     if not qr_id:
         raise GraphError("approach_qr_id cannot be empty")
     if len(qr_id) > 64:
         raise GraphError("approach_qr_id cannot exceed 64 characters")
-    if not math.isfinite(duration) or not 0.1 <= duration <= 120.0:
-        raise GraphError("line_follow_duration_s must be between 0.1 and 120.0")
     return {
         "approach_qr_id": qr_id,
-        "line_follow_duration_s": duration,
     }
 
 
@@ -64,6 +61,7 @@ def update_station(
     metadata = dict(node.metadata)
     metadata.pop("dock_heading_yaw", None)
     metadata.pop("turn_direction", None)
+    metadata.pop("line_follow_duration_s", None)
     metadata.update(checked_values(
         approach_qr_id,
         line_follow_duration_s,
@@ -75,9 +73,10 @@ def config_from_node(node: NodeData) -> dict[str, Any] | None:
     """Read and validate configuration when all required keys are present."""
     keys = (
         "approach_qr_id",
-        "line_follow_duration_s",
     )
-    known_keys = keys + ("dock_heading_yaw", "turn_direction")
+    known_keys = keys + (
+        "dock_heading_yaw", "turn_direction", "line_follow_duration_s"
+    )
     if not any(key in node.metadata for key in known_keys):
         return None
     if not all(key in node.metadata for key in keys):

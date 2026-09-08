@@ -73,7 +73,7 @@ string expected_qr_id
 string qr_target_station
 string last_qr_reject_reason
 
-# --- Sureli arka-serit docking (F7C) ---
+# --- Lane-end tabanli arka-serit docking (sure alanlari fail-safe telemetrisi) ---
 string docking_target_station
 float32 docking_configured_duration_s
 float32 docking_elapsed_s

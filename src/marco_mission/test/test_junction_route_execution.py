@@ -208,6 +208,9 @@ def _junction_correction_probe(fresh_yaws):
         'junction_turn_yaw_tolerance_deg': 5.0,
         'junction_turn_max_correction_attempts': 5,
         'junction_turn_correction_total_timeout_s': 30.0,
+        'junction_turn_correction_angular_speed': 0.25,
+        'junction_turn_correction_min_angular_speed': 0.16,
+        'junction_turn_correction_slowdown_angle_deg': 10.0,
     }
     manager.get_parameter = lambda name: SimpleNamespace(
         value=parameters[name]
@@ -224,19 +227,20 @@ def _junction_correction_probe(fresh_yaws):
         manager._filtered_odom_seen = time.monotonic()
 
     def correction(
-        node_name, correction_turn, correction_source, timeout_limit_s=None
+        node_name, correction_turn, correction_kind, timeout_limit_s=None
     ):
         operations.append((
-            'correction', node_name, correction_turn, correction_source,
+            'correction', node_name, correction_turn, correction_kind,
             timeout_limit_s))
         manager._encoder_yaw = MissionManager._wrap_angle(
             manager._encoder_yaw + correction_turn
         )
         manager._filtered_yaw = manager._encoder_yaw
         manager._filtered_odom_seen = time.monotonic()
+        return correction_turn
 
     manager._action = action
-    manager._run_junction_turn_correction = correction
+    manager._run_precise_turn_correction = correction
     samples = iter(fresh_yaws)
     manager._fresh_map_base_yaw = lambda _label: next(samples)
     manager._wait_until_stopped = lambda _label: operations.append(
@@ -267,7 +271,15 @@ def test_junction_spin_corrects_map_heading_once_then_continues():
     assert len(corrections) == 1
     assert corrections[0][1] == 'D1'
     assert math.degrees(corrections[0][2]) == pytest.approx(10.0)
-    assert corrections[0][3] == 'map'
+    assert corrections[0][3] == 'junction'
+    assert any(
+        event == 'junction_turn_correction_started'
+        for event, _fields in events
+    )
+    assert any(
+        event == 'junction_turn_correction_finished'
+        for event, _fields in events
+    )
     assert events[-1][0] == 'junction_turn_completed'
     assert events[-1][1]['correction_applied'] is True
     assert events[-1][1]['correction_attempts'] == 1
@@ -338,7 +350,7 @@ def test_encoder_turn_difference_is_telemetry_when_map_heading_is_correct():
 
 
 def test_correction_speed_slows_down_near_target():
-    speed = MissionManager._junction_correction_speed
+    speed = MissionManager._precise_turn_correction_speed
 
     assert speed(math.radians(15.0), 0.25, 0.16, math.radians(10.0)) \
         == pytest.approx(0.25)
@@ -373,7 +385,10 @@ def test_raw_and_filtered_odometry_callbacks_remain_separate():
     assert manager._filtered_odom_seen > 0.0
 
 
-def test_junction_correction_uses_raw_yaw_and_decreasing_speed():
+@pytest.mark.parametrize('correction_kind', ('junction', 'station'))
+def test_precise_correction_uses_raw_yaw_and_decreasing_speed(
+    correction_kind,
+):
     manager = MissionManager.__new__(MissionManager)
     manager._encoder_yaw = 0.0
     manager._filtered_yaw = math.radians(-45.0)
@@ -405,18 +420,16 @@ def test_junction_correction_uses_raw_yaw_and_decreasing_speed():
                     manager._encoder_yaw + math.radians(3.0)
                 )
 
-    manager._junction_correction_pub = _Publisher()
+    manager._precise_turn_correction_pub = _Publisher()
 
-    manager._run_junction_turn_correction('D3', math.radians(10.0), 'map')
+    measured = manager._run_precise_turn_correction(
+        'D3', math.radians(10.0), correction_kind)
 
     moving = [value for value in commands if value > 0.0]
     assert moving == pytest.approx([0.25, 0.175, 0.16])
     assert commands[-1] == pytest.approx(0.0)
     assert manager._filtered_yaw == pytest.approx(math.radians(-45.0))
-    assert events[-1][0] == 'junction_turn_correction_finished'
-    assert events[-1][1]['odometry_source'] == '/odom'
-    assert math.degrees(events[-1][1]['measured_turn_rad']) \
-        == pytest.approx(9.0)
+    assert math.degrees(measured) == pytest.approx(9.0)
 
 
 class _ExecutionProbe:

@@ -8,4 +8,5 @@ float32 dock_heading_yaw
 # Geriye uyumlu read-only/debug alanidir. Runtime local costmap'ten secer;
 # SaveStationApproachConfig istegindeki deger kaydedilmez ve kullanilmaz.
 string turn_direction
+# Geriye uyumlu alandir; kaydedilmez ve production docking'de kullanilmaz.
 float32 line_follow_duration_s

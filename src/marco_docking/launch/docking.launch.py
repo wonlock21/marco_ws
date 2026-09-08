@@ -50,7 +50,6 @@ def generate_launch_description() -> LaunchDescription:
                 "startup_mode": "IDLE",
                 "output_topic": "/cmd_vel_lane",
                 "show_debug_window": False,
-                "lane_end_detection_enabled": False,
             },
         ],
     )

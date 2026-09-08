@@ -16,8 +16,8 @@ uint8 APPROACH_PICKUP=0
 uint8 APPROACH_DROPOFF=1
 uint8 approach_type
 
-# F7C sureli arka-kamera docking sozlesmesi. line_follow_duration_s > 0 ise
-# dock server eski QR mesafe kontrolu yerine gercek /cmd_vel_lane adaptoru olur.
+# Geriye uyumlu alan. Production reverse lane docking bunu completion kriteri
+# olarak kullanmaz; basari fresh /lane_tracking/end_detected olayi ile gelir.
 float32 line_follow_duration_s
 bool reverse_motion
 string camera_source
@@ -53,6 +53,7 @@ string phase
 float32 position_error        # [m]
 float32 yaw_error             # [rad]
 float32 distance_remaining    # [m]
+# Geriye uyumlu sure alanlari production'da sistem fail-safe timeout'unu gosterir.
 float32 configured_duration_s
 float32 elapsed_s
 float32 remaining_s

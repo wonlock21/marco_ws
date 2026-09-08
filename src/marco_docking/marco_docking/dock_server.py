@@ -54,11 +54,13 @@ class DockServer(Node):
             'rear_camera_topic': '/camera/image_raw',
             'lane_command_topic': '/cmd_vel_lane',
             'lane_active_topic': '/lane_tracking/active',
+            'lane_end_topic': '/lane_tracking/end_detected',
             'task_command_topic': '/task_command',
             'filtered_odom_topic': '/odometry/filtered',
             'lane_command_timeout_s': 0.30,
             'lane_active_timeout_s': 0.50,
             'activation_timeout_s': 2.0,
+            'reverse_docking_timeout_s': 30.0,
             'zero_command_timeout_s': 0.40,
             'odom_timeout_s': 0.50,
             'stop_timeout_s': 3.0,
@@ -80,6 +82,7 @@ class DockServer(Node):
         self._lane_command_wall = 0.0
         self._lane_active = False
         self._lane_active_wall = 0.0
+        self._lane_end_wall = 0.0
         self._camera_wall = 0.0
         self._odom_wall = 0.0
         self._linear_speed = self._angular_speed = 0.0
@@ -101,6 +104,9 @@ class DockServer(Node):
             10, callback_group=self._cb)
         self.create_subscription(
             Bool, str(self._p['lane_active_topic']), self._on_lane_active,
+            10, callback_group=self._cb)
+        self.create_subscription(
+            Bool, str(self._p['lane_end_topic']), self._on_lane_end,
             10, callback_group=self._cb)
         self.create_subscription(
             Image, str(self._p['rear_camera_topic']), self._on_camera,
@@ -147,6 +153,10 @@ class DockServer(Node):
         self._lane_active = bool(msg.data)
         self._lane_active_wall = time.monotonic()
 
+    def _on_lane_end(self, msg):
+        if msg.data:
+            self._lane_end_wall = time.monotonic()
+
     def _on_camera(self, _msg):
         self._camera_wall = time.monotonic()
 
@@ -156,9 +166,8 @@ class DockServer(Node):
         self._angular_speed = float(msg.twist.twist.angular.z)
 
     def _goal(self, _request):
-        duration = float(_request.line_follow_duration_s)
-        if duration != 0.0 and (
-                not math.isfinite(duration) or not 0.1 <= duration <= 120.0):
+        timeout = float(_request.timeout)
+        if not math.isfinite(timeout) or timeout < 0.0:
             return GoalResponse.REJECT
         with self._busy_lock:
             if self._busy:
@@ -191,18 +200,22 @@ class DockServer(Node):
         return result
 
     def _execute(self, handle):
-        if float(handle.request.line_follow_duration_s) > 0.0:
-            return self._execute_timed_rear_lane(handle)
+        if handle.request.reverse_motion:
+            return self._execute_rear_lane(handle)
         return self._execute_legacy(handle)
 
-    def _timed_feedback(self, handle, duration, started, now, stopped=False):
+    def _rear_lane_feedback(
+        self, handle, timeout, started, now, stopped=False
+    ):
         feedback = DockToStation.Feedback()
         elapsed = max(0.0, now - started) if started else 0.0
         feedback.phase = 'settling' if stopped else (
-            'timed_reverse_lane' if started else 'activating_lane')
-        feedback.configured_duration_s = float(duration)
-        feedback.elapsed_s = float(min(duration, elapsed))
-        feedback.remaining_s = float(max(0.0, duration - elapsed))
+            'reverse_lane' if started else 'activating_lane')
+        # Compatibility fields now expose the system fail-safe window. They
+        # are telemetry only and never decide successful completion.
+        feedback.configured_duration_s = float(timeout)
+        feedback.elapsed_s = float(min(timeout, elapsed))
+        feedback.remaining_s = float(max(0.0, timeout - elapsed))
         feedback.lane_control_active = bool(self._lane_active)
         feedback.camera_valid = bool(
             self._camera_wall
@@ -210,20 +223,30 @@ class DockServer(Node):
         feedback.stopped = bool(stopped)
         handle.publish_feedback(feedback)
 
-    def _timed_failure(self, handle, result, code, message, canceled=False):
+    def _rear_lane_failure(
+        self, handle, result, code, message, canceled=False
+    ):
         self._lane_stop()
         return self._finish(handle, result, code, message, canceled=canceled)
 
-    def _wait_for_measured_stop(self, handle, result, duration, started):
+    def _wait_for_measured_stop(self, handle, result, timeout, started):
         deadline = time.monotonic() + float(self._p['stop_timeout_s'])
         stable_since = None
         while rclpy.ok() and time.monotonic() < deadline:
             now = time.monotonic()
             self._lane_stop()
             if handle.is_cancel_requested:
-                return self._timed_failure(
+                return self._rear_lane_failure(
                     handle, result, DockToStation.Result.RESULT_ABORTED,
                     'docking durusunda iptal', canceled=True)
+            if self._estop:
+                return self._rear_lane_failure(
+                    handle, result, DockToStation.Result.RESULT_ABORTED,
+                    'docking durusunda e-stop')
+            if self._obstacle:
+                return self._rear_lane_failure(
+                    handle, result, DockToStation.Result.RESULT_OBSTACLE,
+                    'docking durusunda engel')
             odom_fresh = (
                 self._odom_wall
                 and now - self._odom_wall <= float(self._p['odom_timeout_s']))
@@ -233,8 +256,8 @@ class DockServer(Node):
                 float(self._p['stop_linear_tolerance'])
                 and abs(self._angular_speed) <=
                 float(self._p['stop_angular_tolerance']))
-            self._timed_feedback(
-                handle, duration, started, now, stopped=stopped)
+            self._rear_lane_feedback(
+                handle, timeout, started, now, stopped=stopped)
             if stopped:
                 stable_since = stable_since or now
                 if now - stable_since >= float(self._p['stop_settle_s']):
@@ -242,48 +265,56 @@ class DockServer(Node):
             else:
                 stable_since = None
             time.sleep(1.0 / float(self._p['control_rate_hz']))
-        return self._timed_failure(
+        return self._rear_lane_failure(
             handle, result, DockToStation.Result.RESULT_STOP_FAILED,
-            'sureli docking sonrasi olculen hiz sifira inmedi')
+            'lane-end docking sonrasi olculen hiz sifira inmedi')
 
-    def _execute_timed_rear_lane(self, handle):
-        """Adapt the real lane controller to bounded reverse docking."""
+    def _execute_rear_lane(self, handle):
+        """Run reverse lane control until a fresh lane-end event."""
         result = DockToStation.Result()
         goal = handle.request
-        duration = float(goal.line_follow_duration_s)
         rate = 1.0 / float(self._p['control_rate_hz'])
-        deadline = time.monotonic() + (goal.timeout or duration + 8.0)
+        timeout = float(self._p['reverse_docking_timeout_s'])
+        if not math.isfinite(timeout) or timeout <= 0.0:
+            with self._busy_lock:
+                self._busy = False
+            return self._rear_lane_failure(
+                handle, result, DockToStation.Result.RESULT_ABORTED,
+                'reverse docking timeout parametresi gecersiz')
+        if goal.timeout > 0.0:
+            timeout = min(timeout, float(goal.timeout))
+        requested_at = time.monotonic()
+        deadline = requested_at + timeout
         activation_deadline = time.monotonic() + float(
             self._p['activation_timeout_s'])
-        requested_at = time.monotonic()
         started = None
         zero_since = None
         if not goal.reverse_motion or goal.camera_source != 'rear_camera':
             with self._busy_lock:
                 self._busy = False
-            return self._timed_failure(
+            return self._rear_lane_failure(
                 handle, result, DockToStation.Result.RESULT_ABORTED,
-                'F7C yalniz reverse_motion + rear_camera kabul eder')
+                'reverse lane yalniz rear_camera kabul eder')
         self._task_pub.publish(String(data='START_LANE'))
         try:
             while rclpy.ok():
                 now = time.monotonic()
                 if handle.is_cancel_requested:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result, DockToStation.Result.RESULT_ABORTED,
                         'cancel edildi', canceled=True)
                 if self._estop:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result, DockToStation.Result.RESULT_ABORTED,
                         'e-stop')
                 if self._obstacle:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result, DockToStation.Result.RESULT_OBSTACLE,
                         'engel')
                 if now > deadline:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result, DockToStation.Result.RESULT_TIMEOUT,
-                        'zaman asimi')
+                        'lane-end bekleme zaman asimi')
                 camera_ok = (
                     self._camera_wall > requested_at
                     and now - self._camera_wall <=
@@ -308,30 +339,42 @@ class DockServer(Node):
                 if started is None:
                     self._stop()
                     self._task_pub.publish(String(data='START_LANE'))
-                    self._timed_feedback(handle, duration, None, now)
+                    self._rear_lane_feedback(handle, timeout, None, now)
                     if camera_ok and active_ok and command_ready:
                         started = now
                     elif now >= activation_deadline:
                         code = (DockToStation.Result.RESULT_CAMERA_LOST
                                 if not camera_ok else
                                 DockToStation.Result.RESULT_CONTROL_INACTIVE)
-                        return self._timed_failure(
+                        return self._rear_lane_failure(
                             handle, result, code,
                             'arka kamera/serit kontrolu aktiflesmedi')
                     time.sleep(rate)
                     continue
                 if not camera_ok:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result,
                         DockToStation.Result.RESULT_CAMERA_LOST,
                         'arka kamera bayat/kayip')
+                if self._lane_end_wall > started:
+                    self._lane_stop()
+                    stop_result = self._wait_for_measured_stop(
+                        handle, result, timeout, started)
+                    if stop_result is not None:
+                        return stop_result
+                    result.final_position_error = math.nan
+                    result.final_longitudinal_error = math.nan
+                    result.final_yaw_error = math.nan
+                    return self._finish(
+                        handle, result, DockToStation.Result.RESULT_OK,
+                        'fresh lane-end ile geri serit docking tamamlandi')
                 if not active_ok or not command_ok:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result,
                         DockToStation.Result.RESULT_CONTROL_INACTIVE,
                         'serit kontrolu bayat/pasif')
                 if not lane_finite:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result,
                         DockToStation.Result.RESULT_CONTROL_INACTIVE,
                         'serit kontrolu sonlu olmayan komut uretti')
@@ -343,34 +386,22 @@ class DockServer(Node):
                     zero_since = zero_since or now
                     if now - zero_since > float(
                             self._p['zero_command_timeout_s']):
-                        return self._timed_failure(
+                        return self._rear_lane_failure(
                             handle, result,
                             DockToStation.Result.RESULT_LANE_LOST,
                             'serit kaybi: hareket komutu sifir kaldi')
-                elapsed = now - started
-                if elapsed >= duration:
-                    stop_result = self._wait_for_measured_stop(
-                        handle, result, duration, started)
-                    if stop_result is not None:
-                        return stop_result
-                    result.final_position_error = math.nan
-                    result.final_longitudinal_error = math.nan
-                    result.final_yaw_error = math.nan
-                    return self._finish(
-                        handle, result, DockToStation.Result.RESULT_OK,
-                        'sureli geri serit docking tamamlandi')
                 try:
                     cmd = reverse_lane_command(
                         lane, self._p['reverse_angular_sign'],
                         self._p['max_linear_vel'],
                         self._p['max_angular_vel'])
                 except ValueError:
-                    return self._timed_failure(
+                    return self._rear_lane_failure(
                         handle, result,
                         DockToStation.Result.RESULT_CONTROL_INACTIVE,
                         'serit kontrolu sonlu olmayan komut uretti')
                 self._pub.publish(cmd)
-                self._timed_feedback(handle, duration, started, now)
+                self._rear_lane_feedback(handle, timeout, started, now)
                 time.sleep(rate)
         finally:
             self._lane_stop()

@@ -25,11 +25,14 @@ dock_server:
     rear_camera_topic: /camera/image_raw
     lane_command_topic: /cmd_vel_lane
     lane_active_topic: /lane_tracking/active
+    lane_end_topic: /lane_tracking/end_detected
     task_command_topic: /task_command
     filtered_odom_topic: /odometry/filtered
     lane_command_timeout_s: 0.30
     lane_active_timeout_s: 0.50
     activation_timeout_s: 2.0
+    # Normal basari lane-end olayi ile gelir; bu yalniz sistem fail-safe'idir.
+    reverse_docking_timeout_s: 30.0
     zero_command_timeout_s: 0.40
     odom_timeout_s: 0.50
     stop_timeout_s: 3.0
