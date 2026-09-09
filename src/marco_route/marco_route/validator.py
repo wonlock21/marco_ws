@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,6 +12,10 @@ import yaml
 from .field_store import FieldStore, StoreError, stations_document
 from .graph_model import FieldGraph
 from .station_config import config_from_node
+
+
+PICKUP_STATION_PATTERN = re.compile(r"^A[1-9][0-9]*$")
+DROPOFF_STATION_PATTERN = re.compile(r"^B[1-9][0-9]*$")
 
 
 @dataclass
@@ -186,6 +191,35 @@ def _station_node(graph: FieldGraph, station: str) -> int | None:
     return (preferred or matching)[0].node_id
 
 
+def _configured_stations(
+    graph: FieldGraph,
+    role: str,
+    pattern: re.Pattern[str],
+    result: ValidationResult,
+) -> dict[str, int]:
+    """Return valid, uniquely configured stations for one dock role."""
+    stations: dict[str, int] = {}
+    for node in graph.nodes.values():
+        if node.role != role:
+            continue
+        station = node.station.strip()
+        if not pattern.fullmatch(station):
+            expected = "A1, A2, A3, ..." if role == "pickup_dock" else (
+                "B1, B2, B3, ..."
+            )
+            result.errors.append(
+                f"{role} node '{node.name}' must use a station ID like {expected}"
+            )
+            continue
+        if station in stations:
+            result.errors.append(
+                f"station '{station}' must have exactly one {role} node"
+            )
+            continue
+        stations[station] = node.node_id
+    return stations
+
+
 def validate_field(
     store: FieldStore,
     graph: FieldGraph,
@@ -350,47 +384,47 @@ def validate_field(
         )
 
     if competition_profile:
-        required = ["WAIT", "A1", "A2", "A3", "B1", "B2", "B3"]
-        stations = {name: _station_node(graph, name) for name in required}
-        for name, node_id in stations.items():
-            if node_id is None:
-                result.errors.append(f"required station '{name}' is missing")
-        if all(node_id is not None for node_id in stations.values()):
-            wait_node = graph.nodes[stations["WAIT"]]
-            if wait_node.role != "wait":
-                result.errors.append("WAIT station must use WAIT role")
-            for pickup in ("A1", "A2", "A3"):
-                if graph.nodes[stations[pickup]].role != "pickup_dock":
-                    result.errors.append(
-                        f"{pickup} must include a PICKUP_DOCK station node"
-                    )
-            for dropoff in ("B1", "B2", "B3"):
-                if graph.nodes[stations[dropoff]].role != "dropoff_dock":
-                    result.errors.append(
-                        f"{dropoff} must include a DROPOFF_DOCK station node"
-                    )
-            wait = stations["WAIT"]
-            for pickup in ("A1", "A2", "A3"):
-                if not _reachable(graph, wait, stations[pickup]):
+        wait = _station_node(graph, "WAIT")
+        pickups = _configured_stations(
+            graph, "pickup_dock", PICKUP_STATION_PATTERN, result
+        )
+        dropoffs = _configured_stations(
+            graph, "dropoff_dock", DROPOFF_STATION_PATTERN, result
+        )
+        if wait is None:
+            result.errors.append("required station 'WAIT' is missing")
+        elif graph.nodes[wait].role != "wait":
+            result.errors.append("WAIT station must use WAIT role")
+        if not pickups:
+            result.errors.append(
+                "at least one configured pickup station (A1, A2, ...) is required"
+            )
+        if not dropoffs:
+            result.errors.append(
+                "at least one configured dropoff station (B1, B2, ...) is required"
+            )
+        if wait is not None:
+            for pickup, pickup_node in pickups.items():
+                if not _reachable(graph, wait, pickup_node):
                     result.errors.append(f"WAIT cannot reach {pickup}")
-                for dropoff in ("B1", "B2", "B3"):
-                    if not _reachable(graph, stations[pickup], stations[dropoff]):
+                for dropoff, dropoff_node in dropoffs.items():
+                    if not _reachable(graph, pickup_node, dropoff_node):
                         result.errors.append(f"{pickup} cannot reach {dropoff}")
                     elif _reachable_without(
                         graph,
-                        stations[pickup],
-                        stations[dropoff],
+                        pickup_node,
+                        dropoff_node,
                         q5_nodes,
                     ):
                         result.errors.append(
                             f"{pickup}->{dropoff} has an unauthorized q5 bypass"
                         )
-            for dropoff in ("B1", "B2", "B3"):
-                if not _reachable(graph, stations[dropoff], wait):
+            for dropoff, dropoff_node in dropoffs.items():
+                if not _reachable(graph, dropoff_node, wait):
                     result.errors.append(f"{dropoff} cannot return to WAIT")
                 elif _reachable_without(
                     graph,
-                    stations[dropoff],
+                    dropoff_node,
                     wait,
                     q6_nodes,
                 ):

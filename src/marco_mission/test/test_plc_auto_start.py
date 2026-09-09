@@ -181,6 +181,27 @@ def test_fresh_assignment_is_reserved_and_started_exactly_once(manager):
     assert manager._known_task_ids == {'plc-task-1'}
 
 
+def test_unconfigured_plc_station_is_rejected_and_logged(manager):
+    manager._validate_route = lambda _route: (
+        'tanimlanmamis gorev istasyonu: A3'
+    )
+    manager._poll_plc_auto_start()
+
+    manager._assign.calls[0][1].set_result(_reply(True, pickup='A3'))
+
+    assert manager.starts == 0
+    assert not manager._busy
+    assert manager.events[-1] == (
+        'task_rejected',
+        {
+            'requested_source': 'plc',
+            'pickup': 'A3',
+            'dropoff': 'B3',
+            'reason': 'tanimlanmamis gorev istasyonu: A3',
+        },
+    )
+
+
 def test_field_not_ready_waits_then_starts_after_field_becomes_ready(manager):
     manager._active_field_ready = False
     manager._poll_plc_auto_start()

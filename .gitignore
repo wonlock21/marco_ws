@@ -5,3 +5,6 @@ __pycache__/
 *.py[cod]
 .vscode/
 .idea/
+AGENT_REFERANS.m
+RPLIDAR_YDLIDAR_GECIS.md
+yarisma_plani.md

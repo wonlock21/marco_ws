@@ -57,6 +57,49 @@ def test_competition_reachability_matrix_passes(field_store):
     assert result.valid, result.errors
 
 
+@pytest.mark.parametrize(
+    "removed_nodes",
+    (
+        (3, 4, 6, 7),
+        (4, 6, 7),
+        (4, 7),
+    ),
+)
+def test_competition_profile_accepts_only_configured_stations(
+    field_store, removed_nodes
+):
+    graph = competition_graph()
+    for node_id in removed_nodes:
+        graph.delete_node(node_id, delete_edges=True)
+    field_store.save_graph(graph)
+
+    result = validate_field(field_store, graph, competition_profile=True)
+
+    assert result.valid, result.errors
+    assert not any("A3" in error or "B3" in error for error in result.errors)
+
+
+def test_competition_profile_accepts_more_than_three_stations(field_store):
+    graph = competition_graph()
+    graph.upsert_node(NodeData(
+        10, "A4", "pickup_dock", "A4", 5.0, 2.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        11, "B4", "dropoff_dock", "B4", 5.0, 4.0, 0.0
+    ))
+    graph.upsert_edge(EdgeData(
+        130, 10, 8, bidirectional=True, max_speed=0.2
+    ))
+    graph.upsert_edge(EdgeData(
+        131, 11, 9, bidirectional=True, max_speed=0.2
+    ))
+    field_store.save_graph(graph)
+
+    result = validate_field(field_store, graph, competition_profile=True)
+
+    assert result.valid, result.errors
+
+
 def test_directional_gate_event_and_loaded_reverse_are_required(field_store):
     graph = competition_graph()
     graph.edges[110] = EdgeData(

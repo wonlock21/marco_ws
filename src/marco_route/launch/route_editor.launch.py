@@ -16,7 +16,9 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "competition_profile",
             default_value="true",
-            description="Require the complete WAIT/A/B/q5 competition graph",
+            description=(
+                "Require WAIT/q5/q6 and validate only configured A/B stations"
+            ),
         ),
         Node(
             package="marco_route",

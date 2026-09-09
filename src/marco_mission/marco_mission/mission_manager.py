@@ -2129,11 +2129,24 @@ class MissionManager(Node):
             and self._return_gate_node == self._gate_node
         ):
             return 'production saha paketinde ayri gate_q6 dugumu gerekli'
-        required = tuple(route_nodes) + (
+        missing_stations = [
+            node for node in route_nodes if node not in self._nodes
+        ]
+        if missing_stations:
+            return (
+                "tanimlanmamis gorev istasyonu: "
+                f"{', '.join(sorted(set(missing_stations)))}"
+            )
+        required_runtime_nodes = (
             self._gate_node, self._return_gate_node, self._home_node)
-        missing = [node for node in required if node not in self._nodes]
-        if missing:
-            return f"gecersiz graph node: {', '.join(sorted(set(missing)))}"
+        missing_runtime_nodes = [
+            node for node in required_runtime_nodes if node not in self._nodes
+        ]
+        if missing_runtime_nodes:
+            return (
+                "gecersiz graph node: "
+                f"{', '.join(sorted(set(missing_runtime_nodes)))}"
+            )
         for index, node in enumerate(route_nodes):
             expected_role = 'pickup_dock' if index % 2 == 0 else 'dropoff_dock'
             role = self._nodes[node].get('role', '')
@@ -2349,16 +2362,26 @@ class MissionManager(Node):
             # CONTROL=Bekle is represented by success=false. For automatic
             # polling this is an ordinary no-task state, never a mission error.
             return reply.message or 'PLC gorev vermedi'
-        return self._reserve(
+        source = 'plc' if automatic else self._default_source
+        error = self._reserve(
             reply.task_id,
             [reply.pickup_node, reply.dropoff_node],
-            'plc' if automatic else self._default_source,
+            source,
             require_localization=automatic,
             consume_plc_claim=True,
             expected_plc_future=expected_future,
             require_plc_connection=automatic,
             require_production_ready=automatic,
         )
+        if error:
+            self._event(
+                'task_rejected',
+                requested_source=source,
+                pickup=reply.pickup_node,
+                dropoff=reply.dropoff_node,
+                reason=error,
+            )
+        return error
 
     def _request_plc_assignment_and_reserve(self, timeout: float = 5.0) -> Optional[str]:
         """Manual/debug Start path sharing claim and acceptance with auto-start."""

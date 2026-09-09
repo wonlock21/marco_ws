@@ -52,6 +52,9 @@ def test_competition_station_aliases_and_roles_are_accepted(tmp_path):
     assert manager._nodes["A1"]["yaw"] == 1.2
     assert manager._validate_route(["A1", "B1"]) is None
     assert "pickup_dock" in manager._validate_route(["B1", "A1"])
+    assert "tanimlanmamis gorev istasyonu: A3" == manager._validate_route(
+        ["A3", "B1"]
+    )
 
 
 def test_station_approach_config_is_loaded_from_graph(tmp_path):
