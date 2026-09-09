@@ -38,6 +38,7 @@ def _plc_and_mission_nodes(context):
         package='marco_mission', executable='mission_manager',
         name='mission_manager', output='screen', parameters=[{
             'task_source': selection.task_source,
+            'plc_auto_start': LaunchConfiguration('plc_auto_start'),
             'simulate_steps': LaunchConfiguration('simulate_steps'),
             'manual_task_enabled': LaunchConfiguration('manual_task_enabled'),
             'temporary_gui_manual_mode':
@@ -67,6 +68,9 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         DeclareLaunchArgument('task_source', default_value='plc',
                               description='plc (production) or mock_plc (simulation)'),
+        DeclareLaunchArgument(
+            'plc_auto_start', default_value='false',
+            description='Production PLC gorevini GUI Start olmadan baslat'),
         DeclareLaunchArgument(
             'plc_backend', default_value='auto',
             description=(

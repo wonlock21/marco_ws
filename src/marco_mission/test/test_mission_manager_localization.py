@@ -27,6 +27,7 @@ def test_mock_node_accepts_stationary_robot_health_inputs():
     rclpy.init()
     node = MissionManager()
     try:
+        assert node._plc_auto_start is False
         pose = PoseWithCovarianceStamped()
         pose.pose.pose.orientation.w = 1.0
         node._on_pose(pose)

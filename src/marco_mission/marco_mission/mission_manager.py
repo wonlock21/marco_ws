@@ -448,6 +448,7 @@ class MissionManager(Node):
                                      'graphs', 'phase10_route.geojson')
         for name, default in (
             ('task_source', 'plc'), ('manual_task_enabled', False),
+            ('plc_auto_start', False),
             ('simulate_steps', False),
             ('graph_file', graph_default), ('gate_node', 'kapi_q5'),
             ('return_gate_node', 'kapi_q6'),
@@ -506,6 +507,8 @@ class MissionManager(Node):
         if bool(self.get_parameter('simulate_steps').value):
             raise ValueError('Faz 10 sahte sleep modu kaldirildi; simulate_steps:=false kullan')
         self._manual_enabled = bool(self.get_parameter('manual_task_enabled').value)
+        self._plc_auto_start = bool(
+            self.get_parameter('plc_auto_start').value)
         self._station_qr_mock_enabled = bool(
             self.get_parameter('station_qr_mock_enabled').value
         )
@@ -599,6 +602,9 @@ class MissionManager(Node):
         self._base_communication_seen = 0.0
         self._plc_connected = False
         self._plc_seen = 0.0
+        self._plc_assign_inflight = False
+        self._plc_assign_future = None
+        self._plc_assign_started = 0.0
         self._loaded = False
         self._pose: Optional[PoseWithCovarianceStamped] = None
         self._scan_seen = 0.0
@@ -756,9 +762,15 @@ class MissionManager(Node):
                             self._on_emergency_stop, callback_group=self._cb)
         rate = float(self.get_parameter('status_rate_hz').value)
         self.create_timer(1.0 / rate, self._publish_status)
+        # Assignment polling is deliberately slower than status publication.
+        # The asynchronous service future keeps the ROS executor free and the
+        # in-flight guard permits only one request at a time.
+        self.create_timer(
+            0.5, self._poll_plc_auto_start, callback_group=self._cb)
         self._publish_load_state(False)
         self._event('ready', source=self._default_source,
                     manual_task_enabled=self._manual_enabled,
+                    plc_auto_start=self._plc_auto_start,
                     imu_enabled=self._imu_enabled,
                     graph_nodes=len(self._nodes))
 
@@ -2056,6 +2068,21 @@ class MissionManager(Node):
             )
         )
 
+    def _plc_connection_healthy(self) -> bool:
+        """Require the bridge heartbeat to be both true and locally fresh."""
+        return bool(
+            self._plc_connected
+            and self._plc_seen > 0.0
+            and time.monotonic() - self._plc_seen <= self._plc_freshness
+        )
+
+    def _safety_supervisor_healthy(self) -> bool:
+        """Use the existing reset service as the supervisor liveness contract."""
+        return (
+            not self._require_safety_supervisor
+            or self._safety_reset.service_is_ready()
+        )
+
     def _on_safety_abort(self, msg: Bool) -> None:
         if msg.data:
             self._request_abort('safety abort', latch=True)
@@ -2172,10 +2199,33 @@ class MissionManager(Node):
 
     def _reserve(self, task_id: str, route_nodes, source: str,
                  return_home: bool = True, start_immediately: bool = True,
-                 require_localization: bool = False) -> Optional[str]:
+                 require_localization: bool = False,
+                 consume_plc_claim: bool = False,
+                 expected_plc_future=None,
+                 require_plc_connection: bool = False,
+                 require_production_ready: bool = False) -> Optional[str]:
         with self._lock:
+            if consume_plc_claim:
+                if not getattr(self, '_plc_assign_inflight', False):
+                    return 'PLC gorev istegi artik aktif degil'
+                if (
+                    expected_plc_future is not None
+                    and self._plc_assign_future is not expected_plc_future
+                ):
+                    return 'PLC gorev cevabi eski bir istege ait'
+                self._plc_assign_inflight = False
+                self._plc_assign_future = None
+                self._plc_assign_started = 0.0
+            elif getattr(self, '_plc_assign_inflight', False):
+                return 'PLC gorev istegi devam ediyor'
             if self._busy:
                 return f'aktif gorev var: {self._source}/{self._task_id}'
+            if require_plc_connection and not self._plc_connection_healthy():
+                return 'PLC baglantisi fresh/connected degil'
+            if require_production_ready and not self._active_field_ready:
+                return 'dogrulanmis etkin saha paketi hazir degil'
+            if require_production_ready and not self._production_route_ready():
+                return 'aktif saha route runtime hazir degil'
             if self._require_active_field and not self._active_field_ready:
                 return 'dogrulanmis etkin saha paketi hazir degil'
             if self._require_active_field and not self._production_route_ready():
@@ -2184,6 +2234,8 @@ class MissionManager(Node):
                 return 'e-stop/safety kilidi aktif; operator reset gerekli'
             if self._obstacle:
                 return 'engel algilandi; gorev kabul edilmedi'
+            if require_production_ready and not self._safety_supervisor_healthy():
+                return 'safety supervisor hazir degil'
             if not self._base_communication_healthy():
                 return 'STM32/UART iletisimi hazir degil'
             if not task_id:
@@ -2215,8 +2267,164 @@ class MissionManager(Node):
         self._event('task_accepted', pickup=self._pickup, dropoff=self._dropoff,
                     route_nodes=list(route_nodes), queued=not start_immediately)
         if start_immediately:
-            threading.Thread(target=self._run, daemon=True).start()
+            self._start_mission_thread()
         return None
+
+    def _start_mission_thread(self) -> None:
+        """Start execution after admission; kept separate for focused tests."""
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _plc_auto_start_blocker(self) -> Optional[str]:
+        """Return why production PLC auto-start must remain idle."""
+        if not self._plc_auto_start:
+            return 'plc_auto_start=false'
+        if self._default_source != 'plc':
+            return 'task_source production PLC degil'
+        if self._state != RobotStatus.STATE_IDLE:
+            return 'mission state IDLE degil'
+        if self._busy or self._running:
+            return 'mission busy'
+        if self._plc_assign_inflight:
+            return 'PLC gorev istegi devam ediyor'
+        if not self._plc_connection_healthy():
+            return 'PLC baglantisi fresh/connected degil'
+        if not self._active_field_ready:
+            return 'dogrulanmis etkin saha paketi hazir degil'
+        if not self._production_route_ready():
+            return 'aktif saha route runtime hazir degil'
+        if self._estop or self._latched_abort:
+            return 'e-stop/safety kilidi aktif'
+        if self._obstacle:
+            return 'engel algilandi'
+        if not self._safety_supervisor_healthy():
+            return 'safety supervisor hazir degil'
+        if not self._base_communication_healthy():
+            return 'STM32/UART iletisimi hazir degil'
+        health = self._localization_health()
+        if not health.valid:
+            return f'lokalizasyon gecersiz: {health.reason}'
+        return None
+
+    def _claim_plc_assignment(self, *, require_auto_ready: bool = False) -> Optional[str]:
+        """Atomically reserve ownership of the next AssignTask request."""
+        with self._lock:
+            if require_auto_ready:
+                blocker = self._plc_auto_start_blocker()
+                if blocker:
+                    return blocker
+            elif self._busy or self._running:
+                return 'aktif gorev var'
+            if self._plc_assign_inflight:
+                return 'PLC gorev istegi devam ediyor'
+            self._plc_assign_inflight = True
+            self._plc_assign_future = None
+            self._plc_assign_started = time.monotonic()
+            return None
+
+    def _release_plc_assignment(self, expected_future=None) -> bool:
+        """Release one request claim, ignoring a late response from an old call."""
+        with self._lock:
+            if not self._plc_assign_inflight:
+                return False
+            if (
+                expected_future is not None
+                and self._plc_assign_future is not expected_future
+            ):
+                return False
+            self._plc_assign_inflight = False
+            self._plc_assign_future = None
+            self._plc_assign_started = 0.0
+            return True
+
+    def _accept_plc_assignment(
+        self,
+        reply,
+        *,
+        automatic: bool,
+        expected_future=None,
+    ) -> Optional[str]:
+        """Apply one ROS AssignTask response through the normal reservation path."""
+        if not reply.success:
+            self._release_plc_assignment(expected_future)
+            # CONTROL=Bekle is represented by success=false. For automatic
+            # polling this is an ordinary no-task state, never a mission error.
+            return reply.message or 'PLC gorev vermedi'
+        return self._reserve(
+            reply.task_id,
+            [reply.pickup_node, reply.dropoff_node],
+            'plc' if automatic else self._default_source,
+            require_localization=automatic,
+            consume_plc_claim=True,
+            expected_plc_future=expected_future,
+            require_plc_connection=automatic,
+            require_production_ready=automatic,
+        )
+
+    def _request_plc_assignment_and_reserve(self, timeout: float = 5.0) -> Optional[str]:
+        """Manual/debug Start path sharing claim and acceptance with auto-start."""
+        error = self._claim_plc_assignment()
+        if error:
+            return error
+        try:
+            reply = self._service_call(
+                self._assign, AssignTask.Request(), timeout, 'PLC assign_task')
+        except Exception:
+            self._release_plc_assignment()
+            raise
+        return self._accept_plc_assignment(reply, automatic=False)
+
+    def _poll_plc_auto_start(self) -> None:
+        """At 2 Hz, request one production assignment without blocking ROS."""
+        expired_future = None
+        with self._lock:
+            if self._plc_assign_inflight and self._plc_assign_future is not None:
+                if time.monotonic() - self._plc_assign_started > 5.0:
+                    expired_future = self._plc_assign_future
+                    self._release_plc_assignment(expired_future)
+            blocker = self._plc_auto_start_blocker()
+        if expired_future is not None:
+            expired_future.cancel()
+            return
+        if blocker or not self._assign.service_is_ready():
+            return
+        if self._claim_plc_assignment(require_auto_ready=True):
+            return
+        try:
+            future = self._assign.call_async(AssignTask.Request())
+        except Exception:
+            self._release_plc_assignment()
+            return
+        with self._lock:
+            if not self._plc_assign_inflight:
+                future.cancel()
+                return
+            self._plc_assign_future = future
+        future.add_done_callback(self._on_plc_auto_assignment)
+
+    def _on_plc_auto_assignment(self, future) -> None:
+        """Consume a completed async assignment response on the executor."""
+        with self._lock:
+            if (
+                not self._plc_assign_inflight
+                or self._plc_assign_future is not future
+            ):
+                return
+        try:
+            reply = future.result()
+        except Exception:
+            self._release_plc_assignment(future)
+            return
+        if reply is None:
+            self._release_plc_assignment(future)
+            return
+        error = self._accept_plc_assignment(
+            reply, automatic=True, expected_future=future)
+        if error is None:
+            self._event(
+                'plc_assignment_auto_started',
+                pickup=reply.pickup_node,
+                dropoff=reply.dropoff_node,
+            )
 
     def _on_start(self, _req: StartMission.Request,
                   res: StartMission.Response) -> StartMission.Response:
@@ -2246,7 +2454,7 @@ class MissionManager(Node):
                         res.message = f'lokalizasyon gecersiz: {health.reason}'
                         return res
                     self._running = True
-                    threading.Thread(target=self._run, daemon=True).start()
+                    self._start_mission_thread()
                     res.accepted, res.message = True, 'GUI gorevi baslatildi'
                     self._event('mission_started', route_nodes=self._route_nodes)
                     return res
@@ -2263,22 +2471,10 @@ class MissionManager(Node):
             if self._estop or self._latched_abort:
                 res.accepted, res.message = False, 'guvenlik kilidi aktif'
                 return res
-            self._busy = True  # reserve while PLC request is in flight
-            self._source = self._default_source
         try:
-            reply = self._service_call(self._assign, AssignTask.Request(), 5.0,
-                                       'PLC assign_task')
-            if not reply.success:
-                raise MissionAbort(reply.message)
-            with self._lock:
-                self._busy = False
-            error = self._reserve(reply.task_id,
-                                  [reply.pickup_node, reply.dropoff_node],
-                                  self._default_source)
+            error = self._request_plc_assignment_and_reserve()
             res.accepted, res.message = error is None, error or 'gorev kabul edildi'
         except MissionAbort as exc:
-            with self._lock:
-                self._busy = False
             res.accepted, res.message = False, str(exc)
             self._event('task_rejected', reason=str(exc))
         return res
@@ -2872,8 +3068,7 @@ class MissionManager(Node):
         msg.last_qr_age_s = float(
             time.monotonic() - self._last_qr_seen
             if self._last_qr_seen else math.inf)
-        msg.plc_connected = (self._plc_connected and
-                             time.monotonic() - self._plc_seen <= self._plc_freshness)
+        msg.plc_connected = self._plc_connection_healthy()
         msg.gate_permission_granted = self._gate_ok
         msg.gate_entry_node = self._gate_entry_node
         msg.gate_direction = self._gate_direction

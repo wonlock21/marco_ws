@@ -155,6 +155,7 @@ def _setup(context, *args, **kwargs):
         launch_arguments={
             "task_source": "mock_plc" if fake else "plc",
             "plc_backend": "mock" if fake else "real",
+            "plc_auto_start": "false" if fake else "true",
             "simulate_steps": "false",
             "graph_file": graph_file,
             "require_active_field": "false" if fake else "true",
