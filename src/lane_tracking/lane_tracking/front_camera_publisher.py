@@ -1,4 +1,4 @@
-"""Open the front V4L2 camera once and publish raw ROS images."""
+"""Open the front V4L2 camera once and publish compressed ROS images."""
 
 import threading
 

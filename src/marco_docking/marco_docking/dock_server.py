@@ -15,7 +15,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
 
 
@@ -52,6 +52,7 @@ class DockServer(Node):
             'front_camera_frame': 'camera_front_optical_frame',
             'rear_camera_frame': 'camera_rear_optical_frame',
             'rear_camera_topic': '/camera/image_raw',
+            'rear_camera_compressed_topic': '',
             'lane_command_topic': '/cmd_vel_lane',
             'lane_active_topic': '/lane_tracking/active',
             'lane_end_topic': '/lane_tracking/end_detected',
@@ -111,6 +112,12 @@ class DockServer(Node):
         self.create_subscription(
             Image, str(self._p['rear_camera_topic']), self._on_camera,
             qos_profile_sensor_data, callback_group=self._cb)
+        compressed_topic = str(
+            self._p['rear_camera_compressed_topic']).strip()
+        if compressed_topic:
+            self.create_subscription(
+                CompressedImage, compressed_topic, self._on_camera,
+                qos_profile_sensor_data, callback_group=self._cb)
         self.create_subscription(
             Odometry, str(self._p['filtered_odom_topic']), self._on_odom,
             10, callback_group=self._cb)

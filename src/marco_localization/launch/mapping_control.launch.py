@@ -22,7 +22,9 @@ def generate_launch_description() -> LaunchDescription:
     )
     front_camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(lane_share, "launch", "front_camera.launch.py")
+            os.path.join(
+                lane_share, "launch", "front_camera_compressed.launch.py"
+            )
         ),
         launch_arguments={
             "camera": LaunchConfiguration("camera"),

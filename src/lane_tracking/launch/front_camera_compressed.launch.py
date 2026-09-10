@@ -40,10 +40,12 @@ def generate_launch_description():
             'port': ParameterValue(
                 LaunchConfiguration('web_video_port'), value_type=int),
             'address': '0.0.0.0',
+            'default_qos_profile': 'sensor_data',
         }],
     )
     return LaunchDescription([
-        DeclareLaunchArgument('camera', default_value='/dev/video0'),
+        DeclareLaunchArgument(
+            'camera', default_value='/dev/marco_front_camera'),
         DeclareLaunchArgument('width', default_value='640'),
         DeclareLaunchArgument('height', default_value='480'),
         DeclareLaunchArgument('framerate', default_value='25.0'),

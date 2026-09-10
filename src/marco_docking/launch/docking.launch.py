@@ -33,7 +33,14 @@ def generate_launch_description() -> LaunchDescription:
         executable="dock_server",
         name="dock_server",
         output="screen",
-        parameters=[params],
+        parameters=[
+            params,
+            {
+                "rear_camera_compressed_topic": (
+                    "/camera/image_raw/compressed"
+                ),
+            },
+        ],
     )
 
     lane = Node(
@@ -45,8 +52,8 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             os.path.join(lane_share, "config", "lane_tracking.yaml"),
             {
-                "camera_input": "ros_topic",
-                "camera_topic": "/camera/image_raw",
+                "camera_input": "ros_compressed",
+                "camera_compressed_topic": "/camera/image_raw/compressed",
                 "startup_mode": "IDLE",
                 "output_topic": "/cmd_vel_lane",
                 "show_debug_window": False,
