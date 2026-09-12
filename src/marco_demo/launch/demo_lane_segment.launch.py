@@ -1,4 +1,4 @@
-"""Tek A veya B serit segmenti: kamera takibi + odometri kontrollu donus."""
+"""Tek A veya B serit segmenti icin kamera tabanli takip."""
 
 import os
 
@@ -12,7 +12,6 @@ from launch.actions import (
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -32,8 +31,6 @@ def generate_launch_description() -> LaunchDescription:
             "camera", default_value="/dev/marco_front_camera"
         ),
         DeclareLaunchArgument("web_stream", default_value="true"),
-        DeclareLaunchArgument("odom_topic", default_value="/odometry/filtered"),
-        DeclareLaunchArgument("turn_direction", default_value="1"),
         front_camera,
         Node(
             package="lane_tracking",
@@ -45,22 +42,8 @@ def generate_launch_description() -> LaunchDescription:
                 "camera_input": "ros_topic",
                 "camera_topic": "/camera/image_raw",
                 "startup_mode": "LANE_TRACKING",
-                "output_topic": "/cmd_vel_lane",
-                "show_debug_window": False,
-            }],
-        ),
-        Node(
-            package="lane_tracking",
-            executable="turnaround",
-            name="turnaround_node",
-            output="screen",
-            parameters=[config, {
-                "lane_command_topic": "/cmd_vel_lane",
                 "output_topic": "/cmd_vel_raw",
-                "odom_topic": LaunchConfiguration("odom_topic"),
-                "turn_direction": ParameterValue(
-                    LaunchConfiguration("turn_direction"), value_type=int
-                ),
+                "show_debug_window": False,
             }],
         ),
         LogInfo(msg="Demo serit komutu: /cmd_vel_raw -> safety -> /cmd_vel"),

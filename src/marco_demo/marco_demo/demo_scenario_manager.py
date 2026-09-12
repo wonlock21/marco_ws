@@ -234,13 +234,6 @@ class DemoScenarioManager(Node):
         )
         self.create_subscription(
             Bool,
-            "/lane_tracking/turn_complete",
-            self._on_turn_complete,
-            10,
-            callback_group=self._callbacks,
-        )
-        self.create_subscription(
-            Bool,
             "/safety/obstacle_detected",
             self._on_obstacle,
             10,
@@ -399,10 +392,8 @@ class DemoScenarioManager(Node):
             DemoStatus.STATE_STARTING,
             DemoStatus.STATE_NAVIGATING_A,
             DemoStatus.STATE_LANE_A,
-            DemoStatus.STATE_TURNING_A,
             DemoStatus.STATE_NAVIGATING_B,
             DemoStatus.STATE_LANE_B,
-            DemoStatus.STATE_TURNING_B,
         )
         state_changed = detected != self._obstacle_detected
         if state_changed:
@@ -426,10 +417,8 @@ class DemoScenarioManager(Node):
             DemoStatus.STATE_STARTING,
             DemoStatus.STATE_NAVIGATING_A,
             DemoStatus.STATE_LANE_A,
-            DemoStatus.STATE_TURNING_A,
             DemoStatus.STATE_NAVIGATING_B,
             DemoStatus.STATE_LANE_B,
-            DemoStatus.STATE_TURNING_B,
         )
         if (
             not self._obstacles_enabled()
@@ -1175,38 +1164,27 @@ class DemoScenarioManager(Node):
             self._fail(f"Demo beklenmeyen hata: {error}")
 
     def _on_lane_end(self, msg: Bool) -> None:
-        if not msg.data:
-            return
-        if self._state == DemoStatus.STATE_LANE_A:
-            self._set_state(
-                DemoStatus.STATE_TURNING_A, "A seridi bitti; 180 derece donuluyor", "A"
-            )
-        elif self._state == DemoStatus.STATE_LANE_B:
-            self._set_state(
-                DemoStatus.STATE_TURNING_B, "B seridi bitti; 180 derece donuluyor", "B"
-            )
-
-    def _on_turn_complete(self, msg: Bool) -> None:
         if not msg.data or self._turn_finishing:
             return
         if self._state not in (
-            DemoStatus.STATE_TURNING_A,
-            DemoStatus.STATE_TURNING_B,
+            DemoStatus.STATE_LANE_A,
+            DemoStatus.STATE_LANE_B,
         ):
             return
         self._turn_finishing = True
         completed_state = self._state
         threading.Thread(
-            target=self._finish_turn, args=(completed_state,), daemon=True
+            target=self._finish_lane_segment,
+            args=(completed_state,), daemon=True,
         ).start()
 
-    def _finish_turn(self, completed_state: int) -> None:
+    def _finish_lane_segment(self, completed_state: int) -> None:
         self._publish_stop()
         if not self._terminate_lane():
             self._turn_finishing = False
             self._fail("Serit takip sureci guvenli bicimde kapatilamadi")
             return
-        if completed_state == DemoStatus.STATE_TURNING_A:
+        if completed_state == DemoStatus.STATE_LANE_A:
             self._set_state(
                 DemoStatus.STATE_WAITING_LOAD,
                 "A tamamlandi; yuk yerlestirin ve Devam'a basin",
@@ -1302,9 +1280,7 @@ class DemoScenarioManager(Node):
             and not self._turn_finishing
             and self._state in (
                 DemoStatus.STATE_LANE_A,
-                DemoStatus.STATE_TURNING_A,
                 DemoStatus.STATE_LANE_B,
-                DemoStatus.STATE_TURNING_B,
             )
         ):
             self._lane_process = None
@@ -1312,13 +1288,12 @@ class DemoScenarioManager(Node):
             return
         if self._state in (
             DemoStatus.STATE_LANE_A,
-            DemoStatus.STATE_TURNING_A,
             DemoStatus.STATE_LANE_B,
-            DemoStatus.STATE_TURNING_B,
         ):
             timeout = float(self.get_parameter("lane_phase_timeout").value)
             if time.monotonic() - self._phase_started > timeout:
-                self._fail(f"Serit/donus fazi {timeout:.0f} saniyede tamamlanmadi")
+                self._fail(
+                    f"Serit fazi {timeout:.0f} saniyede tamamlanmadi")
 
     def close(self) -> None:
         self._cancel_requested = True

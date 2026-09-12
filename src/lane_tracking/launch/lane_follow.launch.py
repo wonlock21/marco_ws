@@ -53,25 +53,9 @@ def generate_launch_description():
                 'camera_input': 'ros_topic',
                 'camera_topic': '/camera/image_raw',
                 'startup_mode': LaunchConfiguration('startup_mode'),
-                # Donus dugumu bu komutlari normal suruste /cmd_vel'e aktarir.
-                'output_topic': '/cmd_vel_lane',
+                'output_topic': '/cmd_vel',
                 'show_debug_window': ParameterValue(
                     LaunchConfiguration('gui'), value_type=bool),
-            },
-        ],
-    )
-
-    turnaround = Node(
-        package='lane_tracking',
-        executable='turnaround',
-        name='turnaround_node',
-        output='screen',
-        parameters=[
-            os.path.join(lane_share, 'config', 'lane_tracking.yaml'),
-            {
-                'odom_topic': LaunchConfiguration('odom_topic'),
-                'turn_direction': ParameterValue(
-                    LaunchConfiguration('turn_direction'), value_type=int),
             },
         ],
     )
@@ -85,10 +69,7 @@ def generate_launch_description():
         DeclareLaunchArgument('web_stream', default_value='true'),
         DeclareLaunchArgument('startup_mode', default_value='LANE_TRACKING'),
         DeclareLaunchArgument('gui', default_value='true'),
-        DeclareLaunchArgument('odom_topic', default_value='/odom'),
-        DeclareLaunchArgument('turn_direction', default_value='1'),
         front_camera,
         base_driver,
         imgprocess,
-        turnaround,
     ])

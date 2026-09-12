@@ -64,7 +64,7 @@ def generate_launch_description() -> LaunchDescription:
     plc_config = os.path.join(
         get_package_share_directory('marco_plc'), 'config', 'plc.yaml')
     test_lift = LaunchConfiguration('test_only_lift')
-    qr_adapter = LaunchConfiguration('qr_reader_adapter')
+    qr_reader = LaunchConfiguration('qr_reader')
     return LaunchDescription([
         DeclareLaunchArgument('task_source', default_value='plc',
                               description='plc (production) or mock_plc (simulation)'),
@@ -97,11 +97,20 @@ def generate_launch_description() -> LaunchDescription:
             'imu', default_value='true',
             description='Mission manevra sagliginda IMU freshness zorunlulugu'),
         DeclareLaunchArgument('test_only_lift', default_value='false'),
-        DeclareLaunchArgument('qr_reader_adapter', default_value='true'),
+        DeclareLaunchArgument('qr_reader', default_value='true'),
+        DeclareLaunchArgument(
+            'qr_reader_port',
+            default_value='/dev/ttyUSB0',
+        ),
+        DeclareLaunchArgument('qr_reader_baud', default_value='115200'),
         DeclareLaunchArgument('station_qr_mock_enabled', default_value='false'),
-        Node(package='marco_mission', executable='qr_reader_adapter',
-             name='qr_reader_adapter', output='screen',
-             condition=IfCondition(qr_adapter)),
+        Node(
+            package='marco_mission', executable='qr_serial_reader',
+            name='qr_serial_reader', output='screen',
+            condition=IfCondition(qr_reader), parameters=[{
+                'port': LaunchConfiguration('qr_reader_port'),
+                'baud': LaunchConfiguration('qr_reader_baud'),
+            }]),
         Node(package='marco_mission', executable='test_lift_server',
              name='test_only_lift_server', output='screen',
              condition=IfCondition(test_lift), parameters=[{'test_only': True}]),

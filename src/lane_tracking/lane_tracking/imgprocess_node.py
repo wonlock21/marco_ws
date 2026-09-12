@@ -1,8 +1,9 @@
-"""Kamera tabanli QR hizalama ve serit takip dugumu."""
+"""Kamera tabanli serit takip dugumu."""
 
 from enum import Enum
 import math
-import os
+import subprocess
+import sys
 
 import cv2
 from geometry_msgs.msg import Twist
@@ -19,14 +20,9 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
 
 from .lane_detector import LaneDetector
-from .qr_detector import QRDetector
-
-
 class ProcessState(Enum):
     IDLE = 1
-    QR_ALIGNMENT = 2
-    LANE_TRACKING = 3
-    TURNAROUND = 4
+    LANE_TRACKING = 2
 
 
 def scale_lane_error(
@@ -241,10 +237,7 @@ class ImgProcessNode(Node):
 
         self._declare_parameters()
         self.current_state = self._initial_state()
-        self.kp_qr = float(self.get_parameter('kp_qr').value)
         self.kp_lane = float(self.get_parameter('kp_lane').value)
-        self.qr_linear_speed = float(
-            self.get_parameter('qr_linear_speed').value)
         self.lane_linear_speed = float(
             self.get_parameter('lane_linear_speed').value)
         self.lane_min_linear_speed = float(
@@ -319,20 +312,21 @@ class ImgProcessNode(Node):
             CompressedImage, '/lane_tracking/debug/compressed', 1)
         self.sub_command = self.create_subscription(
             String, '/task_command', self.command_callback, 10)
-        self.sub_turn_complete = self.create_subscription(
-            Bool, '/lane_tracking/turn_complete',
-            self.turn_complete_callback, 10)
-
-        self.qr_tracker = QRDetector()
         try:
             self.lane_tracker = LaneDetector(
                 use_opencl=self.use_gpu,
-                value_max=int(self.get_parameter(
-                    'lane_adaptive_value_max').value),
-                block_size=int(self.get_parameter(
-                    'lane_adaptive_block_size').value),
-                adaptive_offset=int(self.get_parameter(
-                    'lane_adaptive_offset').value),
+                orange_hue_min=int(self.get_parameter(
+                    'lane_orange_hue_min').value),
+                orange_hue_max=int(self.get_parameter(
+                    'lane_orange_hue_max').value),
+                orange_sat_min=int(self.get_parameter(
+                    'lane_orange_sat_min').value),
+                orange_val_min=int(self.get_parameter(
+                    'lane_orange_val_min').value),
+                orange_min_pixel_ratio=float(self.get_parameter(
+                    'lane_orange_min_pixel_ratio').value),
+                sobel_threshold=int(self.get_parameter(
+                    'lane_sobel_threshold').value),
                 ipm_enabled=bool(self.get_parameter(
                     'lane_ipm_enabled').value),
                 ipm_source_points=list(self.get_parameter(
@@ -350,12 +344,18 @@ class ImgProcessNode(Node):
                 f'OpenCL baslatilamadi: {exc}; CPU kullaniliyor')
             self.lane_tracker = LaneDetector(
                 use_opencl=False,
-                value_max=int(self.get_parameter(
-                    'lane_adaptive_value_max').value),
-                block_size=int(self.get_parameter(
-                    'lane_adaptive_block_size').value),
-                adaptive_offset=int(self.get_parameter(
-                    'lane_adaptive_offset').value),
+                orange_hue_min=int(self.get_parameter(
+                    'lane_orange_hue_min').value),
+                orange_hue_max=int(self.get_parameter(
+                    'lane_orange_hue_max').value),
+                orange_sat_min=int(self.get_parameter(
+                    'lane_orange_sat_min').value),
+                orange_val_min=int(self.get_parameter(
+                    'lane_orange_val_min').value),
+                orange_min_pixel_ratio=float(self.get_parameter(
+                    'lane_orange_min_pixel_ratio').value),
+                sobel_threshold=int(self.get_parameter(
+                    'lane_sobel_threshold').value),
                 ipm_enabled=bool(self.get_parameter(
                     'lane_ipm_enabled').value),
                 ipm_source_points=list(self.get_parameter(
@@ -426,12 +426,9 @@ class ImgProcessNode(Node):
         self.declare_parameter('frame_rate', 30.0)
         self.declare_parameter('show_debug_window', True)
         self.declare_parameter('use_gpu', True)
-        self.declare_parameter('gpu_device', '/dev/mali0')
         self.declare_parameter('startup_mode', 'IDLE')
         self.declare_parameter('output_topic', '/cmd_vel_lane')
-        self.declare_parameter('kp_qr', 0.005)
         self.declare_parameter('kp_lane', 0.00030)
-        self.declare_parameter('qr_linear_speed', 0.1)
         self.declare_parameter('lane_linear_speed', 0.067)
         self.declare_parameter('lane_min_linear_speed', 0.016)
         self.declare_parameter('lane_steering_alpha', 0.25)
@@ -453,9 +450,12 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_end_max_offset_ratio', 0.20)
         self.declare_parameter('lane_end_max_heading_error', 0.18)
         self.declare_parameter('lane_end_detection_enabled', True)
-        self.declare_parameter('lane_adaptive_value_max', 140)
-        self.declare_parameter('lane_adaptive_block_size', 81)
-        self.declare_parameter('lane_adaptive_offset', 18)
+        self.declare_parameter('lane_orange_hue_min', 0)
+        self.declare_parameter('lane_orange_hue_max', 25)
+        self.declare_parameter('lane_orange_sat_min', 80)
+        self.declare_parameter('lane_orange_val_min', 80)
+        self.declare_parameter('lane_orange_min_pixel_ratio', 0.01)
+        self.declare_parameter('lane_sobel_threshold', 40)
         self.declare_parameter('lane_ipm_enabled', False)
         self.declare_parameter(
             'lane_ipm_source_points',
@@ -472,19 +472,35 @@ class ImgProcessNode(Node):
     def _configure_gpu(self):
         if not bool(self.get_parameter('use_gpu').value):
             return False
-
-        device = str(self.get_parameter('gpu_device').value)
-        if not os.access(device, os.R_OK | os.W_OK):
-            self.get_logger().warning(
-                f'GPU aygiti erisilebilir degil: {device}; CPU kullaniliyor')
-            return False
-
+        probe = (
+            'import cv2, numpy as np; '
+            'cv2.ocl.setUseOpenCL(True); '
+            'source=cv2.UMat(np.zeros((8,8,3),dtype=np.uint8)); '
+            'result=cv2.cvtColor(source,cv2.COLOR_BGR2HSV); '
+            'result.get(); '
+            'raise SystemExit(0 if cv2.ocl.useOpenCL() else 2)'
+        )
         try:
-            import pyopencl  # noqa: F401
-        except ImportError:
+            completed = subprocess.run(
+                [sys.executable, '-c', probe],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5.0,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
             self.get_logger().warning(
-                'python3-pyopencl kurulu degil; CPU kullaniliyor')
+                f'OpenCV OpenCL sinanamadi: {error}; CPU kullaniliyor')
             return False
+        if completed.returncode != 0:
+            detail = completed.stderr.strip().splitlines()
+            reason = detail[-1] if detail else f'kod={completed.returncode}'
+            self.get_logger().warning(
+                f'OpenCV UMat/OpenCL kullanilamiyor ({reason}); '
+                'CPU kullaniliyor')
+            return False
+        cv2.ocl.setUseOpenCL(True)
         return True
 
     def _initial_state(self):
@@ -518,11 +534,7 @@ class ImgProcessNode(Node):
 
     def command_callback(self, msg):
         command = msg.data.strip().upper()
-        if command == 'START_APPROACH':
-            self._reset_lane_control()
-            self.current_state = ProcessState.QR_ALIGNMENT
-            self.get_logger().info('Durum: QR_ALIGNMENT')
-        elif command in ('START_LANE', 'LANE_TRACKING'):
+        if command in ('START_LANE', 'LANE_TRACKING'):
             self._reset_lane_control()
             self.current_state = ProcessState.LANE_TRACKING
             self.get_logger().info('Durum: LANE_TRACKING')
@@ -532,15 +544,6 @@ class ImgProcessNode(Node):
             self.stop_robot()
             self._publish_active()
             self.get_logger().info('Durum: IDLE')
-
-    def turn_complete_callback(self, msg):
-        """180 derece manevra bittiginde serit takibini yeniden devral."""
-        if (msg.data
-                and self.current_state is ProcessState.TURNAROUND):
-            self._reset_lane_control(new_session=True)
-            self.current_state = ProcessState.LANE_TRACKING
-            self.get_logger().info(
-                '180 derece donus tamamlandi; LANE_TRACKING devam ediyor')
 
     def timer_callback(self):
         ret, frame = self.cap.read()
@@ -606,20 +609,6 @@ class ImgProcessNode(Node):
 
         if self.current_state == ProcessState.IDLE:
             self._draw_state(frame, 'IDLE', (0, 255, 255))
-        elif self.current_state == ProcessState.QR_ALIGNMENT:
-            self._draw_state(frame, 'QR HIZALANMA', (0, 165, 255))
-            found, error = self.qr_tracker.process(frame, center_x)
-            if not found:
-                self.stop_robot()
-            elif abs(error) < 15.0:
-                self.stop_robot()
-                self._reset_lane_control()
-                self.current_state = ProcessState.LANE_TRACKING
-                self.get_logger().info(
-                    'QR ortalandi; LANE_TRACKING durumuna gecildi')
-            else:
-                self.publish_movement(
-                    self.qr_linear_speed, -error * self.kp_qr)
         elif self.current_state == ProcessState.LANE_TRACKING:
             self._draw_state(frame, 'SERIT TAKIBI', (0, 255, 0))
             found, error = self.lane_tracker.process(
@@ -650,12 +639,6 @@ class ImgProcessNode(Node):
                     self.publish_lane_movement(error, center_x)
             else:
                 self._handle_lane_loss()
-        elif self.current_state == ProcessState.TURNAROUND:
-            self._draw_state(frame, '180 DERECE DONUS', (255, 0, 255))
-            # Donus dugumu /cmd_vel cikisinin tek sahibidir. Bu sifir komutu,
-            # eski bir serit komutunun yeniden kullanilmasini da engeller.
-            self.stop_robot()
-
         debug_frame = self._compose_debug_frame(frame)
         if self.show_debug_window:
             cv2.imshow('Orange Pi Kamera Arayuzu', debug_frame)
@@ -822,12 +805,12 @@ class ImgProcessNode(Node):
             self.last_lane_command = None
             self.filtered_lane_angular = 0.0
             self.stop_robot()
-            self.current_state = ProcessState.TURNAROUND
+            self.current_state = ProcessState.IDLE
             self.pub_lane_end.publish(Bool(data=True))
             self.get_logger().info(
                 f'[SERIT SONU] {self.lane_seen_frames} gorulen ve '
-                f'{self.lane_missed_frames} kayip kare sonrasi 180 derece '
-                'donus istendi')
+                f'{self.lane_missed_frames} kayip kare sonrasi duruldu; '
+                'serit sonu mission manager icin yayinlandi')
             return
 
         # Gecici kayip sayaci burada korunur; aksi halde art arda kayip kareler

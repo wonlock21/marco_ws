@@ -1,56 +1,85 @@
-"""Tam karede adaptif maske ve geometri ile siyah serit algilama."""
+"""Turuncu renk maskesi ve geometri ile serit algilama."""
 
 import cv2
 import numpy as np
 
-from .opencl_lane import OpenClLaneMask
+def _hybrid_orange_lane_mask(
+        frame, hue_min=1, hue_max=25, sat_min=80, val_min=80,
+        minimum_pixel_ratio=0.01, sobel_threshold=40, use_umat=False):
+    """HSV turuncu maskesi uret; renk kaybolursa Sobel'e geri dus."""
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        raise ValueError('turuncu serit maskesi 3 kanalli BGR kare bekler')
+    if not 0 <= int(hue_min) <= int(hue_max) <= 179:
+        raise ValueError('HSV hue sinirlari 0..179 araliginda olmali')
+    if not 0 <= int(sat_min) <= 255 or not 0 <= int(val_min) <= 255:
+        raise ValueError('HSV doygunluk ve parlaklik sinirlari 0..255 olmali')
+    if not 0.0 <= float(minimum_pixel_ratio) <= 1.0:
+        raise ValueError('minimum_pixel_ratio 0..1 araliginda olmali')
+
+    source = cv2.UMat(frame) if use_umat else frame
+    blurred = cv2.GaussianBlur(source, (5, 5), 0)
+    hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+    lower = np.array([hue_min, sat_min, val_min], dtype=np.uint8)
+    upper = np.array([hue_max, 255, 255], dtype=np.uint8)
+    hsv_mask = cv2.inRange(hsv, lower, upper)
+
+    cleaned_hsv = cv2.erode(
+        hsv_mask, np.ones((3, 3), np.uint8), iterations=1)
+    cleaned_hsv = cv2.dilate(
+        cleaned_hsv, np.ones((7, 7), np.uint8), iterations=2)
+
+    total_pixels = int(frame.shape[0] * frame.shape[1])
+    if cv2.countNonZero(cleaned_hsv) < (
+            total_pixels * float(minimum_pixel_ratio)):
+        gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
+        sobel_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+        sobel_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+        magnitude = cv2.magnitude(sobel_x, sobel_y)
+        magnitude_uint8 = cv2.convertScaleAbs(magnitude)
+        _, edge_mask = cv2.threshold(
+            magnitude_uint8, int(sobel_threshold), 255, cv2.THRESH_BINARY)
+        sobel_mask = cv2.morphologyEx(
+            edge_mask, cv2.MORPH_CLOSE, np.ones((5, 45), np.uint8))
+        result = cv2.morphologyEx(
+            sobel_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    else:
+        result = cleaned_hsv
+    return result.get() if isinstance(result, cv2.UMat) else result
 
 
-def adaptive_dark_mask_cpu(frame, value_max=140, block_size=81, offset=18):
-    """OpenCL hatti ile ayni tamsayi hesabini CPU uzerinde uygula."""
-    b = frame[:, :, 0].astype(np.int32)
-    g = frame[:, :, 1].astype(np.int32)
-    r = frame[:, :, 2].astype(np.int32)
-    gray = ((29 * b + 150 * g + 77 * r + 128) >> 8).astype(np.uint8)
+def hybrid_orange_lane_mask_opencl(
+        frame, hue_min=0, hue_max=25, sat_min=80, val_min=80,
+        minimum_pixel_ratio=0.01, sobel_threshold=40):
+    """OpenCV T-API ile OpenCL hizlandirmali hibrit turuncu maske."""
+    return _hybrid_orange_lane_mask(
+        frame, hue_min, hue_max, sat_min, val_min,
+        minimum_pixel_ratio, sobel_threshold, use_umat=True)
 
-    radius = max(1, (int(block_size) - 1) // 2)
-    side = radius * 2 + 1
-    padded = cv2.copyMakeBorder(
-        gray, radius, radius, radius, radius, cv2.BORDER_REPLICATE)
-    integral = cv2.integral(padded, sdepth=cv2.CV_32S)
-    local_sum = (
-        integral[side:, side:]
-        - integral[:-side, side:]
-        - integral[side:, :-side]
-        + integral[:-side, :-side]
-    )
-    mask = np.where(
-        (gray.astype(np.int32) <= int(value_max))
-        & ((gray.astype(np.int32) + int(offset)) * side * side < local_sum),
-        255,
-        0,
-    ).astype(np.uint8)
 
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.erode(
-        mask, kernel, iterations=1,
-        borderType=cv2.BORDER_CONSTANT, borderValue=255)
-    return cv2.dilate(
-        mask, kernel, iterations=1,
-        borderType=cv2.BORDER_CONSTANT, borderValue=0)
+def hybrid_orange_lane_mask_cpu(
+        frame, hue_min=0, hue_max=25, sat_min=80, val_min=80,
+        minimum_pixel_ratio=0.01, sobel_threshold=40):
+    """OpenCL kullanilamadiginda ayni hibrit maskeyi CPU'da uygula."""
+    return _hybrid_orange_lane_mask(
+        frame, hue_min, hue_max, sat_min, val_min,
+        minimum_pixel_ratio, sobel_threshold, use_umat=False)
 
 
 class LaneDetector:
     def __init__(
-            self, use_opencl=False, value_max=140, block_size=81,
-            adaptive_offset=18, ipm_enabled=False, ipm_source_points=None,
+            self, use_opencl=False, orange_hue_min=0, orange_hue_max=25,
+            orange_sat_min=80, orange_val_min=80,
+            orange_min_pixel_ratio=0.01, sobel_threshold=40,
+            ipm_enabled=False, ipm_source_points=None,
             ipm_destination_points=None, lookahead_y=160,
             lookahead_band_half_height=5):
         self.use_opencl = use_opencl
-        self.gpu_mask = OpenClLaneMask() if use_opencl else None
-        self.value_max = int(value_max)
-        self.block_size = int(block_size)
-        self.adaptive_offset = int(adaptive_offset)
+        self.orange_hue_min = int(orange_hue_min)
+        self.orange_hue_max = int(orange_hue_max)
+        self.orange_sat_min = int(orange_sat_min)
+        self.orange_val_min = int(orange_val_min)
+        self.orange_min_pixel_ratio = float(orange_min_pixel_ratio)
+        self.sobel_threshold = int(sobel_threshold)
         self.ipm_enabled = bool(ipm_enabled)
         self.ipm_source_points = ipm_source_points or [
             0.20, 0.95, 0.42, 0.45, 0.58, 0.45, 0.80, 0.95]
@@ -80,15 +109,24 @@ class LaneDetector:
         working_frame = self._birdseye(frame) if self.ipm_enabled else frame
         self.last_debug_frame = working_frame
         if self.use_opencl:
-            mask = self.gpu_mask.process(
-                working_frame, value_max=self.value_max,
-                block_size=self.block_size, offset=self.adaptive_offset)
+            mask = hybrid_orange_lane_mask_opencl(
+                working_frame,
+                hue_min=self.orange_hue_min,
+                hue_max=self.orange_hue_max,
+                sat_min=self.orange_sat_min,
+                val_min=self.orange_val_min,
+                minimum_pixel_ratio=self.orange_min_pixel_ratio,
+                sobel_threshold=self.sobel_threshold)
         else:
-            mask = adaptive_dark_mask_cpu(
-                working_frame, value_max=self.value_max,
-                block_size=self.block_size, offset=self.adaptive_offset)
+            mask = hybrid_orange_lane_mask_cpu(
+                working_frame,
+                hue_min=self.orange_hue_min,
+                hue_max=self.orange_hue_max,
+                sat_min=self.orange_sat_min,
+                val_min=self.orange_val_min,
+                minimum_pixel_ratio=self.orange_min_pixel_ratio,
+                sobel_threshold=self.sobel_threshold)
         self.last_raw_mask = mask
-        mask = self._recover_wide_lane(mask)
 
         contours, _ = cv2.findContours(
             mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -171,24 +209,6 @@ class LaneDetector:
             (int(center_x), height - 1), (255, 0, 0), 2)
 
         return True, float(near_x - center_x)
-
-    def _recover_wide_lane(self, mask):
-        """Kalin seridin adaptif esikte ayrilan iki kenarini birlestir."""
-        _, width = mask.shape[:2]
-        # Adaptif esik, genis ve tek renkli seridin ortasini bos birakabilir.
-        # Once iki ince kenari birlestiriyoruz. Acma bundan once yapilirsa
-        # 1-2 piksellik gercek serit kenarlari da gurultu gibi silinir.
-        kernel_width = max(3, min(self.block_size, int(width * 0.25)))
-        if kernel_width % 2 == 0:
-            kernel_width -= 1
-        kernel = np.ones((1, kernel_width), dtype=np.uint8)
-        filled = cv2.morphologyEx(
-            mask, cv2.MORPH_CLOSE, kernel,
-            borderType=cv2.BORDER_CONSTANT, borderValue=0)
-        return cv2.morphologyEx(
-            filled, cv2.MORPH_OPEN,
-            np.ones((3, 3), dtype=np.uint8),
-            borderType=cv2.BORDER_CONSTANT, borderValue=0)
 
     @staticmethod
     def _clean_lane_body(component_mask):

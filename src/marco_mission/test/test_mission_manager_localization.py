@@ -8,7 +8,7 @@ from rclpy.qos import (DurabilityPolicy, QoSCompatibility, QoSProfile,
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
 
-from marco_msgs.msg import QrDetection
+from marco_msgs.msg import QrDetection, QrReaderDetection
 
 from marco_mission.mission_manager import MissionManager
 
@@ -86,6 +86,31 @@ def test_qr_gui_telemetry_keeps_full_detection_contract():
         assert node._last_qr_confidence == 0.91
         assert node._last_qr_camera == 'front'
         assert node._last_qr_seen > 0.0
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_serial_qr_verifies_station_without_camera_pose():
+    """A physical reader payload drives the station gate directly."""
+    rclpy.init()
+    node = MissionManager()
+    try:
+        node._qr_gate.arm('A1', 'ALIM1')
+        detection = QrReaderDetection()
+        detection.header.stamp = node.get_clock().now().to_msg()
+        detection.qr_id = 'ALIM1'
+        detection.valid = True
+        detection.confidence = 1.0
+        detection.reader_frame = 'qr_reader_front'
+
+        node._on_qr_reader(detection)
+
+        assert node._qr_gate.phase == node._qr_gate.VERIFIED
+        assert node._last_qr == 'ALIM1'
+        assert node._last_qr_detected
+        assert node._last_qr_pose.x == 0.0
+        assert node._last_qr_camera == 'qr_reader_front'
     finally:
         node.destroy_node()
         rclpy.shutdown()

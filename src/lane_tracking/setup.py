@@ -32,9 +32,6 @@ setup(
             'front_camera_publisher = '
             'lane_tracking.front_camera_publisher:main',
             'imgprocess = lane_tracking.imgprocess_node:main',
-            'turnaround = lane_tracking.turnaround_node:main',
-            'turn_then_rear_lane = '
-            'lane_tracking.turn_then_rear_lane_node:main',
         ],
     },
 )

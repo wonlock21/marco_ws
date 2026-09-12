@@ -46,7 +46,12 @@ from marco_mission.localization_validity import LocalizationHealth
 from marco_mission.localization_validity import evaluate_localization
 from marco_mission.station_qr_gate import StationQrGate
 from marco_msgs.action import DockToStation, LiftLoad
-from marco_msgs.msg import ActiveField, QrDetection, RobotStatus
+from marco_msgs.msg import (
+    ActiveField,
+    QrDetection,
+    QrReaderDetection,
+    RobotStatus,
+)
 from marco_msgs.srv import (AssignTask, CancelMission, GatePermission,
                             ResetMissionSafety, StartMission, SubmitManualTask,
                             SubmitMission, TaskComplete)
@@ -721,6 +726,9 @@ class MissionManager(Node):
             Trigger, '/safety/reset', callback_group=self._cb)
         self.create_subscription(QrDetection, '/qr/detection', self._on_qr, 10,
                                  callback_group=self._cb)
+        self.create_subscription(
+            QrReaderDetection, '/qr_reader/qr_detection',
+            self._on_qr_reader, 10, callback_group=self._cb)
         self.create_subscription(BatteryState, '/base/battery', self._on_battery,
                                  10, callback_group=self._cb)
         active_field_qos = QoSProfile(
@@ -982,6 +990,17 @@ class MissionManager(Node):
                 received_qr_id=msg.data,
                 reason=result.reason,
             )
+
+    def _on_qr_reader(self, msg: QrReaderDetection) -> None:
+        """Consume scanner data without claiming a camera-relative pose."""
+        detection = QrDetection()
+        detection.header = msg.header
+        detection.detected = bool(msg.valid and msg.qr_id.strip())
+        detection.data = msg.qr_id.strip() if detection.detected else ''
+        detection.confidence = float(msg.confidence)
+        detection.camera_frame = (
+            msg.reader_frame.strip() or msg.header.frame_id)
+        self._on_qr(detection)
 
     def _begin_station_approach(self, station: str) -> None:
         """Arm the F7A trigger when the station has an approach QR."""

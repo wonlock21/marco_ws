@@ -11,21 +11,17 @@ imgprocess_node:
     frame_height: 480
     frame_rate: 25.0
     show_debug_window: true
-    # RK3588 Mali-G610 OpenCL. /dev/mali0 erisilemezse dugum guvenli bicimde
-    # CPU'ya duser; OpenCL sorgusu surucu yokken yapilmaz.
+    # OpenCV UMat/T-API OpenCL yoksa ayni algoritma CPU'da calisir.
     use_gpu: true
-    gpu_device: /dev/mali0
 
     # IDLE durumunda topic susturulur; boylece twist_mux Nav2 komutunu secer.
-    # /task_command uzerinden START_LANE veya START_APPROACH ile etkinlesir.
+    # /task_command uzerinden START_LANE ile etkinlesir.
     startup_mode: IDLE
     output_topic: /cmd_vel_lane
 
-    kp_qr: 0.005
     # Geriye uyumluluk icin tutuluyor. Serit donusu artik kamera merkezinden
     # kenarlara -1..+1 normalize edilerek max_angular_speed'e olceklenir.
     kp_lane: 0.00030
-    qr_linear_speed: 0.10
     # Duzlukte 0.50 m/s, 200 mm teker capinda yaklasik 48 RPM'dir.
     # base_driver cmd_vel'i teker RPM hedeflerine cevirerek STM32'ye yollar.
     lane_linear_speed: 0.125
@@ -67,11 +63,14 @@ imgprocess_node:
     lane_end_missing_frames: 15
     lane_end_max_offset_ratio: 0.20
     lane_end_max_heading_error: 0.18
-    # Yerel ortalamaya dayali adaptif siyah maske. Tum goruntu genisligi
-    # islenir; value_max parlak zemin dokularini maske disinda tutar.
-    lane_adaptive_value_max: 140
-    lane_adaptive_block_size: 81
-    lane_adaptive_offset: 20
+    # Mavi zemin uzerindeki turuncu serit icin OpenCV HSV araliklari.
+    # Turuncu maske karenin %1'inden azsa Sobel kenar yedegi devreye girer.
+    lane_orange_hue_min: 0
+    lane_orange_hue_max: 25
+    lane_orange_sat_min: 80
+    lane_orange_val_min: 80
+    lane_orange_min_pixel_ratio: 0.01
+    lane_sobel_threshold: 40
     # IPM noktalari normalize (x,y) ve sirayla:
     # sol-alt, sol-ust, sag-ust, sag-alt. 640x480 kamera, 20 cm yukseklik ve
     # yaklasik 45 derece egim icin arac seride ortali/paralelken kalibre edildi.
@@ -92,29 +91,3 @@ imgprocess_node:
     # dusuk acisal sinir ise ekran kenarinda pivot benzeri 0/4 yerine yaklasik
     # 1/3 RPM ile daha yumusak manevra yaptirir.
     max_angular_speed: 0.250 #0.500000
-
-turnaround_node:
-  ros__parameters:
-    lane_command_topic: /cmd_vel_lane
-    output_topic: /cmd_vel
-    odom_topic: /odom
-    control_rate: 30.0
-    turn_angle_degrees: 180.0
-    # +1: saat yonunun tersi (sol), -1: saat yonu (sag).
-    turn_direction: 1
-    # Donus 0.24 rad/s ile sinirli; son yaklasik 60 derecede 0.18 rad/s'ye
-    # kadar iner. Ayri kalkis/yavaslama rampalari silkelenmeyi ve hedefteki
-    # tasma miktarini azaltir. Dusuk hiz saha testinde motor esigine gore
-    # turn_min_angular_speed ile ince ayarlanabilir.
-    turn_max_angular_speed: 0.24
-    turn_min_angular_speed: 0.18
-    turn_angular_gain: 0.22
-    turn_angular_acceleration: 0.12
-    turn_angular_deceleration: 0.18
-    turn_tolerance_degrees: 2.5
-    settle_duration: 0.80
-    stop_duration: 0.80
-    lane_command_timeout: 0.25
-    odom_timeout: 0.50
-    # Sikisma/odom sorunu halinde sonsuza kadar donus komutu verme.
-    turn_timeout: 25.0

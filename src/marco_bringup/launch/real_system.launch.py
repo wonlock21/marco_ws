@@ -58,6 +58,7 @@ def _setup(context, *args, **kwargs):
     fake = _bool(context, "sahte")
     imu_enabled = _bool(context, "imu")
     qr_enabled = _bool(context, "qr")
+    qr_hardware_enabled = qr_enabled and not fake
 
     required = {
         "lane_tracking", "marco_demo",
@@ -165,8 +166,12 @@ def _setup(context, *args, **kwargs):
             ),
             "test_only_lift": "true" if fake else "false",
             "imu": "true" if imu_enabled else "false",
-            "qr_reader_adapter": "true" if qr_enabled else "false",
-            "station_qr_mock_enabled": "false" if qr_enabled else "true",
+            "qr_reader": "true" if qr_hardware_enabled else "false",
+            "qr_reader_port": LaunchConfiguration("qr_reader_port"),
+            "qr_reader_baud": LaunchConfiguration("qr_reader_baud"),
+            "station_qr_mock_enabled": (
+                "false" if qr_hardware_enabled else "true"
+            ),
         }.items(),
     )
     mode = "SAHTE (motor ve seri cihazlar kapali)" if fake else "GERCEK DONANIM"
@@ -179,7 +184,7 @@ def _setup(context, *args, **kwargs):
         LogInfo(msg="Production gorevi dogrulanmis etkin saha gelene kadar kilitli"),
         LogInfo(msg=(
             "QR modu: gercek okuyucu"
-            if qr_enabled else
+            if qr_hardware_enabled else
             "UYARI: QR MOCK aktif; yalniz GUI test gorevlerinde hedef QR otomatik dogrulanir"
         )),
         control_plane, docking, mission,
@@ -218,9 +223,18 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "qr", default_value="true",
             description=(
-                "true: gercek QR adapter; false: yalniz GUI testlerinde "
+                "true: gercek QR seri okuyucu; false: yalniz GUI testlerinde "
                 "hedef QR'yi yaklasim dugumunde otomatik dogrula"
             ),
+        ),
+        DeclareLaunchArgument(
+            "qr_reader_port",
+            default_value="/dev/ttyUSB0",
+            description="QR okuyucunun seri aygit yolu",
+        ),
+        DeclareLaunchArgument(
+            "qr_reader_baud", default_value="115200",
+            description="QR okuyucu seri haberlesme hizi",
         ),
         DeclareLaunchArgument(
             "demo_use_lane_tracking", default_value="false",

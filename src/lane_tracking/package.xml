@@ -4,7 +4,7 @@
   <name>lane_tracking</name>
   <version>0.0.0</version>
   <description>
-    OpenCL destekli adaptif maskeleme, geometrik serit algilama ve
+    OpenCL destekli hibrit turuncu maskeleme, geometrik serit algilama ve
     cmd_vel tabanli arac kontrolu.
   </description>
   <maintainer email="marco@teknofest.local">MarCO goruntu isleme ekibi</maintainer>
@@ -19,7 +19,6 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
-  <exec_depend>python3-pyopencl</exec_depend>
   <exec_depend>usb_cam</exec_depend>
   <exec_depend>web_video_server</exec_depend>
 
