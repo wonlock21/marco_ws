@@ -14,7 +14,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -42,6 +42,20 @@ def generate_launch_description() -> LaunchDescription:
             default_value="/dev/marco_stm32",
             description="STM32 seri port yolu",
         ),
+        DeclareLaunchArgument(
+            "lift_action_server",
+            default_value=PythonExpression(
+                [
+                    "'",
+                    LaunchConfiguration("sahte"),
+                    "'.lower() not in ('true', '1', 'yes', 'on')",
+                ]
+            ),
+            description=(
+                "Gercek STM32 fork komutunu /lift_load action olarak sun. "
+                "Sahte mod varsayilan olarak test lift server'ini kullanir."
+            ),
+        ),
         DeclareLaunchArgument("fake_slip_factor", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),
@@ -59,6 +73,9 @@ def generate_launch_description() -> LaunchDescription:
                 "use_fake_hardware": LaunchConfiguration("sahte"),
                 "publish_tf": LaunchConfiguration("tf"),
                 "serial_port": LaunchConfiguration("port"),
+                "lift_action_server_enabled": LaunchConfiguration(
+                    "lift_action_server"
+                ),
                 "fake_slip_factor": LaunchConfiguration("fake_slip_factor"),
                 "fake_wheel_scale_error_left": LaunchConfiguration(
                     "fake_wheel_scale_error_left"

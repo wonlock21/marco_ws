@@ -63,11 +63,12 @@ imgprocess_node:
     lane_end_missing_frames: 15
     lane_end_max_offset_ratio: 0.20
     lane_end_max_heading_error: 0.18
-    # Mavi zemin uzerindeki turuncu serit icin OpenCV HSV araliklari.
+    # Parlaklikta pembeye kayan turuncu serit icin HSV araliklari.
+    # Maske ayrica kirmizi hue sinirinin 170..179 ucunu kapsar.
     # Turuncu maske karenin %1'inden azsa Sobel kenar yedegi devreye girer.
     lane_orange_hue_min: 0
     lane_orange_hue_max: 25
-    lane_orange_sat_min: 80
+    lane_orange_sat_min: 50
     lane_orange_val_min: 80
     lane_orange_min_pixel_ratio: 0.01
     lane_sobel_threshold: 40
@@ -86,7 +87,7 @@ imgprocess_node:
     # Yeni RPM kapali cevriminde eski 50-55 PWM kalkis ofseti uygulanmaz.
     # wheel_separation base_driver ile ayni olmalidir.
     lane_min_wheel_speed: 0.000
-    wheel_separation: 0.433
+    wheel_separation: 0.440
     # P kazanci kucuk/orta hatada tam sayi RPM farkini erken olusturur. Daha
     # dusuk acisal sinir ise ekran kenarinda pivot benzeri 0/4 yerine yaklasik
     # 1/3 RPM ile daha yumusak manevra yaptirir.

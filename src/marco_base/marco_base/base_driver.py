@@ -20,13 +20,18 @@ from __future__ import annotations
 import csv
 import math
 import struct
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
 import rclpy
 from geometry_msgs.msg import Quaternion, Twist, TransformStamped
+from marco_msgs.action import LiftLoad
 from nav_msgs.msg import Odometry
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSPresetProfiles
 from sensor_msgs.msg import BatteryState, Imu, JointState
@@ -45,6 +50,8 @@ from .odometry import (
 from .transport import SerialTransport
 
 HEARTBEAT_PERIOD = 0.1
+FORK_COMMAND_LEASE_MS = 500
+FORK_COMMAND_REFRESH_PERIOD = 0.2
 
 
 def stabilize_wheel_rpm(
@@ -133,6 +140,10 @@ class BaseDriver(Node):
             ).value,
         )
 
+        self._transport_lock = threading.RLock()
+        self._lift_goal_lock = threading.Lock()
+        self._lift_goal_active = False
+        self._shutdown_requested = threading.Event()
         self._transport = self._create_transport()
 
         self._parser = p.FrameParser()
@@ -144,6 +155,7 @@ class BaseDriver(Node):
         self._last_wheel_log_time = 0.0
         self._status: p.StatusFrame | None = None
         self._last_valid_frame_wall: float | None = None
+        self._last_status_wall: float | None = None
         self._communication_ok = False
         self._odom_frames_received = 0
         self._odom_len_warned = False
@@ -179,6 +191,18 @@ class BaseDriver(Node):
 
         self.create_subscription(Twist, "cmd_vel", self._on_cmd_vel, 10)
 
+        self._lift_server = None
+        if self.get_parameter("lift_action_server_enabled").value:
+            self._lift_server = ActionServer(
+                self,
+                LiftLoad,
+                "/lift_load",
+                self._execute_lift,
+                callback_group=ReentrantCallbackGroup(),
+                goal_callback=self._lift_goal_callback,
+                cancel_callback=self._lift_cancel_callback,
+            )
+
         command_rate = self.get_parameter("command_rate").value
         read_rate = self.get_parameter("read_rate").value
         self.create_timer(1.0 / command_rate, self._send_command)
@@ -186,7 +210,7 @@ class BaseDriver(Node):
         self.create_timer(0.1, self._publish_communication_health)
 
         # Acilis dizisi (protokol §6): once varsa kilitli hatayi temizle.
-        self._transport.write(p.encode_safety(p.SafetyCommand.CLEAR_FAULT))
+        self._write_transport(p.encode_safety(p.SafetyCommand.CLEAR_FAULT))
 
         source = (
             "SAHTE DONANIM"
@@ -210,8 +234,8 @@ class BaseDriver(Node):
 
         # properties.xacro ile ayni degerler. Ikisi ayrisirsa odometri ile
         # TF agaci celisir; degistirirken her ikisi birlikte guncellenmeli.
-        self.declare_parameter("wheel_radius", 0.100)
-        self.declare_parameter("wheel_separation", 0.460)
+        self.declare_parameter("wheel_radius", 0.125)
+        self.declare_parameter("wheel_separation", 0.440)
         self.declare_parameter("ticks_per_revolution", 360)
         self.declare_parameter("max_wheel_speed", 0.838)
         # Gecici saha kalibrasyonu icin komut RPM carpani. Normal kullanimda
@@ -228,6 +252,7 @@ class BaseDriver(Node):
         self.declare_parameter("read_rate", 200.0)
         self.declare_parameter("cmd_vel_timeout", 0.5)
         self.declare_parameter("communication_timeout", 0.5)
+        self.declare_parameter("lift_action_server_enabled", True)
 
         # STM32 encoder geri bildirimini hedef komutla birlikte kalici kaydet.
         self.declare_parameter("wheel_measurement_log_enabled", True)
@@ -284,6 +309,11 @@ class BaseDriver(Node):
 
     def _now_seconds(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
+
+    def _write_transport(self, data: bytes) -> None:
+        """Serialize writes to the one STM32 transport shared by this node."""
+        with self._transport_lock:
+            self._transport.write(data)
 
     def _open_wheel_measurement_log(self) -> None:
         if not self.get_parameter("wheel_measurement_log_enabled").value:
@@ -373,7 +403,7 @@ class BaseDriver(Node):
         )
 
         try:
-            self._transport.write(
+            self._write_transport(
                 p.encode_wheel_rpm(
                     left_rpm=left_rpm,
                     right_rpm=right_rpm,
@@ -390,7 +420,7 @@ class BaseDriver(Node):
         if now - self._last_heartbeat >= HEARTBEAT_PERIOD:
             self._last_heartbeat = now
             try:
-                self._transport.write(p.encode_heartbeat())
+                self._write_transport(p.encode_heartbeat())
             except OSError as exc:
                 self._mark_communication_lost(f"heartbeat yazma hatasi: {exc}")
 
@@ -427,7 +457,9 @@ class BaseDriver(Node):
                     self._last_valid_frame_wall = time.monotonic()
                 elif msg_id is p.MsgId.STATE_STATUS:
                     self._on_status(p.decode_status(payload))
-                    self._last_valid_frame_wall = time.monotonic()
+                    now = time.monotonic()
+                    self._last_valid_frame_wall = now
+                    self._last_status_wall = now
             except (struct.error, ValueError) as exc:
                 self.get_logger().warn(
                     f"protokol uyumsuzlugu msg=0x{int(msg_id):02X} "
@@ -620,6 +652,209 @@ class BaseDriver(Node):
         battery.present = True
         self._battery_pub.publish(battery)
 
+    # --------------------------------------------------------------- lift action
+
+    def _lift_hardware_error(self) -> str:
+        """Return a fail-closed reason when lift control is not currently safe."""
+        if self._shutdown_requested.is_set():
+            return "base driver kapaniyor"
+        now = time.monotonic()
+        if (
+            self._last_valid_frame_wall is None
+            or now - self._last_valid_frame_wall > self.communication_timeout
+            or self._last_status_wall is None
+            or now - self._last_status_wall > self.communication_timeout
+            or self._status is None
+        ):
+            return "STM32/UART status iletisimi yok veya bayat"
+        if p.StatusFlag.ESTOP_ACTIVE in self._status.flags:
+            return "e-stop aktif"
+        if p.StatusFlag.MODE_MANUAL in self._status.flags:
+            return "manuel mod aktif"
+        if p.StatusFlag.OVERCURRENT in self._status.flags:
+            return "fork asiri akim bayragi aktif"
+        return ""
+
+    @staticmethod
+    def _lift_goal_error(goal: LiftLoad.Goal) -> str:
+        if goal.command not in (
+            LiftLoad.Goal.COMMAND_PICKUP,
+            LiftLoad.Goal.COMMAND_DROPOFF,
+        ):
+            return f"gecersiz lift komutu: {goal.command}"
+        if not str(goal.station_id).strip():
+            return "station_id bos olamaz"
+        timeout = float(goal.timeout)
+        if not math.isfinite(timeout) or timeout <= 0.0:
+            return "lift timeout sonlu ve sifirdan buyuk olmali"
+        if timeout > 65.535:
+            return "lift timeout STM32 uint16 araligini asiyor (en fazla 65.535 s)"
+        return ""
+
+    def _lift_goal_callback(self, goal: LiftLoad.Goal) -> GoalResponse:
+        error = self._lift_goal_error(goal)
+        if not error:
+            error = self._lift_hardware_error()
+        with self._lift_goal_lock:
+            if self._lift_goal_active:
+                error = "baska bir lift goal halen aktif"
+            if error:
+                self.get_logger().error(f"/lift_load goal reddedildi: {error}")
+                return GoalResponse.REJECT
+            self._lift_goal_active = True
+        return GoalResponse.ACCEPT
+
+    @staticmethod
+    def _lift_cancel_callback(_goal_handle) -> CancelResponse:
+        return CancelResponse.ACCEPT
+
+    @staticmethod
+    def _lift_result(success: bool, result_code: int, message: str):
+        result = LiftLoad.Result()
+        result.success = success
+        result.result_code = result_code
+        result.message = message
+        return result
+
+    def _send_fork_stop(self) -> bool:
+        try:
+            self._write_transport(p.encode_fork(p.ForkAction.STOP, 0))
+            return True
+        except (OSError, ValueError) as exc:
+            self._mark_communication_lost(f"fork STOP gonderilemedi: {exc}")
+            return False
+
+    def _execute_lift(self, goal_handle):
+        """Drive the existing STM32 fork command without inventing completion."""
+        goal = goal_handle.request
+        command_name = (
+            "pickup" if goal.command == LiftLoad.Goal.COMMAND_PICKUP else "dropoff"
+        )
+        fork_action = (
+            p.ForkAction.UP
+            if goal.command == LiftLoad.Goal.COMMAND_PICKUP
+            else p.ForkAction.DOWN
+        )
+        target_limit = (
+            p.StatusFlag.LIMIT_SWITCH_UP
+            if fork_action is p.ForkAction.UP
+            else p.StatusFlag.LIMIT_SWITCH_DOWN
+        )
+        phase = "moving_up" if fork_action is p.ForkAction.UP else "moving_down"
+        deadline = time.monotonic() + float(goal.timeout)
+        next_refresh = 0.0
+
+        try:
+            error = self._lift_goal_error(goal) or self._lift_hardware_error()
+            if error:
+                goal_handle.abort()
+                return self._lift_result(
+                    False, LiftLoad.Result.RESULT_HARDWARE_FAULT, error
+                )
+
+            while rclpy.ok() and not self._shutdown_requested.is_set():
+                if goal_handle.is_cancel_requested:
+                    self._send_fork_stop()
+                    goal_handle.canceled()
+                    return self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_ABORTED,
+                        f"{command_name} operator tarafindan iptal edildi; STOP gonderildi",
+                    )
+
+                error = self._lift_hardware_error()
+                if error:
+                    self._send_fork_stop()
+                    goal_handle.abort()
+                    return self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                        f"{command_name} guvenli durduruldu: {error}",
+                    )
+
+                flags = self._status.flags
+                if (
+                    p.StatusFlag.LIMIT_SWITCH_UP in flags
+                    and p.StatusFlag.LIMIT_SWITCH_DOWN in flags
+                ):
+                    self._send_fork_stop()
+                    goal_handle.abort()
+                    return self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_LIMIT_SWITCH,
+                        "ust ve alt limit ayni anda aktif; STOP gonderildi",
+                    )
+                if target_limit in flags:
+                    self._send_fork_stop()
+                    goal_handle.succeed()
+                    return self._lift_result(
+                        True,
+                        LiftLoad.Result.RESULT_OK,
+                        f"{command_name} hedef limit bilgisiyle dogrulandi",
+                    )
+
+                now = time.monotonic()
+                if now >= deadline:
+                    self._send_fork_stop()
+                    goal_handle.abort()
+                    return self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_TIMEOUT,
+                        f"{command_name} timeout; completion dogrulanamadi ve STOP gonderildi",
+                    )
+
+                if now >= next_refresh:
+                    remaining_ms = max(1, int(math.ceil((deadline - now) * 1000.0)))
+                    lease_ms = min(FORK_COMMAND_LEASE_MS, remaining_ms)
+                    try:
+                        self._write_transport(p.encode_fork(fork_action, lease_ms))
+                    except (OSError, ValueError) as exc:
+                        self._mark_communication_lost(
+                            f"fork {command_name} komutu gonderilemedi: {exc}"
+                        )
+                        self._send_fork_stop()
+                        goal_handle.abort()
+                        return self._lift_result(
+                            False,
+                            LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                            f"{command_name} UART yazma hatasi: {exc}",
+                        )
+                    next_refresh = now + FORK_COMMAND_REFRESH_PERIOD
+
+                feedback = LiftLoad.Feedback()
+                feedback.phase = phase
+                if p.StatusFlag.LIMIT_SWITCH_UP in flags:
+                    feedback.position = 1.0
+                elif p.StatusFlag.LIMIT_SWITCH_DOWN in flags:
+                    feedback.position = 0.0
+                else:
+                    feedback.position = math.nan
+                goal_handle.publish_feedback(feedback)
+                time.sleep(0.02)
+
+            self._send_fork_stop()
+            goal_handle.abort()
+            return self._lift_result(
+                False,
+                LiftLoad.Result.RESULT_ABORTED,
+                f"{command_name} base driver kapanisi nedeniyle durduruldu",
+            )
+        except Exception as exc:
+            self._send_fork_stop()
+            goal_handle.abort()
+            self.get_logger().error(
+                f"/lift_load {command_name} beklenmeyen exception: {exc}"
+            )
+            return self._lift_result(
+                False,
+                LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                f"{command_name} beklenmeyen hata; STOP gonderildi: {exc}",
+            )
+        finally:
+            self._send_fork_stop()
+            with self._lift_goal_lock:
+                self._lift_goal_active = False
+
     def _log_flag_changes(self, previous: p.StatusFrame | None, current: p.StatusFrame) -> None:
         old = previous.flags if previous else p.StatusFlag(0)
         for flag, message in (
@@ -730,12 +965,15 @@ class BaseDriver(Node):
         return 0.100 if self._status.fork_state == 2 else 0.0
 
     def destroy_node(self) -> bool:
+        self._shutdown_requested.set()
         try:
+            self._send_fork_stop()
             # UART tamponu/tek-kare kaybi ihtimaline karsi kapanista birden
             # fazla devre-disinda sifir komutu gonderilir.
             for _ in range(5):
-                self._transport.write(p.encode_wheel_rpm(0.0, 0.0, False))
-            self._transport.close()
+                self._write_transport(p.encode_wheel_rpm(0.0, 0.0, False))
+            with self._transport_lock:
+                self._transport.close()
         except OSError:
             pass
         finally:
@@ -753,11 +991,16 @@ def _yaw_to_quaternion(yaw: float) -> Quaternion:
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = BaseDriver()
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
+        node._shutdown_requested.set()
+        node._send_fork_stop()
+        executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

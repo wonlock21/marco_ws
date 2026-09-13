@@ -452,7 +452,7 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_end_detection_enabled', True)
         self.declare_parameter('lane_orange_hue_min', 0)
         self.declare_parameter('lane_orange_hue_max', 25)
-        self.declare_parameter('lane_orange_sat_min', 80)
+        self.declare_parameter('lane_orange_sat_min', 50)
         self.declare_parameter('lane_orange_val_min', 80)
         self.declare_parameter('lane_orange_min_pixel_ratio', 0.01)
         self.declare_parameter('lane_sobel_threshold', 40)
@@ -466,7 +466,7 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_lookahead_y', 160)
         self.declare_parameter('lane_lookahead_band_half_height', 5)
         self.declare_parameter('lane_min_wheel_speed', 0.055)
-        self.declare_parameter('wheel_separation', 0.460)
+        self.declare_parameter('wheel_separation', 0.440)
         self.declare_parameter('max_angular_speed', 0.075)
 
     def _configure_gpu(self):

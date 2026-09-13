@@ -2270,6 +2270,8 @@ class MissionManager(Node):
                 return 'safety supervisor hazir degil'
             if not self._base_communication_healthy():
                 return 'STM32/UART iletisimi hazir degil'
+            if not self._lift_server_healthy():
+                return 'production /lift_load action server hazir degil'
             if not task_id:
                 return 'task_id bos olamaz'
             if task_id in self._known_task_ids:
@@ -2306,6 +2308,13 @@ class MissionManager(Node):
         """Start execution after admission; kept separate for focused tests."""
         threading.Thread(target=self._run, daemon=True).start()
 
+    def _lift_server_healthy(self) -> bool:
+        """Fail closed before movement when the lift action is unavailable."""
+        try:
+            return bool(self._lift.server_is_ready())
+        except Exception:
+            return False
+
     def _plc_auto_start_blocker(self) -> Optional[str]:
         """Return why production PLC auto-start must remain idle."""
         if not self._plc_auto_start:
@@ -2332,6 +2341,8 @@ class MissionManager(Node):
             return 'safety supervisor hazir degil'
         if not self._base_communication_healthy():
             return 'STM32/UART iletisimi hazir degil'
+        if not self._lift_server_healthy():
+            return 'production /lift_load action server hazir degil'
         health = self._localization_health()
         if not health.valid:
             return f'lokalizasyon gecersiz: {health.reason}'
@@ -2489,6 +2500,10 @@ class MissionManager(Node):
                     if not self._base_communication_healthy():
                         res.accepted = False
                         res.message = 'STM32/UART iletisimi hazir degil'
+                        return res
+                    if not self._lift_server_healthy():
+                        res.accepted = False
+                        res.message = 'production /lift_load action server hazir degil'
                         return res
                     health = self._localization_health()
                     if not health.valid:

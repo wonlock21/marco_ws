@@ -13,6 +13,7 @@ from lane_tracking.lane_detector import (
 BLUE = (255, 0, 0)
 ORANGE = (0, 140, 255)
 CAMERA_SALMON = (97, 110, 255)
+WASHED_PINK = (205, 190, 255)
 
 
 def blue_frame(height=240, width=320):
@@ -55,6 +56,20 @@ def test_kamerada_kirmiziya_kayan_turuncu_seridi_secer():
 
     assert np.count_nonzero(mask[:, 130:171]) > 9000
     assert np.count_nonzero(mask[:, :80]) == 0
+
+
+def test_parlak_pembe_seridi_mavi_ve_beyazdan_ayirir():
+    frame = blue_frame()
+    cv2.rectangle(frame, (120, 0), (180, 239), WASHED_PINK, -1)
+    cv2.rectangle(frame, (140, 40), (160, 140), (250, 250, 255), -1)
+
+    mask = hybrid_orange_lane_mask_cpu(frame)
+    detector = LaneDetector()
+    found, _ = detector.process(frame, center_x=160)
+
+    assert np.count_nonzero(mask[:, 125:135]) > 200
+    assert np.count_nonzero(mask[:, :80]) == 0
+    assert found is True
 
 
 def test_turuncu_yokken_sobel_yedegi_seridi_bulur():

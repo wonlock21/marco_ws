@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 def _hybrid_orange_lane_mask(
-        frame, hue_min=1, hue_max=25, sat_min=80, val_min=80,
+        frame, hue_min=1, hue_max=25, sat_min=50, val_min=80,
         minimum_pixel_ratio=0.01, sobel_threshold=40, use_umat=False):
     """HSV turuncu maskesi uret; renk kaybolursa Sobel'e geri dus."""
     if frame.ndim != 3 or frame.shape[2] != 3:
@@ -22,6 +22,11 @@ def _hybrid_orange_lane_mask(
     lower = np.array([hue_min, sat_min, val_min], dtype=np.uint8)
     upper = np.array([hue_max, 255, 255], dtype=np.uint8)
     hsv_mask = cv2.inRange(hsv, lower, upper)
+    red_wrap_mask = cv2.inRange(
+        hsv,
+        np.array([170, sat_min, val_min], dtype=np.uint8),
+        np.array([179, 255, 255], dtype=np.uint8))
+    hsv_mask = cv2.bitwise_or(hsv_mask, red_wrap_mask)
 
     cleaned_hsv = cv2.erode(
         hsv_mask, np.ones((3, 3), np.uint8), iterations=1)
@@ -48,7 +53,7 @@ def _hybrid_orange_lane_mask(
 
 
 def hybrid_orange_lane_mask_opencl(
-        frame, hue_min=0, hue_max=25, sat_min=80, val_min=80,
+        frame, hue_min=0, hue_max=25, sat_min=50, val_min=80,
         minimum_pixel_ratio=0.01, sobel_threshold=40):
     """OpenCV T-API ile OpenCL hizlandirmali hibrit turuncu maske."""
     return _hybrid_orange_lane_mask(
@@ -57,7 +62,7 @@ def hybrid_orange_lane_mask_opencl(
 
 
 def hybrid_orange_lane_mask_cpu(
-        frame, hue_min=0, hue_max=25, sat_min=80, val_min=80,
+        frame, hue_min=0, hue_max=25, sat_min=50, val_min=80,
         minimum_pixel_ratio=0.01, sobel_threshold=40):
     """OpenCL kullanilamadiginda ayni hibrit maskeyi CPU'da uygula."""
     return _hybrid_orange_lane_mask(
@@ -68,7 +73,7 @@ def hybrid_orange_lane_mask_cpu(
 class LaneDetector:
     def __init__(
             self, use_opencl=False, orange_hue_min=0, orange_hue_max=25,
-            orange_sat_min=80, orange_val_min=80,
+            orange_sat_min=50, orange_val_min=80,
             orange_min_pixel_ratio=0.01, sobel_threshold=40,
             ipm_enabled=False, ipm_source_points=None,
             ipm_destination_points=None, lookahead_y=160,

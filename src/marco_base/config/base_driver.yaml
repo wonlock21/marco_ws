@@ -6,29 +6,28 @@ marco_base_driver:
     use_fake_hardware: false
 
     # --- Kinematik ---
-    # wheel_radius fiziksel URDF degeridir. wheel_separation ise encoder
-    # odometrisi icin etkin araliktir; URDF'deki 0.430 m geometrik araliktan
-    # farkli olabilir.
+    # wheel_radius encoder odometrisi ve hiz/RPM donusumunde kullanilir.
+    # wheel_separation encoder odometrisi icin etkin araliktir; saha olcumlu
+    # 0.460 m geometrik araliktan farklidir.
     #
-    # wheel_radius ve URDF'deki geometrik aralik SolidWorks'ten olculdu;
-    # bu dosyadaki etkin aralik daha sonra saha donusleriyle kalibre edildi:
-    #   wheel_radius     tahrik tekeri kusursuz silindir, yaricap 100.00 mm
-    #                    (dis kabuk sacilimi 0.000 mm)
-    #   geometrik aralik fiziksel/CAD dogrulamasiyla 430.00 mm
+    # Yeni tahrik tekeri capi sahada 250 mm olarak bildirildi; odometri ve
+    # hiz/RPM donusumu icin yaricapi 125 mm'dir. URDF de yeni saha olculeriyle
+    # eslestirildi.
+    # Eski CAD geometrik araligi 430 mm idi; guncel fiziksel olcum 460 mm.
     #
     # NOT: tahrik uniteleri yayli (4 adet 3 mm telli, 75 mm serbest boy
     # helezon yay). CAD'de teker zeminden 11.5 mm yukarida cizilmis; arac
     # agirligi altinda yaylar sikisip teker basiyor. Etkin yaricap yuk
     # altinda lastik ezilmesi kadar azalabilir, odometry_check.py ile
     # dogrulanmali.
-    wheel_radius: 0.100
-    # 03.09.2026 fiziksel 360 derece testi: sol 0.432778 m, sag 0.433333 m;
-    # iki yon ortalamasi 0.433056 m, config hassasiyetiyle 0.433 m.
-    wheel_separation: 0.433
+    wheel_radius: 0.125
+    # Iki sol ve iki sag 1080 derece donusun ortalamasindan turetilen gecici
+    # etkin aralik; teker yaricapi duz mesafede henuz dogrulanmadi.
+    wheel_separation: 0.440
     # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
     ticks_per_revolution: 360
     # /cmd_vel bu fiziksel m/s sinirinda oransal kirpilir, ardindan 0x01 icin
-    # RPM'e cevrilir. 0.100 m yaricapta 2.670353756 m/s tam 255 RPM'dir.
+    # RPM'e cevrilir. 0.125 m yaricapta bu limit yaklasik 204 RPM'dir.
     # Bu yalniz ust komut siniridir; normal surus hizlari ayri profillerde
     # daha dusuk tutulmalidir.
     max_wheel_speed: 2.670353756

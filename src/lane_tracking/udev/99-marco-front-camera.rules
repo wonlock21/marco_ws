@@ -6,7 +6,7 @@ SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{idVendor}=="2e7e", ATTRS{idPro
 SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{idVendor}=="1224", ATTRS{idProduct}=="2a25", SYMLINK+="marco_front_camera"
 
 # ST-Link uzerindeki VCP portunu kartin kalici seri numarasina bagla.
-SUBSYSTEM=="tty", KERNEL=="ttyACM*", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", ATTRS{serial}=="066CFF505250898367074239", SYMLINK+="marco_stm32"
+SUBSYSTEM=="tty", KERNEL=="ttyACM*", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", ATTRS{serial}=="066FFF3238504B3043234135", SYMLINK+="marco_stm32"
 
 # CAM10, Orange Pi USB denetleyicisi tarafindan otomatik askidan uyandirilirken
 # tum USB aygiti dusurebiliyor. Video akisi boyunca gerceklesen yeniden

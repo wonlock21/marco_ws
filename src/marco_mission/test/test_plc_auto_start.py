@@ -59,6 +59,9 @@ class FakeReadyClient:
     def service_is_ready(self):
         return self.ready
 
+    def server_is_ready(self):
+        return self.ready
+
 
 def _reply(success, task_id='plc-task-1', pickup='A1', dropoff='B3'):
     return SimpleNamespace(
@@ -93,6 +96,7 @@ def manager():
     value._obstacle = False
     value._require_safety_supervisor = True
     value._safety_reset = FakeReadyClient()
+    value._lift = FakeReadyClient()
     value._base_communication_healthy = lambda: True
     value._localization_health = lambda: LocalizationHealth(True, 'hazir')
     value._known_task_ids = set()
@@ -215,15 +219,19 @@ def test_field_not_ready_waits_then_starts_after_field_becomes_ready(manager):
     assert manager.starts == 1
 
 
-@pytest.mark.parametrize('unhealthy', ('localization', 'base', 'safety'))
-def test_unhealthy_localization_base_or_safety_blocks_start(manager, unhealthy):
+@pytest.mark.parametrize('unhealthy', ('localization', 'base', 'safety', 'lift'))
+def test_unhealthy_localization_base_safety_or_lift_blocks_start(
+    manager, unhealthy
+):
     if unhealthy == 'localization':
         manager._localization_health = lambda: LocalizationHealth(
             False, 'AMCL hazir degil')
     elif unhealthy == 'base':
         manager._base_communication_healthy = lambda: False
-    else:
+    elif unhealthy == 'safety':
         manager._safety_reset.ready = False
+    else:
+        manager._lift.ready = False
 
     manager._poll_plc_auto_start()
 
