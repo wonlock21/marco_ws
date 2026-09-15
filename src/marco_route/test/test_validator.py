@@ -25,7 +25,23 @@ def competition_graph():
         graph.upsert_node(NodeData(
             node_id, name, role, station, x, y, 0.0
         ))
-    for edge_id, endpoint in enumerate(range(1, 5), start=100):
+    approaches = (
+        (20, "A1_approach", "pickup_approach", "A1", 1.8, 2.0, 2),
+        (21, "A2_approach", "pickup_approach", "A2", 2.8, 2.0, 3),
+        (22, "A3_approach", "pickup_approach", "A3", 3.8, 2.0, 4),
+        (23, "B1_approach", "dropoff_approach", "B1", 1.8, 4.0, 5),
+        (24, "B2_approach", "dropoff_approach", "B2", 2.8, 4.0, 6),
+        (25, "B3_approach", "dropoff_approach", "B3", 3.8, 4.0, 7),
+    )
+    for node_id, name, role, station, x, y, dock_id in approaches:
+        graph.upsert_node(NodeData(
+            node_id, name, role, station, x, y, 0.0
+        ))
+        graph.upsert_edge(EdgeData(
+            200 + node_id, node_id, dock_id,
+            bidirectional=True, max_speed=0.15,
+        ))
+    for edge_id, endpoint in enumerate((1, 20, 21, 22), start=100):
         graph.upsert_edge(EdgeData(
             edge_id,
             endpoint,
@@ -39,7 +55,7 @@ def competition_graph():
     graph.upsert_edge(EdgeData(
         111, 9, 8, max_speed=0.2, gate_event="q6_return"
     ))
-    for edge_id, endpoint in enumerate(range(5, 8), start=120):
+    for edge_id, endpoint in enumerate((23, 24, 25), start=120):
         graph.upsert_edge(EdgeData(
             edge_id,
             endpoint,
@@ -69,8 +85,10 @@ def test_competition_profile_accepts_only_configured_stations(
     field_store, removed_nodes
 ):
     graph = competition_graph()
+    approach_by_dock = {2: 20, 3: 21, 4: 22, 5: 23, 6: 24, 7: 25}
     for node_id in removed_nodes:
         graph.delete_node(node_id, delete_edges=True)
+        graph.delete_node(approach_by_dock[node_id], delete_edges=True)
     field_store.save_graph(graph)
 
     result = validate_field(field_store, graph, competition_profile=True)
@@ -87,11 +105,23 @@ def test_competition_profile_accepts_more_than_three_stations(field_store):
     graph.upsert_node(NodeData(
         11, "B4", "dropoff_dock", "B4", 5.0, 4.0, 0.0
     ))
-    graph.upsert_edge(EdgeData(
-        130, 10, 8, bidirectional=True, max_speed=0.2
+    graph.upsert_node(NodeData(
+        26, "A4_approach", "pickup_approach", "A4", 4.8, 2.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        27, "B4_approach", "dropoff_approach", "B4", 4.8, 4.0, 0.0
     ))
     graph.upsert_edge(EdgeData(
-        131, 11, 9, bidirectional=True, max_speed=0.2
+        130, 26, 8, bidirectional=True, max_speed=0.2
+    ))
+    graph.upsert_edge(EdgeData(
+        131, 27, 9, bidirectional=True, max_speed=0.2
+    ))
+    graph.upsert_edge(EdgeData(
+        132, 26, 10, bidirectional=True, max_speed=0.15
+    ))
+    graph.upsert_edge(EdgeData(
+        133, 27, 11, bidirectional=True, max_speed=0.15
     ))
     field_store.save_graph(graph)
 

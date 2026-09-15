@@ -11,7 +11,6 @@ import yaml
 
 from .field_store import FieldStore, StoreError, stations_document
 from .graph_model import FieldGraph
-from .station_config import config_from_node
 
 
 PICKUP_STATION_PATTERN = re.compile(r"^A[1-9][0-9]*$")
@@ -289,32 +288,21 @@ def validate_field(
             result.errors.append(f"node '{node.name}' has no station")
         if node.role in ("pickup_dock", "dropoff_dock"):
             try:
-                config = config_from_node(node)
-                if config is None:
-                    result.warnings.append(
-                        f"station '{node.station}' has no F7A approach configuration"
+                expected_role = (
+                    "pickup_approach"
+                    if node.role == "pickup_dock"
+                    else "dropoff_approach"
+                )
+                approach_nodes = [
+                    candidate for candidate in graph.nodes.values()
+                    if candidate.station == node.station
+                    and candidate.role == expected_role
+                ]
+                if len(approach_nodes) != 1:
+                    result.errors.append(
+                        f"station '{node.station}' must have exactly one "
+                        f"{expected_role} node"
                     )
-                else:
-                    expected_role = (
-                        "pickup_approach"
-                        if node.role == "pickup_dock"
-                        else "dropoff_approach"
-                    )
-                    approach_nodes = [
-                        candidate for candidate in graph.nodes.values()
-                        if candidate.station == node.station
-                        and candidate.role in (expected_role, "qr_trigger")
-                    ]
-                    preferred = [
-                        candidate for candidate in approach_nodes
-                        if candidate.role == expected_role
-                    ]
-                    selected = preferred or approach_nodes
-                    if len(selected) != 1:
-                        result.errors.append(
-                            f"station '{node.station}' must have exactly one "
-                            "QR/approach node for F7B"
-                        )
             except (ValueError, TypeError) as error:
                 result.errors.append(str(error))
 

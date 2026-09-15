@@ -36,6 +36,8 @@ def test_competition_station_aliases_and_roles_are_accepted(tmp_path):
             _point(2, "dropoff_pose", "dropoff_dock", "B1", 2.0, 0.0),
             _point(3, "gate_pose", "gate_q5", "q5", 1.5, 0.0),
             _point(4, "return_gate_pose", "gate_q6", "q6", 1.7, 0.0),
+            _point(5, "A1_approach", "pickup_approach", "A1", 0.5, 0.0),
+            _point(6, "B1_approach", "dropoff_approach", "B1", 2.5, 0.0),
         ],
     }), encoding="utf-8")
 
@@ -50,6 +52,7 @@ def test_competition_station_aliases_and_roles_are_accepted(tmp_path):
     assert manager._home_node == "WAIT"
     assert manager._nodes["A1"]["name"] == "pickup_pose"
     assert manager._nodes["A1"]["yaw"] == 1.2
+    assert manager._nodes["A1"]["approach_qr_id"] == ""
     assert manager._validate_route(["A1", "B1"]) is None
     assert "pickup_dock" in manager._validate_route(["B1", "A1"])
     assert "tanimlanmamis gorev istasyonu: A3" == manager._validate_route(
@@ -95,6 +98,84 @@ def test_station_id_alias_stays_on_dock_and_approach_is_resolved(tmp_path):
     assert manager._station_approach_target("A1") == "q2_pose"
 
 
+def test_approach_arrival_advances_station_flow_without_qr():
+    manager = MissionManager.__new__(MissionManager)
+    manager._nodes = {
+        "A1": {
+            "id": 1, "name": "A1_dock", "role": "pickup_dock",
+            "station_id": "A1", "approach_qr_id": "",
+        },
+        "A1_approach": {
+            "id": 2, "name": "A1_approach", "role": "pickup_approach",
+            "station_id": "A1", "approach_qr_id": "",
+        },
+        "B1": {
+            "id": 3, "name": "B1_dock", "role": "dropoff_dock",
+            "station_id": "B1", "approach_qr_id": "",
+        },
+        "B1_approach": {
+            "id": 4, "name": "B1_approach", "role": "dropoff_approach",
+            "station_id": "B1", "approach_qr_id": "",
+        },
+    }
+    manager._route_nodes = ["A1", "B1"]
+    manager._loaded = False
+    manager._return_home = False
+    manager._mission_started_wall = 0.0
+    manager._mission_elapsed = 0.0
+    manager._gate_ok = False
+    manager._gate_entry_node = ""
+    manager._gate_direction = ""
+    manager._gate_crossing_id = ""
+    manager._pickup = manager._dropoff = ""
+    manager._current_stop_index = 0
+    manager._state = 0
+    manager._estop = False
+    manager._latched_abort = False
+    manager._busy = True
+    manager._running = True
+    manager._active_goal = None
+    manager._active_kind = ""
+    manager._lock = threading.RLock()
+    manager._station_phase = manager._STATION_IDLE
+    manager.operations = []
+    manager._set_state = lambda state, next_node="": None
+    manager._navigate = lambda target, loaded: (
+        manager.operations.append(("navigate", target, loaded)) or 0.0
+    )
+    manager._navigate_via_gate = lambda target, loaded, direction: (
+        manager.operations.append(("gate", target, loaded, direction)) or 0.0
+    )
+    manager._wait_until_stopped = lambda label: manager.operations.append(
+        ("stopped", label)
+    )
+    manager._turn_at_station = lambda station, heading: manager.operations.append(
+        ("turn", station, heading)
+    )
+    manager._do_dock = lambda station, pickup: manager.operations.append(
+        ("dock", station, pickup)
+    )
+    manager._do_lift = lambda station, pickup: manager.operations.append(
+        ("lift", station, pickup)
+    )
+    manager._publish_load_state = lambda loaded: None
+    manager._exit_station = lambda station, loaded: None
+    manager._safe_stop = lambda: None
+    manager._notify_complete = lambda success, reason: manager.operations.append(
+        ("complete", success, reason)
+    )
+    manager._event = lambda event, **fields: None
+
+    manager._run()
+
+    assert ("navigate", "A1_approach", False) in manager.operations
+    assert ("turn", "A1", 0.0) in manager.operations
+    assert ("dock", "A1", True) in manager.operations
+    assert ("gate", "B1_approach", True, "outbound") in manager.operations
+    assert ("turn", "B1", 0.0) in manager.operations
+    assert manager.operations[-1] == ("complete", True, "gorev tamam")
+
+
 def test_calculated_turn_direction_is_deterministic():
     left = MissionManager._directed_turn(0.0, 3.141592653589793, "left")
     right = MissionManager._directed_turn(0.0, 3.141592653589793, "right")
@@ -126,6 +207,7 @@ def test_legacy_station_turn_direction_is_ignored_before_mission(tmp_path):
             _point(3, "B1_dock", "dropoff_dock", "B1", 2.0, 0.0),
             _point(4, "wait_pose", "wait", "WAIT", 0.0, 0.0),
             _point(5, "gate_pose", "gate_q5", "q5", 1.5, 0.0),
+            _point(6, "B1_approach", "dropoff_approach", "B1", 2.5, 0.0),
         ],
     }), encoding="utf-8")
     manager = MissionManager.__new__(MissionManager)
@@ -142,7 +224,7 @@ def test_legacy_station_turn_direction_is_ignored_before_mission(tmp_path):
 def test_production_docking_uses_lane_end_without_station_duration():
     manager = MissionManager.__new__(MissionManager)
     manager._nodes = {
-        "A3": {"approach_qr_id": "q4"},
+        "A3": {"role": "pickup_dock", "approach_qr_id": ""},
     }
     manager._action_timeout = 120.0
     manager._docking_duration = 0.0
@@ -153,13 +235,7 @@ def test_production_docking_uses_lane_end_without_station_duration():
     manager._docking_stopped = True
     manager._docking_error = ""
     manager._dock = object()
-    manager._qr_gate = SimpleNamespace(phase="LINE_FOLLOW_READY")
-    manager._qr_gate.docking = lambda: setattr(
-        manager._qr_gate, "phase", "LINE_FOLLOW_DOCKING"
-    )
-    manager._qr_gate.docking_complete = lambda _pickup: setattr(
-        manager._qr_gate, "phase", "PICKUP_READY"
-    )
+    manager._station_phase = manager._STATION_LINE_FOLLOW_READY
     manager.events = []
     manager._event = lambda event, **fields: manager.events.append(
         (event, fields)
@@ -197,7 +273,7 @@ def test_production_docking_uses_lane_end_without_station_duration():
     assert captured["label"] == "lane_end_docking:A3"
     assert captured["timeout"] == 120.0
     assert captured["require_turn_sensors"] is True
-    assert manager._qr_gate.phase == "PICKUP_READY"
+    assert manager._station_phase == manager._STATION_PICKUP_READY
     assert manager.events[-1][0] == "lane_end_reverse_docking_completed"
 
 

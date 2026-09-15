@@ -80,6 +80,20 @@ def test_station_approach_config_roundtrip(field_store):
     assert "dock_heading_yaw" not in station["station_approach"]
 
 
+def test_station_approach_config_accepts_empty_legacy_qr(field_store):
+    graph = basic_graph()
+    graph.upsert_node(NodeData(
+        25, "A1_approach", "pickup_approach", "A1", 2.5, 1.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        30, "pickup_a1", "pickup_dock", "A1", 3.0, 1.0, 0.0
+    ))
+
+    update_station(graph, "A1", "", 0.0, "auto", 0.0)
+
+    assert config_from_node(graph.nodes[30])["approach_qr_id"] == ""
+
+
 def test_hash_covers_stations_and_calibration(field_store):
     graph = basic_graph()
     route_hash = field_store.save_graph(graph)

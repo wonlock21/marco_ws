@@ -44,7 +44,6 @@ from tf2_ros import Buffer, TransformException, TransformListener
 
 from marco_mission.localization_validity import LocalizationHealth
 from marco_mission.localization_validity import evaluate_localization
-from marco_mission.station_qr_gate import StationQrGate
 from marco_msgs.action import DockToStation, LiftLoad
 from marco_msgs.msg import (
     ActiveField,
@@ -447,6 +446,15 @@ def _evaluate_turn_arc(
 class MissionManager(Node):
     """Own exactly one mission and one motion action at a time."""
 
+    _STATION_IDLE = 'IDLE'
+    _STATION_APPROACHING = 'APPROACHING_STATION'
+    _STATION_TURNING = 'TURNING_180'
+    _STATION_LINE_FOLLOW_READY = 'LINE_FOLLOW_READY'
+    _STATION_LINE_FOLLOW_DOCKING = 'LINE_FOLLOW_DOCKING'
+    _STATION_PICKUP_READY = 'PICKUP_READY'
+    _STATION_DROPOFF_READY = 'DROPOFF_READY'
+    _STATION_EXITING = 'EXITING_STATION'
+
     def __init__(self) -> None:
         super().__init__('mission_manager')
         graph_default = os.path.join(get_package_share_directory('marco_navigation'),
@@ -465,9 +473,8 @@ class MissionManager(Node):
             ('localization_tf_lookup_timeout_s', 0.05),
             ('localization_max_position_covariance', 1.0),
             ('route_constraints_timeout_s', 3.0),
-            ('station_qr_max_age_s', 0.75),
-            ('station_qr_debounce_s', 0.15),
-            ('station_qr_wait_s', 3.0),
+            # Deprecated compatibility parameter. QR is telemetry-only and
+            # cannot advance the station flow.
             ('station_qr_mock_enabled', False),
             ('station_turn_timeout_s', 30.0),
             ('station_turn_yaw_tolerance_deg', 3.0),
@@ -514,9 +521,6 @@ class MissionManager(Node):
         self._manual_enabled = bool(self.get_parameter('manual_task_enabled').value)
         self._plc_auto_start = bool(
             self.get_parameter('plc_auto_start').value)
-        self._station_qr_mock_enabled = bool(
-            self.get_parameter('station_qr_mock_enabled').value
-        )
         self._configured_gate_node = str(self.get_parameter('gate_node').value)
         self._configured_return_gate_node = str(
             self.get_parameter('return_gate_node').value)
@@ -590,10 +594,7 @@ class MissionManager(Node):
         self._last_qr_confidence = 0.0
         self._last_qr_camera = ''
         self._last_qr_seen = 0.0
-        self._qr_gate = StationQrGate(
-            max_age_s=float(self.get_parameter('station_qr_max_age_s').value),
-            debounce_s=float(self.get_parameter('station_qr_debounce_s').value),
-        )
+        self._station_phase = self._STATION_IDLE
         self._mission_started_wall = 0.0
         self._mission_elapsed = 0.0
         self._status_detail = 'goreve hazir'
@@ -958,6 +959,7 @@ class MissionManager(Node):
             self._imu_seen = time.monotonic()
 
     def _on_qr(self, msg: QrDetection) -> None:
+        """Update QR telemetry without influencing mission execution."""
         self._last_qr_detected = bool(msg.detected)
         self._last_qr_pose = msg.pose_in_camera
         self._last_qr_confidence = float(msg.confidence)
@@ -965,31 +967,6 @@ class MissionManager(Node):
         self._last_qr_seen = time.monotonic()
         if msg.detected:
             self._last_qr = msg.data
-        stamp_ns = (
-            int(msg.header.stamp.sec) * 1_000_000_000
-            + int(msg.header.stamp.nanosec)
-        )
-        age_s = (
-            max(0.0, (self.get_clock().now().nanoseconds - stamp_ns) / 1e9)
-            if stamp_ns > 0 else None
-        )
-        result = self._qr_gate.observe(
-            msg.data, bool(msg.detected), age_s=age_s
-        )
-        if result.accepted:
-            self._event(
-                'station_qr_verified',
-                station=self._qr_gate.target_station,
-                qr_id=msg.data,
-            )
-        elif self._qr_gate.armed and result.reason != 'invalid_qr':
-            self._event(
-                'station_qr_rejected',
-                station=self._qr_gate.target_station,
-                expected_qr_id=self._qr_gate.expected_qr_id,
-                received_qr_id=msg.data,
-                reason=result.reason,
-            )
 
     def _on_qr_reader(self, msg: QrReaderDetection) -> None:
         """Consume scanner data without claiming a camera-relative pose."""
@@ -1003,7 +980,7 @@ class MissionManager(Node):
         self._on_qr(detection)
 
     def _begin_station_approach(self, station: str) -> None:
-        """Arm the F7A trigger when the station has an approach QR."""
+        """Start a station session whose handoff is the approach node."""
         self._docking_target = ''
         self._docking_duration = 0.0
         self._docking_elapsed = 0.0
@@ -1012,19 +989,11 @@ class MissionManager(Node):
         self._docking_camera_valid = False
         self._docking_stopped = True
         self._docking_error = ''
-        expected = str(self._nodes[station].get('approach_qr_id', '')).strip()
-        if not expected:
-            self._qr_gate.reset()
-            return
-        self._qr_gate.arm(station, expected)
-        self._event(
-            'station_qr_armed', station=station, expected_qr_id=expected
-        )
+        self._station_phase = self._STATION_APPROACHING
 
     def _finish_station_approach(self) -> None:
-        """Disarm QR actions during forward station exit."""
-        if self._qr_gate.phase != StationQrGate.IDLE:
-            self._qr_gate.exiting()
+        """Expose the forward station-exit phase."""
+        self._station_phase = self._STATION_EXITING
 
     def _exit_station(self, station: str, loaded: bool) -> None:
         """Stop rear-lane control and return to the station approach with Nav2."""
@@ -1037,9 +1006,10 @@ class MissionManager(Node):
             command='STOP',
         )
         self._wait_until_stopped(f'{station} lane-Nav2 devri')
-        if not str(self._nodes[station].get('approach_qr_id', '')).strip():
+        if self._nodes[station].get('role') not in (
+            'pickup_dock', 'dropoff_dock'
+        ):
             # Geriye uyumlu test graflarinda approach dugumu olmayabilir.
-            # Competition validator production paketinde buna izin vermez.
             self._event(
                 'station_exit_nav_skipped',
                 station=station,
@@ -1142,7 +1112,7 @@ class MissionManager(Node):
         return {node['id']: node for node in self._nodes.values()}.values()
 
     def _station_approach_target(self, station: str) -> str:
-        """Resolve the QR/approach node associated with a station."""
+        """Resolve the role-bound approach node associated with a station."""
         dock = self._nodes[station]
         expected_role = (
             'pickup_approach'
@@ -1152,63 +1122,13 @@ class MissionManager(Node):
         candidates = [
             node for node in self._unique_graph_nodes()
             if node.get('station_id') == station
-            and node.get('role') in (expected_role, 'qr_trigger')
+            and node.get('role') == expected_role
         ]
-        preferred = [
-            node for node in candidates if node.get('role') == expected_role
-        ]
-        selected = preferred or candidates
-        if len(selected) != 1:
+        if len(candidates) != 1:
             raise MissionAbort(
-                f'{station}: tam bir QR/yaklasim dugumu gerekli'
+                f'{station}: tam bir {expected_role} dugumu gerekli'
             )
-        return str(selected[0]['name'])
-
-    def _inject_mock_station_qr_if_enabled(self, station: str) -> bool:
-        """Inject the expected QR only after a GUI approach reaches its node."""
-        if not self._station_qr_mock_enabled or self._source != 'gui':
-            return False
-        if (
-            self._qr_gate.phase != StationQrGate.APPROACHING
-            or self._qr_gate.target_station != station
-            or not self._qr_gate.expected_qr_id
-        ):
-            raise MissionAbort(
-                f'{station}: QR mock icin armed yaklasim oturumu yok'
-            )
-
-        detection = QrDetection()
-        detection.header.stamp = self.get_clock().now().to_msg()
-        detection.header.frame_id = 'qr_mock'
-        detection.detected = True
-        detection.data = self._qr_gate.expected_qr_id
-        detection.confidence = 1.0
-        detection.camera_frame = 'qr_mock'
-        self._event(
-            'station_qr_mock_injected',
-            station=station,
-            qr_id=detection.data,
-            test_only=True,
-        )
-        self._on_qr(detection)
-        return True
-
-    def _wait_for_station_qr(self, station: str) -> None:
-        # Nav2 yaklasim dugumune ulastiktan sonra ve yalniz qr:=false GUI
-        # testlerinde gercek okuyucunun tek seferlik tespitini taklit et.
-        self._inject_mock_station_qr_if_enabled(station)
-        timeout = float(self.get_parameter('station_qr_wait_s').value)
-        deadline = time.monotonic() + timeout
-        while self._qr_gate.phase == StationQrGate.APPROACHING:
-            self._check_abort()
-            if time.monotonic() >= deadline:
-                raise MissionAbort(
-                    f'{station}: beklenen QR zamaninda dogrulanmadi '
-                    f'({self._qr_gate.expected_qr_id})'
-                )
-            time.sleep(0.02)
-        if self._qr_gate.phase != StationQrGate.VERIFIED:
-            raise MissionAbort(f'{station}: QR tetik oturumu gecersiz')
+        return str(candidates[0]['name'])
 
     def _wait_until_stopped(self, label: str) -> None:
         timeout = float(self.get_parameter('motion_stop_timeout_s').value)
@@ -1824,7 +1744,7 @@ class MissionManager(Node):
         goal = Spin.Goal()
         goal.target_yaw = float(relative_turn)
         goal.time_allowance = Duration(seconds=timeout).to_msg()
-        self._qr_gate.turning()
+        self._station_phase = self._STATION_TURNING
         self._status_detail = f'{station}: guvenli 180 derece donus'
         self._event(
             'station_turn_started',
@@ -1949,7 +1869,7 @@ class MissionManager(Node):
             relative_turn - measured_turn
         ))
         turn_source = 'imu+encoder' if self._imu_enabled else 'encoder'
-        self._qr_gate.line_follow_ready()
+        self._station_phase = self._STATION_LINE_FOLLOW_READY
         self._status_detail = f'{station}: docking devrine hazir'
         self._event(
             'station_turn_completed',
@@ -2175,14 +2095,18 @@ class MissionManager(Node):
                         f'{index + 1}. durak {expected_role} rolunde olmali: '
                         f'{node}'
                     )
+            elif getattr(self, '_require_active_field', False):
+                return (
+                    f'{index + 1}. production duragi {expected_role} '
+                    f'rolunde olmali: {node}'
+                )
             else:
                 prefix = 'alma_' if index % 2 == 0 else 'birak_'
                 if not node.startswith(prefix):
                     return f'{index + 1}. durak {prefix} ile baslamali: {node}'
             if index and node == route_nodes[index - 1]:
                 return 'ayni alma/birakma noktasi kullanilamaz'
-            config = self._nodes[node]
-            if str(config.get('approach_qr_id', '')).strip():
+            if role in ('pickup_dock', 'dropoff_dock'):
                 try:
                     self._station_approach_target(node)
                 except MissionAbort as error:
@@ -2917,15 +2841,17 @@ class MissionManager(Node):
         goal.yaw_tolerance = math.radians(5.0)
         goal.approach_type = (DockToStation.Goal.APPROACH_PICKUP if pickup else
                               DockToStation.Goal.APPROACH_DROPOFF)
-        configured = bool(self._nodes[station].get('approach_qr_id'))
-        if configured:
+        station_flow = self._nodes[station].get('role') in (
+            'pickup_dock', 'dropoff_dock'
+        )
+        if station_flow:
             # Compatibility field stays zero: production completion is the
             # fresh lane-end event, never a station-specific duration.
             goal.line_follow_duration_s = 0.0
             goal.reverse_motion = True
             goal.camera_source = 'rear_camera'
             goal.timeout = 0.0
-            self._qr_gate.docking()
+            self._station_phase = self._STATION_LINE_FOLLOW_DOCKING
             self._docking_target = station
             self._docking_duration = 0.0
             self._docking_elapsed = 0.0
@@ -2967,11 +2893,14 @@ class MissionManager(Node):
             self._docking_remaining = 0.0
             self._docking_lane_active = False
             self._docking_stopped = True
-            self._qr_gate.docking_complete(pickup)
+            self._station_phase = (
+                self._STATION_PICKUP_READY
+                if pickup else self._STATION_DROPOFF_READY
+            )
             self._event(
                 'lane_end_reverse_docking_completed', station=station,
                 elapsed_s=self._docking_elapsed,
-                next_phase=self._qr_gate.phase)
+                next_phase=self._station_phase)
             return
         goal.timeout = min(self._action_timeout, 60.0)
         self._action(self._dock, goal, f'docking:{station}', goal.timeout + 2.0)
@@ -3003,12 +2932,12 @@ class MissionManager(Node):
                 self._pickup = station if pickup else self._pickup
                 self._dropoff = (self._route_nodes[index + 1] if pickup else station)
                 self._begin_station_approach(station)
-                configured_approach = bool(
-                    self._nodes[station].get('approach_qr_id')
+                station_flow = self._nodes[station].get('role') in (
+                    'pickup_dock', 'dropoff_dock'
                 )
                 navigation_target = (
                     self._station_approach_target(station)
-                    if configured_approach else station
+                    if station_flow else station
                 )
                 if index == 0:
                     approach_heading = self._navigate(
@@ -3021,8 +2950,7 @@ class MissionManager(Node):
                         loaded=loaded,
                         direction=direction,
                     )
-                if configured_approach:
-                    self._wait_for_station_qr(station)
+                if station_flow:
                     self._wait_until_stopped(
                         f'{station} Nav2-donus devri'
                     )
@@ -3062,7 +2990,7 @@ class MissionManager(Node):
                 self._active_goal, self._active_kind = None, ''
                 if not self._latched_abort and not self._estop and not success:
                     self._state = RobotStatus.STATE_ERROR
-            self._qr_gate.reset()
+            self._station_phase = self._STATION_IDLE
 
     def _notify_complete(self, success: bool, message: str) -> None:
         if not self._task_id or not self._complete.wait_for_service(timeout_sec=1.0):
@@ -3133,11 +3061,12 @@ class MissionManager(Node):
         msg.gate_entry_node = self._gate_entry_node
         msg.gate_direction = self._gate_direction
         msg.gate_crossing_id = self._gate_crossing_id
-        msg.station_phase = self._qr_gate.phase
-        msg.qr_trigger_armed = self._qr_gate.armed
-        msg.expected_qr_id = self._qr_gate.expected_qr_id
-        msg.qr_target_station = self._qr_gate.target_station
-        msg.last_qr_reject_reason = self._qr_gate.last_reject_reason
+        msg.station_phase = self._station_phase
+        # Backward-compatible wire fields remain neutral: QR is telemetry-only.
+        msg.qr_trigger_armed = False
+        msg.expected_qr_id = ''
+        msg.qr_target_station = ''
+        msg.last_qr_reject_reason = ''
         msg.docking_target_station = self._docking_target
         msg.docking_configured_duration_s = float(self._docking_duration)
         msg.docking_elapsed_s = float(self._docking_elapsed)

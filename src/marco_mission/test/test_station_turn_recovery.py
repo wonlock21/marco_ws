@@ -14,14 +14,6 @@ from marco_mission.mission_manager import MissionAbort
 from marco_mission.mission_manager import MissionActionFailure
 from marco_mission.mission_manager import MissionManager
 from marco_mission.mission_manager import _evaluate_turn_arc
-from marco_mission.station_qr_gate import StationQrGate
-
-
-def _verified_gate():
-    gate = StationQrGate()
-    gate.arm('A3', 'q4')
-    assert gate.observe('q4', True).accepted
-    return gate
 
 
 def _station_manager(yaw_samples, failed_action_calls=()):
@@ -33,7 +25,7 @@ def _station_manager(yaw_samples, failed_action_calls=()):
             'turn_direction': 'left',
         },
     }
-    manager._qr_gate = _verified_gate()
+    manager._station_phase = manager._STATION_APPROACHING
     manager._spin = object()
     manager._obstacle = False
     manager._imu_enabled = False
@@ -115,7 +107,7 @@ def test_station_target_is_route_heading_plus_pi_and_uses_auto_direction():
     )
     assert completed['target_yaw'] == pytest.approx(target_heading)
     assert completed['correction_attempts'] == 0
-    assert manager._qr_gate.phase == StationQrGate.LINE_FOLLOW_READY
+    assert manager._station_phase == manager._STATION_LINE_FOLLOW_READY
 
 
 def _costmap_with_obstacle(x=None, y=None):

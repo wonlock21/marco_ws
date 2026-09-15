@@ -38,7 +38,7 @@ class QrSerialReader(Node):
 
     def __init__(self) -> None:
         super().__init__('qr_serial_reader')
-        self.declare_parameter('port', '/dev/ttyUSB0')
+        self.declare_parameter('port', '/dev/marco_qr')
         self.declare_parameter('baud', 115200)
         self.declare_parameter('read_timeout_s', 0.05)
         self.declare_parameter('reconnect_delay_s', 1.0)

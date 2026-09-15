@@ -16,11 +16,9 @@ def checked_values(
     approach_qr_id: str,
     line_follow_duration_s: float = 0.0,
 ) -> dict[str, Any]:
-    """Return a normalized, safe station configuration."""
+    """Return the optional legacy QR field for wire compatibility."""
     del line_follow_duration_s
     qr_id = str(approach_qr_id).strip()
-    if not qr_id:
-        raise GraphError("approach_qr_id cannot be empty")
     if len(qr_id) > 64:
         raise GraphError("approach_qr_id cannot exceed 64 characters")
     return {
@@ -100,15 +98,13 @@ def derived_dock_heading(graph: FieldGraph, station_id: str) -> float:
     candidates = [
         node for node in graph.nodes.values()
         if node.station.upper() == dock.station.upper()
-        and node.role in (expected_role, "qr_trigger")
+        and node.role == expected_role
     ]
-    preferred = [node for node in candidates if node.role == expected_role]
-    selected = preferred or candidates
-    if len(selected) != 1:
+    if len(candidates) != 1:
         raise GraphError(
             f"station '{dock.station}' must have exactly one approach node"
         )
-    approach = selected[0]
+    approach = candidates[0]
 
     headings: list[float] = []
     for edge in graph.edges.values():

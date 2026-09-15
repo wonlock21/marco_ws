@@ -86,17 +86,19 @@ def test_qr_gui_telemetry_keeps_full_detection_contract():
         assert node._last_qr_confidence == 0.91
         assert node._last_qr_camera == 'front'
         assert node._last_qr_seen > 0.0
+        assert node._station_phase == node._STATION_IDLE
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
 
-def test_serial_qr_verifies_station_without_camera_pose():
-    """A physical reader payload drives the station gate directly."""
+def test_serial_qr_is_telemetry_only_without_camera_pose():
+    """A physical reader payload updates telemetry but not station flow."""
     rclpy.init()
     node = MissionManager()
     try:
-        node._qr_gate.arm('A1', 'ALIM1')
+        node._begin_station_approach('A1')
+        phase = node._station_phase
         detection = QrReaderDetection()
         detection.header.stamp = node.get_clock().now().to_msg()
         detection.qr_id = 'ALIM1'
@@ -106,7 +108,7 @@ def test_serial_qr_verifies_station_without_camera_pose():
 
         node._on_qr_reader(detection)
 
-        assert node._qr_gate.phase == node._qr_gate.VERIFIED
+        assert node._station_phase == phase
         assert node._last_qr == 'ALIM1'
         assert node._last_qr_detected
         assert node._last_qr_pose.x == 0.0
@@ -116,33 +118,22 @@ def test_serial_qr_verifies_station_without_camera_pose():
         rclpy.shutdown()
 
 
-def test_qr_mock_verifies_expected_code_only_for_gui_test_task():
-    """QR-less real launch emulates one timely detection at the approach node."""
+def test_wrong_and_expected_qr_do_not_trigger_station_state():
+    """Neither a wrong nor expected QR can advance the station flow."""
     rclpy.init()
     node = MissionManager()
     try:
-        events = []
-        node._event = lambda name, **fields: events.append((name, fields))
-        node._station_qr_mock_enabled = True
-        node._source = 'gui'
-        node._qr_gate.arm('A3', 'q4')
-
-        node._wait_for_station_qr('A3')
-
-        assert node._qr_gate.phase == node._qr_gate.VERIFIED
-        assert node._last_qr == 'q4'
-        assert node._last_qr_detected
-        assert node._last_qr_confidence == 1.0
-        assert node._last_qr_camera == 'qr_mock'
-        assert [name for name, _fields in events] == [
-            'station_qr_mock_injected',
-            'station_qr_verified',
-        ]
-
-        node._qr_gate.arm('B3', 'q7')
-        node._source = 'plc'
-        assert not node._inject_mock_station_qr_if_enabled('B3')
-        assert node._qr_gate.phase == node._qr_gate.APPROACHING
+        node._begin_station_approach('A3')
+        phase = node._station_phase
+        for value in ('YANLIS', 'q4'):
+            detection = QrDetection()
+            detection.detected = True
+            detection.data = value
+            detection.confidence = 1.0
+            detection.camera_frame = 'front'
+            node._on_qr(detection)
+            assert node._station_phase == phase
+            assert node._last_qr == value
     finally:
         node.destroy_node()
         rclpy.shutdown()

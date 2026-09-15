@@ -100,7 +100,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('qr_reader', default_value='true'),
         DeclareLaunchArgument(
             'qr_reader_port',
-            default_value='/dev/ttyUSB0',
+            default_value='/dev/marco_qr',
         ),
         DeclareLaunchArgument('qr_reader_baud', default_value='115200'),
         DeclareLaunchArgument('station_qr_mock_enabled', default_value='false'),

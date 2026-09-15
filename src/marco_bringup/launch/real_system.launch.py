@@ -169,9 +169,9 @@ def _setup(context, *args, **kwargs):
             "qr_reader": "true" if qr_hardware_enabled else "false",
             "qr_reader_port": LaunchConfiguration("qr_reader_port"),
             "qr_reader_baud": LaunchConfiguration("qr_reader_baud"),
-            "station_qr_mock_enabled": (
-                "false" if qr_hardware_enabled else "true"
-            ),
+            # Backward-compatible parameter remains disabled: QR no longer
+            # advances production station flow.
+            "station_qr_mock_enabled": "false",
         }.items(),
     )
     mode = "SAHTE (motor ve seri cihazlar kapali)" if fake else "GERCEK DONANIM"
@@ -183,9 +183,9 @@ def _setup(context, *args, **kwargs):
         LogInfo(msg="Demo Nav2, GUI'deki Demoyu Baslat eyleminde baslatilir"),
         LogInfo(msg="Production gorevi dogrulanmis etkin saha gelene kadar kilitli"),
         LogInfo(msg=(
-            "QR modu: gercek okuyucu"
+            "QR telemetry: gercek okuyucu"
             if qr_hardware_enabled else
-            "UYARI: QR MOCK aktif; yalniz GUI test gorevlerinde hedef QR otomatik dogrulanir"
+            "QR telemetry kapali; gorev akisi etkilenmez"
         )),
         control_plane, docking, mission,
     ]
@@ -223,13 +223,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "qr", default_value="true",
             description=(
-                "true: gercek QR seri okuyucu; false: yalniz GUI testlerinde "
-                "hedef QR'yi yaklasim dugumunde otomatik dogrula"
+                "true: telemetry icin gercek QR seri okuyucuyu baslat"
             ),
         ),
         DeclareLaunchArgument(
             "qr_reader_port",
-            default_value="/dev/ttyUSB0",
+            default_value="/dev/marco_qr",
             description="QR okuyucunun seri aygit yolu",
         ),
         DeclareLaunchArgument(

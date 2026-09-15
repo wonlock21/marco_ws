@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from marco_mission.mission_manager import MissionAbort, MissionManager
-from marco_mission.station_qr_gate import StationQrGate
 
 
 class _Publisher:
@@ -34,13 +33,7 @@ def test_station_exit_stops_lane_then_navigates_to_own_approach():
             "approach_qr_id": "",
         },
     }
-    manager._qr_gate = StationQrGate()
-    manager._qr_gate.arm("A1", "q2")
-    assert manager._qr_gate.observe("q2", True).accepted
-    manager._qr_gate.turning()
-    manager._qr_gate.line_follow_ready()
-    manager._qr_gate.docking()
-    manager._qr_gate.docking_complete(pickup=True)
+    manager._station_phase = manager._STATION_PICKUP_READY
     manager._docking_lane_active = True
     order = []
     manager._task_pub = _Publisher(order)
@@ -58,8 +51,7 @@ def test_station_exit_stops_lane_then_navigates_to_own_approach():
     )
     nav_index = order.index(("nav", "q2", True))
     assert lane_index < stopped_index < nav_index
-    assert manager._qr_gate.phase == StationQrGate.EXITING
-    assert not manager._qr_gate.armed
+    assert manager._station_phase == manager._STATION_EXITING
     assert manager._docking_lane_active is False
     assert [item for item in order if item[0] == "lane"] == [
         ("lane", "STOP")
