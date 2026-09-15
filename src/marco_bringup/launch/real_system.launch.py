@@ -198,7 +198,7 @@ def generate_launch_description():
             description="true: motor/seri cihaz yok; yalniz test mock'lari acik",
         ),
         DeclareLaunchArgument(
-            "imu", default_value="true",
+            "imu", default_value="false",
             description=(
                 "Gercek sistemde STM32 IMU yaw verisini filtreli odometriye ekle"
             ),
