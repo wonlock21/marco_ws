@@ -145,3 +145,63 @@ def test_stale_gate_reply_cannot_authorize_crossing():
     ]
     assert manager._gate_ok is False
     assert manager._gate_crossing_id == ""
+
+
+def test_control_wait_replies_keep_mission_waiting_until_granted():
+    """A sequence equivalent to 10+ seconds of CONTROL=1 must not abort."""
+    manager = _gate_manager()
+    replies = [
+        SimpleNamespace(
+            granted=False,
+            crossing_id='',
+            message='WAITING_PLC: fresh CONTROL=1; kapi izni bekleniyor',
+        )
+        for _ in range(4)
+    ]
+    replies.append(SimpleNamespace(
+        granted=True,
+        crossing_id='',
+        message='fresh PLC gate izni',
+    ))
+    manager._check_abort = lambda: None
+
+    def service_call(_client, request, _timeout, _label):
+        reply = replies.pop(0)
+        reply.crossing_id = request.crossing_id
+        return reply
+
+    manager._service_call = service_call
+
+    MissionManager._navigate_via_gate(
+        manager, "B2_approach", loaded=True, direction="outbound"
+    )
+
+    assert replies == []
+    assert [item for item in manager.calls if item[0] == "nav"] == [
+        ("nav", "q5", True),
+        ("nav", "B2_approach", True),
+    ]
+    assert manager._gate_ok is False
+
+
+def test_gate_communication_failure_still_aborts():
+    """A stale/no-RX result remains fail-closed instead of being retried."""
+    manager = _gate_manager()
+
+    def service_call(_client, request, _timeout, _label):
+        return SimpleNamespace(
+            granted=False,
+            crossing_id=request.crossing_id,
+            message='PLC RX bayat/yok',
+        )
+
+    manager._service_call = service_call
+
+    with pytest.raises(MissionAbort, match='PLC RX bayat/yok'):
+        MissionManager._navigate_via_gate(
+            manager, "B2_approach", loaded=True, direction="outbound"
+        )
+
+    assert [item for item in manager.calls if item[0] == "nav"] == [
+        ("nav", "q5", True),
+    ]

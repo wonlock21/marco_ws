@@ -27,6 +27,7 @@ NO_ASSIGNMENT_CODE = 0
 CONTROL_WAIT = 1
 CONTROL_RUN = 2
 WAITING_PLC_TX_STATUS = 5
+GATE_WAITING_MESSAGE_PREFIX = 'WAITING_PLC:'
 
 # RobotStatus uses zero-based values; the SRU wire protocol uses 1..8.
 MISSION_STATE_TO_TX_STATUS = {
@@ -263,11 +264,18 @@ class SruUdpTransport(PlcTransport):
         node_id: str,
         direction: str,
     ) -> GatePermissionResult:
-        """Wait for CONTROL=2 received after a new WAITING_PLC heartbeat."""
+        """Poll for a matching CONTROL=2 after a WAITING_PLC heartbeat."""
         del task_id, node_id, direction  # These ROS identities are not on wire.
         started = time.monotonic()
         deadline = started + self._request_timeout
+        saw_fresh_gate_rx = False
+        wait_message = f'{GATE_WAITING_MESSAGE_PREFIX} PLC izni bekleniyor'
+        reported_mismatch = None
         with self._condition:
+            active_pair = self._active_pair
+            if active_pair is None:
+                return GatePermissionResult(
+                    False, crossing_id, 'aktif PLC gorev cifti yok')
             initial_rx_sequence = self._rx_sequence
             initial_waiting_sequence = self._waiting_tx_sequence
             while True:
@@ -286,16 +294,48 @@ class SruUdpTransport(PlcTransport):
                     and self._fresh_rx_locked(time.monotonic())
                 )
                 if new_rx_after_waiting:
-                    if self._last_rx.control == CONTROL_RUN:
+                    packet = self._last_rx
+                    saw_fresh_gate_rx = True
+                    initial_rx_sequence = self._rx_sequence
+                    packet_pair = (packet.pickup_node, packet.dropoff_node)
+                    if packet_pair != active_pair:
+                        wait_message = (
+                            f'{GATE_WAITING_MESSAGE_PREFIX} PLC gorev cifti '
+                            f'uyusmuyor; beklenen={active_pair[0]}/{active_pair[1]} '
+                            f'gelen={packet_pair[0]}/{packet_pair[1]}'
+                        )
+                        if packet_pair != reported_mismatch:
+                            reported_mismatch = packet_pair
+                            self._report_error(wait_message)
+                    elif packet.control == CONTROL_RUN:
                         self._gate_rx_sequence_consumed = self._rx_sequence
                         return GatePermissionResult(
                             True, crossing_id, 'fresh PLC gate izni')
-                    # CONTROL=1 means keep waiting for a later response.
-                    initial_rx_sequence = self._rx_sequence
-                remaining = deadline - time.monotonic()
-                if remaining <= 0.0:
+                    else:
+                        reported_mismatch = None
+                        wait_message = (
+                            f'{GATE_WAITING_MESSAGE_PREFIX} fresh CONTROL=1; '
+                            'kapi izni bekleniyor'
+                        )
+                now = time.monotonic()
+                if waiting_sent and not self._fresh_rx_locked(now):
                     return GatePermissionResult(
-                        False, crossing_id, 'fresh PLC gate izni timeout')
+                        False, crossing_id, 'PLC RX bayat/yok')
+                remaining = deadline - now
+                if remaining <= 0.0:
+                    if saw_fresh_gate_rx and self._fresh_rx_locked(now):
+                        return GatePermissionResult(
+                            False, crossing_id, wait_message)
+                    return GatePermissionResult(
+                        False, crossing_id, 'fresh PLC gate yaniti timeout')
+                if waiting_sent and self._last_rx is not None:
+                    remaining = min(
+                        remaining,
+                        max(
+                            0.0,
+                            self._last_rx_time + self._rx_stale_timeout - now,
+                        ),
+                    )
                 self._condition.wait(timeout=remaining)
 
     def report_task_complete(

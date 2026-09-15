@@ -52,7 +52,13 @@ def _wait_for(predicate, timeout=3.0):
     return False
 
 
-def _transport(server, period=0.05, stale=0.2, request_timeout=0.8):
+def _transport(
+    server,
+    period=0.05,
+    stale=0.2,
+    request_timeout=0.8,
+    error_callback=None,
+):
     transport = SruUdpTransport(
         server_host='127.0.0.1',
         server_port=server.port,
@@ -60,6 +66,7 @@ def _transport(server, period=0.05, stale=0.2, request_timeout=0.8):
         tx_period_s=period,
         rx_stale_timeout_s=stale,
         request_timeout_s=request_timeout,
+        error_callback=error_callback,
     )
     transport.update_robot_status(RobotStatusSnapshot(0, '', '', 0.0, 0.0))
     transport.connect()
@@ -139,9 +146,11 @@ def test_gate_rejects_cached_control_until_waiting_tx_gets_new_response():
     result = []
     try:
         assert _wait_for(transport.is_connected)
+        assignment = transport.request_task()
+        assert assignment.success is True
         worker = threading.Thread(
             target=lambda: result.append(transport.request_gate_permission(
-                'task-1', 'cross-1', 'q5', 'outbound')),
+                assignment.task_id, 'cross-1', 'q5', 'outbound')),
             daemon=True,
         )
         worker.start()
@@ -160,6 +169,96 @@ def test_gate_rejects_cached_control_until_waiting_tx_gets_new_response():
         assert result[0].crossing_id == 'cross-1'
         waiting_packets = [packet for packet in server.packets if packet[0] == 5]
         assert waiting_packets
+    finally:
+        transport.disconnect()
+        server.close()
+
+
+def test_repeated_control_wait_windows_are_nonfatal_then_matching_run_grants():
+    """Model more than 10 production seconds without a slow wall-clock test."""
+    server = FakeUdpPlc(response=b'\x01\x02\x02')
+    transport = _transport(
+        server, period=0.01, stale=0.08, request_timeout=0.06)
+    try:
+        assert _wait_for(transport.is_connected)
+        assignment = transport.request_task()
+        assert (assignment.pickup_node, assignment.dropoff_node) == ('A1', 'B2')
+        transport.update_robot_status(
+            RobotStatusSnapshot(4, 'A1', 'B2', 1.0, -1.0))
+        server.response = b'\x01\x02\x01'
+
+        # Four scaled polling windows represent >12 s at the production
+        # request_timeout_s=3.0 setting. Every response remains a normal wait.
+        for sequence in range(4):
+            reply = transport.request_gate_permission(
+                assignment.task_id, f'cross-{sequence}', 'q5', 'outbound')
+            assert reply.granted is False
+            assert reply.message.startswith('WAITING_PLC:')
+            assert transport.is_connected() is True
+
+        server.response = b'\x01\x02\x02'
+        granted = transport.request_gate_permission(
+            assignment.task_id, 'cross-grant', 'q5', 'outbound')
+        assert granted.granted is True
+    finally:
+        transport.disconnect()
+        server.close()
+
+
+def test_mismatched_run_pair_cannot_grant_then_active_pair_can():
+    """Keep the active assignment while ignoring another task's CONTROL=2."""
+    diagnostics = []
+    server = FakeUdpPlc(response=b'\x01\x02\x02')
+    transport = _transport(
+        server,
+        period=0.01,
+        stale=0.08,
+        request_timeout=0.06,
+        error_callback=diagnostics.append,
+    )
+    try:
+        assert _wait_for(transport.is_connected)
+        assignment = transport.request_task()
+        assert (assignment.pickup_node, assignment.dropoff_node) == ('A1', 'B2')
+        transport.update_robot_status(
+            RobotStatusSnapshot(4, 'A1', 'B2', 1.0, -1.0))
+
+        server.response = b'\x03\x01\x02'
+        mismatch = transport.request_gate_permission(
+            assignment.task_id, 'cross-mismatch', 'q5', 'outbound')
+        assert mismatch.granted is False
+        assert mismatch.message.startswith('WAITING_PLC:')
+        assert 'beklenen=A1/B2 gelen=A3/B1' in mismatch.message
+        assert any('beklenen=A1/B2 gelen=A3/B1' in item
+                   for item in diagnostics)
+
+        server.response = b'\x01\x02\x02'
+        granted = transport.request_gate_permission(
+            assignment.task_id, 'cross-correct', 'q5', 'outbound')
+        assert granted.granted is True
+        assert transport._active_pair == ('A1', 'B2')
+    finally:
+        transport.disconnect()
+        server.close()
+
+
+def test_gate_fails_closed_when_rx_becomes_stale():
+    """Do not classify missing RX as a normal CONTROL=1 wait."""
+    server = FakeUdpPlc(response=b'\x01\x02\x02')
+    transport = _transport(
+        server, period=0.01, stale=0.05, request_timeout=0.2)
+    try:
+        assert _wait_for(transport.is_connected)
+        assignment = transport.request_task()
+        transport.update_robot_status(
+            RobotStatusSnapshot(4, 'A1', 'B2', 1.0, -1.0))
+        server.respond = False
+
+        denied = transport.request_gate_permission(
+            assignment.task_id, 'cross-stale', 'q5', 'outbound')
+        assert denied.granted is False
+        assert not denied.message.startswith('WAITING_PLC:')
+        assert transport.is_connected() is False
     finally:
         transport.disconnect()
         server.close()

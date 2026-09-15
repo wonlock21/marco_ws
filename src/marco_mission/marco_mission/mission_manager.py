@@ -60,6 +60,9 @@ class MissionAbort(RuntimeError):
     """Controlled mission failure carrying a PLC-safe diagnostic."""
 
 
+_GATE_WAITING_MESSAGE_PREFIX = 'WAITING_PLC:'
+
+
 class MissionActionFailure(MissionAbort):
     """Action failure retaining the ROS goal status for bounded recovery."""
 
@@ -1065,18 +1068,23 @@ class MissionManager(Node):
                 direction=direction,
                 crossing_id=crossing_id,
             )
-            reply = self._service_call(
-                self._gate,
-                request,
-                self._gate_timeout,
-                f'PLC gate_permission:{direction}',
-            )
-            if reply.crossing_id != crossing_id:
-                raise MissionAbort(
-                    f'{entry}: eski/gecersiz kapi izin yaniti '
-                    f'({reply.crossing_id or "bos"})'
+            while True:
+                reply = self._service_call(
+                    self._gate,
+                    request,
+                    self._gate_timeout,
+                    f'PLC gate_permission:{direction}',
                 )
-            if not reply.granted:
+                if reply.crossing_id != crossing_id:
+                    raise MissionAbort(
+                        f'{entry}: eski/gecersiz kapi izin yaniti '
+                        f'({reply.crossing_id or "bos"})'
+                    )
+                if reply.granted:
+                    break
+                if reply.message.startswith(_GATE_WAITING_MESSAGE_PREFIX):
+                    self._check_abort()
+                    continue
                 raise MissionAbort(f'kapi reddi: {reply.message}')
             self._gate_ok = True
             self._event(
