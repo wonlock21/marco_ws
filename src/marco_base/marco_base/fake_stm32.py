@@ -84,6 +84,8 @@ class FakeStm32:
         self.watchdog_triggered = False
         self.command_clamped = False
         self.fork_state = 0
+        self.tilt_state = 0
+        self.fork_action = p.ForkAction.STOP
 
         self._now = 0.0
         self._started_at: float | None = None
@@ -115,6 +117,7 @@ class FakeStm32:
             command = p.decode_safety(payload)
             if command is p.SafetyCommand.SOFT_ESTOP:
                 self._stop_motors()
+                self.fork_action = p.ForkAction.STOP
                 self.fault_latched = True
             elif command is p.SafetyCommand.CLEAR_FAULT:
                 self.fault_latched = False
@@ -122,10 +125,15 @@ class FakeStm32:
 
         elif msg_id is p.MsgId.CMD_FORK:
             action, _timeout_ms = p.decode_fork(payload)
+            self.fork_action = action
             if action is p.ForkAction.UP:
                 self.fork_state = 2
             elif action is p.ForkAction.DOWN:
                 self.fork_state = 0
+            elif action is p.ForkAction.TILT_UP:
+                self.tilt_state = 2
+            elif action is p.ForkAction.TILT_DOWN:
+                self.tilt_state = 0
 
     def _apply_velocity_command(self, left: float, right: float, enabled: bool) -> None:
         clamped_left = max(-self.max_wheel_speed, min(self.max_wheel_speed, left))

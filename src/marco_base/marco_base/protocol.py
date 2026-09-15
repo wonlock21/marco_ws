@@ -48,6 +48,8 @@ class ForkAction(IntEnum):
     STOP = 0
     UP = 1
     DOWN = 2
+    TILT_UP = 3
+    TILT_DOWN = 4
 
 
 class SafetyCommand(IntEnum):

@@ -130,6 +130,12 @@ class BaseDriver(Node):
         self.lift_dropoff_duration_s = float(
             self.get_parameter("lift_dropoff_duration_s").value
         )
+        self.tilt_pickup_duration_s = float(
+            self.get_parameter("tilt_pickup_duration_s").value
+        )
+        self.tilt_dropoff_duration_s = float(
+            self.get_parameter("tilt_dropoff_duration_s").value
+        )
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
         self.publish_tf = self.get_parameter("publish_tf").value
@@ -261,6 +267,8 @@ class BaseDriver(Node):
         self.declare_parameter("lift_action_server_enabled", True)
         self.declare_parameter("lift_pickup_duration_s", 0.0)
         self.declare_parameter("lift_dropoff_duration_s", 0.0)
+        self.declare_parameter("tilt_pickup_duration_s", 0.0)
+        self.declare_parameter("tilt_dropoff_duration_s", 0.0)
 
         # STM32 encoder geri bildirimini hedef komutla birlikte kalici kaydet.
         self.declare_parameter("wheel_measurement_log_enabled", True)
@@ -683,10 +691,16 @@ class BaseDriver(Node):
             return "fork asiri akim bayragi aktif"
         return ""
 
-    def _lift_movement_duration(self, command: int) -> tuple[float, str]:
+    def _lift_phase_durations(self, command: int):
         if command == LiftLoad.Goal.COMMAND_PICKUP:
-            return self.lift_pickup_duration_s, "lift_pickup_duration_s"
-        return self.lift_dropoff_duration_s, "lift_dropoff_duration_s"
+            return (
+                ("lift_pickup_duration_s", self.lift_pickup_duration_s),
+                ("tilt_pickup_duration_s", self.tilt_pickup_duration_s),
+            )
+        return (
+            ("tilt_dropoff_duration_s", self.tilt_dropoff_duration_s),
+            ("lift_dropoff_duration_s", self.lift_dropoff_duration_s),
+        )
 
     def _lift_goal_error(self, goal: LiftLoad.Goal) -> str:
         if goal.command not in (
@@ -701,12 +715,19 @@ class BaseDriver(Node):
             return "lift timeout sonlu ve sifirdan buyuk olmali"
         if timeout > 65.535:
             return "lift timeout STM32 uint16 araligini asiyor (en fazla 65.535 s)"
-        duration, parameter_name = self._lift_movement_duration(goal.command)
-        if not math.isfinite(duration) or duration <= 0.0:
-            return f"{parameter_name} yapılandırılmamış"
-        if duration >= timeout:
+        durations = self._lift_phase_durations(goal.command)
+        for parameter_name, duration in durations:
+            if not math.isfinite(duration) or duration <= 0.0:
+                return f"{parameter_name} yapılandırılmamış"
+        if math.fsum(duration for _, duration in durations) >= timeout:
+            command_name = (
+                "pickup"
+                if goal.command == LiftLoad.Goal.COMMAND_PICKUP
+                else "dropoff"
+            )
             return (
-                f"{parameter_name} goal.timeout degerinden kucuk olmali"
+                f"{command_name} toplam hareket suresi goal.timeout "
+                "degerinden kucuk olmali"
             )
         return ""
 
@@ -743,19 +764,166 @@ class BaseDriver(Node):
             self._mark_communication_lost(f"fork STOP gonderilemedi: {exc}")
             return False
 
+    def _run_fork_phase(
+        self,
+        goal_handle,
+        action: p.ForkAction,
+        duration: float,
+        phase: str,
+        overall_deadline: float,
+        command_name: str,
+    ):
+        """Refresh one bounded fork phase and finish it with STOP."""
+        phase_deadline = time.monotonic() + duration
+        next_refresh = 0.0
+        while rclpy.ok() and not self._shutdown_requested.is_set():
+            if goal_handle.is_cancel_requested:
+                self._send_fork_stop()
+                goal_handle.canceled()
+                return None, self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_ABORTED,
+                    f"{command_name} operator tarafindan iptal edildi; STOP gonderildi",
+                )
+
+            error = self._lift_hardware_error()
+            if error:
+                self._send_fork_stop()
+                goal_handle.abort()
+                return None, self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                    f"{command_name} guvenli durduruldu: {error}",
+                )
+
+            now = time.monotonic()
+            if now >= overall_deadline:
+                self._send_fork_stop()
+                goal_handle.abort()
+                return None, self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_TIMEOUT,
+                    f"{command_name} overall timeout; STOP gonderildi",
+                )
+
+            if now >= phase_deadline:
+                if not self._send_fork_stop():
+                    goal_handle.abort()
+                    return None, self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                        f"{command_name} {phase} bitti ancak STOP gonderilemedi",
+                    )
+                return time.monotonic(), None
+
+            if now >= next_refresh:
+                remaining_ms = max(
+                    1,
+                    int(math.ceil((phase_deadline - now) * 1000.0)),
+                )
+                lease_ms = min(FORK_COMMAND_LEASE_MS, remaining_ms)
+                try:
+                    self._write_transport(p.encode_fork(action, lease_ms))
+                except (OSError, ValueError) as exc:
+                    self._mark_communication_lost(
+                        f"fork {phase} komutu gonderilemedi: {exc}"
+                    )
+                    self._send_fork_stop()
+                    goal_handle.abort()
+                    return None, self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                        f"{command_name} UART yazma hatasi: {exc}",
+                    )
+                next_refresh = now + FORK_COMMAND_REFRESH_PERIOD
+
+            feedback = LiftLoad.Feedback()
+            feedback.phase = phase
+            feedback.position = math.nan
+            goal_handle.publish_feedback(feedback)
+            time.sleep(0.02)
+
+        self._send_fork_stop()
+        goal_handle.abort()
+        return None, self._lift_result(
+            False,
+            LiftLoad.Result.RESULT_ABORTED,
+            f"{command_name} base driver kapanisi nedeniyle durduruldu",
+        )
+
+    def _verify_pickup_load(
+        self, goal_handle, stop_sent_wall: float, overall_deadline: float
+    ):
+        """Require one post-STOP status carrying LOAD_DETECTED."""
+        feedback = LiftLoad.Feedback()
+        feedback.phase = "verifying_load"
+        feedback.position = math.nan
+        goal_handle.publish_feedback(feedback)
+        verification_deadline = min(
+            overall_deadline,
+            stop_sent_wall + self.communication_timeout,
+        )
+        while rclpy.ok() and not self._shutdown_requested.is_set():
+            if goal_handle.is_cancel_requested:
+                self._send_fork_stop()
+                goal_handle.canceled()
+                return self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_ABORTED,
+                    "pickup yuk kontrolunde iptal edildi; STOP gonderildi",
+                )
+            status_wall = self._last_status_wall
+            if status_wall is not None and status_wall > stop_sent_wall:
+                error = self._lift_hardware_error()
+                if error:
+                    self._send_fork_stop()
+                    goal_handle.abort()
+                    return self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                        f"pickup yuk kontrolu basarisiz: {error}",
+                    )
+                if p.StatusFlag.LOAD_DETECTED in self._status.flags:
+                    return None
+                goal_handle.abort()
+                return self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                    "pickup tamamlandi ancak yuk algilanmadi",
+                )
+            now = time.monotonic()
+            if now >= overall_deadline:
+                self._send_fork_stop()
+                goal_handle.abort()
+                return self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_TIMEOUT,
+                    "pickup overall timeout; STOP gonderildi",
+                )
+            if now >= verification_deadline:
+                self._send_fork_stop()
+                goal_handle.abort()
+                return self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                    "pickup STOP sonrasi fresh STM32 status gelmedi",
+                )
+            time.sleep(0.02)
+
+        self._send_fork_stop()
+        goal_handle.abort()
+        return self._lift_result(
+            False,
+            LiftLoad.Result.RESULT_ABORTED,
+            "pickup yuk kontrolu base driver kapanisi nedeniyle durdu",
+        )
+
     def _execute_lift(self, goal_handle):
-        """Run a configured fork motion and verify pickup load after STOP."""
+        """Execute the production lift/tilt sequence under one safety ceiling."""
         goal = goal_handle.request
         command_name = (
             "pickup" if goal.command == LiftLoad.Goal.COMMAND_PICKUP else "dropoff"
         )
-        fork_action = (
-            p.ForkAction.UP
-            if goal.command == LiftLoad.Goal.COMMAND_PICKUP
-            else p.ForkAction.DOWN
-        )
-        phase = "moving_up" if fork_action is p.ForkAction.UP else "moving_down"
-
         try:
             error = self._lift_goal_error(goal) or self._lift_hardware_error()
             if error:
@@ -764,170 +932,59 @@ class BaseDriver(Node):
                     False, LiftLoad.Result.RESULT_HARDWARE_FAULT, error
                 )
 
-            movement_duration, _ = self._lift_movement_duration(goal.command)
-            started = time.monotonic()
-            movement_deadline = started + movement_duration
-            overall_deadline = started + float(goal.timeout)
-            next_refresh = 0.0
+            durations = dict(self._lift_phase_durations(goal.command))
+            overall_deadline = time.monotonic() + float(goal.timeout)
+            if goal.command == LiftLoad.Goal.COMMAND_PICKUP:
+                stop_wall, failure = self._run_fork_phase(
+                    goal_handle,
+                    p.ForkAction.UP,
+                    durations["lift_pickup_duration_s"],
+                    "moving_up",
+                    overall_deadline,
+                    command_name,
+                )
+                if failure is not None:
+                    return failure
+                failure = self._verify_pickup_load(
+                    goal_handle, stop_wall, overall_deadline
+                )
+                if failure is not None:
+                    return failure
+                _, failure = self._run_fork_phase(
+                    goal_handle,
+                    p.ForkAction.TILT_UP,
+                    durations["tilt_pickup_duration_s"],
+                    "tilting_up",
+                    overall_deadline,
+                    command_name,
+                )
+            else:
+                _, failure = self._run_fork_phase(
+                    goal_handle,
+                    p.ForkAction.TILT_DOWN,
+                    durations["tilt_dropoff_duration_s"],
+                    "tilting_down",
+                    overall_deadline,
+                    command_name,
+                )
+                if failure is not None:
+                    return failure
+                _, failure = self._run_fork_phase(
+                    goal_handle,
+                    p.ForkAction.DOWN,
+                    durations["lift_dropoff_duration_s"],
+                    "moving_down",
+                    overall_deadline,
+                    command_name,
+                )
+            if failure is not None:
+                return failure
 
-            while rclpy.ok() and not self._shutdown_requested.is_set():
-                if goal_handle.is_cancel_requested:
-                    self._send_fork_stop()
-                    goal_handle.canceled()
-                    return self._lift_result(
-                        False,
-                        LiftLoad.Result.RESULT_ABORTED,
-                        f"{command_name} operator tarafindan iptal edildi; STOP gonderildi",
-                    )
-
-                error = self._lift_hardware_error()
-                if error:
-                    self._send_fork_stop()
-                    goal_handle.abort()
-                    return self._lift_result(
-                        False,
-                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                        f"{command_name} guvenli durduruldu: {error}",
-                    )
-
-                now = time.monotonic()
-                if now >= overall_deadline:
-                    self._send_fork_stop()
-                    goal_handle.abort()
-                    return self._lift_result(
-                        False,
-                        LiftLoad.Result.RESULT_TIMEOUT,
-                        f"{command_name} overall timeout; STOP gonderildi",
-                    )
-
-                if now >= movement_deadline:
-                    if not self._send_fork_stop():
-                        goal_handle.abort()
-                        return self._lift_result(
-                            False,
-                            LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                            f"{command_name} hareketi bitti ancak STOP gonderilemedi",
-                        )
-                    stop_sent_wall = time.monotonic()
-                    if stop_sent_wall >= overall_deadline:
-                        goal_handle.abort()
-                        return self._lift_result(
-                            False,
-                            LiftLoad.Result.RESULT_TIMEOUT,
-                            f"{command_name} overall timeout; STOP gonderildi",
-                        )
-                    if fork_action is p.ForkAction.DOWN:
-                        goal_handle.succeed()
-                        return self._lift_result(
-                            True,
-                            LiftLoad.Result.RESULT_OK,
-                            "dropoff hareket suresi tamamlandi; STOP gonderildi",
-                        )
-
-                    feedback = LiftLoad.Feedback()
-                    feedback.phase = "verifying_load"
-                    feedback.position = math.nan
-                    goal_handle.publish_feedback(feedback)
-                    verification_deadline = min(
-                        overall_deadline,
-                        stop_sent_wall + self.communication_timeout,
-                    )
-                    while rclpy.ok() and not self._shutdown_requested.is_set():
-                        if goal_handle.is_cancel_requested:
-                            self._send_fork_stop()
-                            goal_handle.canceled()
-                            return self._lift_result(
-                                False,
-                                LiftLoad.Result.RESULT_ABORTED,
-                                "pickup yuk kontrolunde iptal edildi; STOP gonderildi",
-                            )
-                        status_wall = self._last_status_wall
-                        if (
-                            status_wall is not None
-                            and status_wall > stop_sent_wall
-                        ):
-                            error = self._lift_hardware_error()
-                            if error:
-                                self._send_fork_stop()
-                                goal_handle.abort()
-                                return self._lift_result(
-                                    False,
-                                    LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                                    f"pickup yuk kontrolu basarisiz: {error}",
-                                )
-                            if p.StatusFlag.LOAD_DETECTED in self._status.flags:
-                                goal_handle.succeed()
-                                return self._lift_result(
-                                    True,
-                                    LiftLoad.Result.RESULT_OK,
-                                    "pickup STOP sonrasi fresh status ile yuk algilandi",
-                                )
-                            goal_handle.abort()
-                            return self._lift_result(
-                                False,
-                                LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                                "pickup tamamlandi ancak yuk algilanmadi",
-                            )
-                        verify_now = time.monotonic()
-                        if verify_now >= overall_deadline:
-                            self._send_fork_stop()
-                            goal_handle.abort()
-                            return self._lift_result(
-                                False,
-                                LiftLoad.Result.RESULT_TIMEOUT,
-                                "pickup overall timeout; STOP gonderildi",
-                            )
-                        if verify_now >= verification_deadline:
-                            self._send_fork_stop()
-                            goal_handle.abort()
-                            return self._lift_result(
-                                False,
-                                LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                                "pickup STOP sonrasi fresh STM32 status gelmedi",
-                            )
-                        time.sleep(0.02)
-
-                    self._send_fork_stop()
-                    goal_handle.abort()
-                    return self._lift_result(
-                        False,
-                        LiftLoad.Result.RESULT_ABORTED,
-                        "pickup yuk kontrolu base driver kapanisi nedeniyle durdu",
-                    )
-
-                if now >= next_refresh:
-                    remaining_ms = max(
-                        1,
-                        int(math.ceil((movement_deadline - now) * 1000.0)),
-                    )
-                    lease_ms = min(FORK_COMMAND_LEASE_MS, remaining_ms)
-                    try:
-                        self._write_transport(p.encode_fork(fork_action, lease_ms))
-                    except (OSError, ValueError) as exc:
-                        self._mark_communication_lost(
-                            f"fork {command_name} komutu gonderilemedi: {exc}"
-                        )
-                        self._send_fork_stop()
-                        goal_handle.abort()
-                        return self._lift_result(
-                            False,
-                            LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                            f"{command_name} UART yazma hatasi: {exc}",
-                        )
-                    next_refresh = now + FORK_COMMAND_REFRESH_PERIOD
-
-                feedback = LiftLoad.Feedback()
-                feedback.phase = phase
-                feedback.position = math.nan
-                goal_handle.publish_feedback(feedback)
-                time.sleep(0.02)
-
-            self._send_fork_stop()
-            goal_handle.abort()
+            goal_handle.succeed()
             return self._lift_result(
-                False,
-                LiftLoad.Result.RESULT_ABORTED,
-                f"{command_name} base driver kapanisi nedeniyle durduruldu",
+                True,
+                LiftLoad.Result.RESULT_OK,
+                f"{command_name} lift/tilt sirasi tamamlandi; STOP gonderildi",
             )
         except Exception as exc:
             self._send_fork_stop()

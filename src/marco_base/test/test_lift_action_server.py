@@ -81,6 +81,14 @@ def _fork_actions(transport):
     return [record[1] for record in _fork_records(transport)]
 
 
+def _collapsed_fork_actions(transport):
+    collapsed = []
+    for action in _fork_actions(transport):
+        if not collapsed or action is not collapsed[-1]:
+            collapsed.append(action)
+    return collapsed
+
+
 def _healthy(node, flags=p.StatusFlag(0)):
     now = time.monotonic()
     node._status = _status(flags)
@@ -93,7 +101,14 @@ def make_node():
     rclpy.init()
     nodes = []
 
-    def factory(*, pickup=0.04, dropoff=0.04, communication=0.2):
+    def factory(
+        *,
+        pickup=0.04,
+        dropoff=0.04,
+        tilt_pickup=0.04,
+        tilt_dropoff=0.04,
+        communication=0.2,
+    ):
         node = BaseDriver(parameter_overrides=[
             Parameter("use_fake_hardware", value=True),
             Parameter("wheel_measurement_log_enabled", value=False),
@@ -101,6 +116,8 @@ def make_node():
             Parameter("communication_timeout", value=communication),
             Parameter("lift_pickup_duration_s", value=pickup),
             Parameter("lift_dropoff_duration_s", value=dropoff),
+            Parameter("tilt_pickup_duration_s", value=tilt_pickup),
+            Parameter("tilt_dropoff_duration_s", value=tilt_dropoff),
         ])
         node._transport = RecordingTransport()
         nodes.append(node)
@@ -134,6 +151,23 @@ def test_load_detected_flag_round_trips_without_layout_change():
     assert p.StatusFlag.LIMIT_SWITCH_UP in decoded.flags
 
 
+def test_fork_action_wire_values_are_stable_and_extended():
+    expected = (
+        (p.ForkAction.STOP, 0),
+        (p.ForkAction.UP, 1),
+        (p.ForkAction.DOWN, 2),
+        (p.ForkAction.TILT_UP, 3),
+        (p.ForkAction.TILT_DOWN, 4),
+    )
+    for action, wire_value in expected:
+        encoded = p.encode_fork(action, timeout_ms=500)
+        _, payload = list(p.FrameParser().feed(encoded))[0]
+        decoded, timeout_ms = p.decode_fork(payload)
+        assert int(action) == wire_value
+        assert decoded is action
+        assert timeout_ms == 500
+
+
 def test_communication_loss_estop_and_manual_reject_new_goal(make_node):
     node = make_node()
 
@@ -153,7 +187,7 @@ def test_duplicate_goal_is_rejected(make_node):
     node._lift_goal_active = False
 
 
-def test_pickup_runs_for_duration_refreshes_up_then_stops_and_succeeds(make_node):
+def test_pickup_runs_lift_then_fresh_load_then_tilt_and_succeeds(make_node):
     duration = 0.23
     node = make_node(pickup=duration, communication=0.5)
     _healthy(node)
@@ -170,11 +204,18 @@ def test_pickup_runs_for_duration_refreshes_up_then_stops_and_succeeds(make_node
     assert len(up_records) >= 2
     assert first_stop[0] - up_records[0][0] >= duration - 0.01
     assert all(0 < item[2] <= 500 for item in up_records)
+    assert _collapsed_fork_actions(node._transport) == [
+        p.ForkAction.UP,
+        p.ForkAction.STOP,
+        p.ForkAction.TILT_UP,
+        p.ForkAction.STOP,
+    ]
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
     assert handle.terminal == "succeeded"
     assert result.success
     assert result.result_code == LiftLoad.Result.RESULT_OK
-    assert [feedback.phase for feedback in handle.feedback][-1] == "verifying_load"
+    assert "verifying_load" in [item.phase for item in handle.feedback]
+    assert [feedback.phase for feedback in handle.feedback][-1] == "tilting_up"
     assert all(math.isnan(feedback.position) for feedback in handle.feedback)
 
 
@@ -216,6 +257,7 @@ def test_pickup_fresh_status_without_load_aborts(make_node):
     assert not result.success
     assert result.result_code == LiftLoad.Result.RESULT_HARDWARE_FAULT
     assert result.message == "pickup tamamlandi ancak yuk algilanmadi"
+    assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 
@@ -230,6 +272,7 @@ def test_stale_preexisting_load_cannot_succeed(make_node):
     assert not result.success
     assert result.result_code == LiftLoad.Result.RESULT_HARDWARE_FAULT
     assert "fresh STM32 status gelmedi" in result.message
+    assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 
@@ -251,6 +294,12 @@ def test_dropoff_stops_after_duration_and_ignores_load_switch(make_node, flags):
     actions = _fork_actions(node._transport)
     assert time.monotonic() - started >= duration - 0.01
     assert p.ForkAction.DOWN in actions
+    assert _collapsed_fork_actions(node._transport) == [
+        p.ForkAction.TILT_DOWN,
+        p.ForkAction.STOP,
+        p.ForkAction.DOWN,
+        p.ForkAction.STOP,
+    ]
     assert actions[-1] is p.ForkAction.STOP
     assert handle.terminal == "succeeded"
     assert result.success
@@ -277,21 +326,24 @@ def test_unconfigured_duration_rejects_without_motion(
     assert handle.terminal == "aborted"
     assert result.message == f"{parameter_name} yapılandırılmamış"
     assert not any(
-        action in (p.ForkAction.UP, p.ForkAction.DOWN)
+        action is not p.ForkAction.STOP
         for action in _fork_actions(node._transport)
     )
 
 
 @pytest.mark.parametrize("duration", (math.nan, math.inf, -0.1))
-def test_nonfinite_or_negative_duration_is_rejected(make_node, duration):
-    node = make_node(pickup=duration)
+@pytest.mark.parametrize("parameter_name", ("pickup", "tilt_pickup"))
+def test_nonfinite_or_negative_duration_is_rejected(
+    make_node, duration, parameter_name
+):
+    node = make_node(**{parameter_name: duration})
     _healthy(node)
 
     assert node._lift_goal_callback(_goal()) == GoalResponse.REJECT
 
 
 def test_duration_must_be_less_than_overall_timeout(make_node):
-    node = make_node(pickup=0.1)
+    node = make_node(pickup=0.06, tilt_pickup=0.04)
     _healthy(node)
     goal = _goal(timeout=0.1)
 
@@ -299,7 +351,7 @@ def test_duration_must_be_less_than_overall_timeout(make_node):
     handle = FakeGoalHandle(goal)
     result = node._execute_lift(handle)
     assert handle.terminal == "aborted"
-    assert "goal.timeout degerinden kucuk olmali" in result.message
+    assert "toplam hareket suresi goal.timeout" in result.message
     assert p.ForkAction.UP not in _fork_actions(node._transport)
 
 
@@ -320,29 +372,63 @@ def test_cancel_sends_stop(make_node):
     assert actions[-1] is p.ForkAction.STOP
 
 
-def test_estop_during_motion_aborts_and_sends_stop(make_node):
-    node = make_node(pickup=0.1)
+def test_cancel_during_tilt_phase_sends_stop(make_node):
+    node = make_node()
     _healthy(node)
     handle = FakeGoalHandle(_goal())
-    handle.on_feedback = lambda: _healthy(node, p.StatusFlag.ESTOP_ACTIVE)
+
+    def cancel_during_tilt():
+        phase = handle.feedback[-1].phase
+        if phase == "verifying_load":
+            _healthy(node, p.StatusFlag.LOAD_DETECTED)
+        elif phase == "tilting_up":
+            handle.is_cancel_requested = True
+
+    handle.on_feedback = cancel_during_tilt
+    result = node._execute_lift(handle)
+
+    assert handle.terminal == "canceled"
+    assert not result.success
+    assert p.ForkAction.TILT_UP in _fork_actions(node._transport)
+    assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
+
+
+def test_estop_during_tilt_phase_aborts_and_sends_stop(make_node):
+    node = make_node()
+    _healthy(node)
+    handle = FakeGoalHandle(_goal())
+
+    def estop_during_tilt():
+        phase = handle.feedback[-1].phase
+        if phase == "verifying_load":
+            _healthy(node, p.StatusFlag.LOAD_DETECTED)
+        elif phase == "tilting_up":
+            _healthy(node, p.StatusFlag.ESTOP_ACTIVE)
+
+    handle.on_feedback = estop_during_tilt
 
     result = node._execute_lift(handle)
 
     assert handle.terminal == "aborted"
     assert not result.success
     assert "e-stop" in result.message
+    assert p.ForkAction.TILT_UP in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 
-def test_communication_loss_during_motion_aborts_and_sends_stop(make_node):
-    node = make_node(pickup=0.1, communication=0.05)
+def test_communication_loss_during_tilt_aborts_and_sends_stop(make_node):
+    node = make_node(communication=0.1)
     _healthy(node)
     handle = FakeGoalHandle(_goal())
 
     def lose_communication():
-        stale = time.monotonic() - node.communication_timeout - 0.01
-        node._last_valid_frame_wall = stale
-        node._last_status_wall = stale
+        phase = handle.feedback[-1].phase
+        if phase == "verifying_load":
+            _healthy(node, p.StatusFlag.LOAD_DETECTED)
+        elif phase == "tilting_up":
+            stale = time.monotonic() - node.communication_timeout - 0.01
+            node._last_valid_frame_wall = stale
+            node._last_status_wall = stale
 
     handle.on_feedback = lose_communication
     result = node._execute_lift(handle)
@@ -350,18 +436,27 @@ def test_communication_loss_during_motion_aborts_and_sends_stop(make_node):
     assert handle.terminal == "aborted"
     assert not result.success
     assert "iletisimi yok veya bayat" in result.message
+    assert p.ForkAction.TILT_UP in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 
-def test_overall_timeout_during_load_verification_sends_stop(make_node):
+def test_overall_timeout_during_tilt_sends_stop(make_node):
     node = make_node(pickup=0.04, communication=0.2)
     _healthy(node)
-    handle = FakeGoalHandle(_goal(timeout=0.05))
+    handle = FakeGoalHandle(_goal(timeout=0.1))
+
+    def delayed_load_verification():
+        if handle.feedback[-1].phase == "verifying_load":
+            time.sleep(0.04)
+            _healthy(node, p.StatusFlag.LOAD_DETECTED)
+
+    handle.on_feedback = delayed_load_verification
 
     result = node._execute_lift(handle)
 
     assert handle.terminal == "aborted"
     assert result.result_code == LiftLoad.Result.RESULT_TIMEOUT
+    assert p.ForkAction.TILT_UP in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 
@@ -385,3 +480,4 @@ def test_limit_switch_flags_do_not_complete_pickup(make_node, flags):
     assert not result.success
     assert result.message == "pickup tamamlandi ancak yuk algilanmadi"
     assert p.ForkAction.UP in _fork_actions(node._transport)
+    assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)

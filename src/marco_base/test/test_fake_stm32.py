@@ -267,3 +267,18 @@ def test_catal_komutu_durum_bildirir():
     status = [p.decode_status(payload) for mid, payload in frames if mid is p.MsgId.STATE_STATUS]
     assert status[-1].fork_state == 2
     assert p.StatusFlag.LIMIT_SWITCH_UP in status[-1].flags
+
+
+def test_fake_stm32_tilt_komutlarini_ve_stopu_anlar():
+    fake = make_fake()
+
+    fake.write(p.encode_fork(p.ForkAction.TILT_UP, timeout_ms=500))
+    assert fake.tilt_state == 2
+    assert fake.fork_action is p.ForkAction.TILT_UP
+
+    fake.write(p.encode_fork(p.ForkAction.TILT_DOWN, timeout_ms=500))
+    assert fake.tilt_state == 0
+    assert fake.fork_action is p.ForkAction.TILT_DOWN
+
+    fake.write(p.encode_fork(p.ForkAction.STOP, timeout_ms=0))
+    assert fake.fork_action is p.ForkAction.STOP
