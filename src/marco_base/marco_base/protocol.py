@@ -41,6 +41,7 @@ class StatusFlag(IntFlag):
     WATCHDOG_TRIGGERED = 1 << 6
     CMD_CLAMPED = 1 << 7
     ENCODER_FAULT = 1 << 8
+    LOAD_DETECTED = 1 << 9
 
 
 class ForkAction(IntEnum):
