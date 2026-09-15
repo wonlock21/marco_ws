@@ -2648,8 +2648,11 @@ class MissionManager(Node):
             raise MissionAbort(
                 'manevra sirasinda filtreli odometri bayat/kayip'
             )
-        if not self._localization_health().valid:
-            raise MissionAbort('manevra sirasinda lokalizasyon/TF gecersiz')
+        health = self._localization_health()
+        if not health.valid:
+            raise MissionAbort(
+                f'manevra sirasinda lokalizasyon/TF gecersiz: {health.reason}'
+            )
 
     def _route_guard_abort_for_action(
         self, label: str, action_started_wall: float

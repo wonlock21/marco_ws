@@ -232,10 +232,10 @@ class BaseDriver(Node):
         self.declare_parameter("baudrate", 115200)
         self.declare_parameter("use_fake_hardware", False)
 
-        # properties.xacro ile ayni degerler. Ikisi ayrisirsa odometri ile
-        # TF agaci celisir; degistirirken her ikisi birlikte guncellenmeli.
-        self.declare_parameter("wheel_radius", 0.125)
-        self.declare_parameter("wheel_separation", 0.440)
+        # Etkin yaricap properties.xacro ile ayni tutulur. Etkin odometri
+        # araligi ise URDF'deki fiziksel teker merkez araligindan farklidir.
+        self.declare_parameter("wheel_radius", 0.1177)
+        self.declare_parameter("wheel_separation", 0.423)
         self.declare_parameter("ticks_per_revolution", 360)
         self.declare_parameter("max_wheel_speed", 0.838)
         # Gecici saha kalibrasyonu icin komut RPM carpani. Normal kullanimda

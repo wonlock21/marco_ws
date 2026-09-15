@@ -358,6 +358,20 @@ class LocalizationManager(Node):
             return response
 
         try:
+            active = FieldStore(self._data_root()).read_active()
+        except StoreError as error:
+            response.accepted = False
+            response.message = f"Aktif saha okunamadi: {error}"
+            return response
+        if active and active.get("field_name") != field_name:
+            response.accepted = False
+            response.message = (
+                f"Aktif saha '{active.get('field_name')}' iken "
+                f"'{field_name}' haritasinda lokalizasyon baslatilamaz"
+            )
+            return response
+
+        try:
             map_yaml = self._validate_map(field_name)
             saved_pose = self._load_saved_pose(map_yaml.parent)
         except ValueError as error:

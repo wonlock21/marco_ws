@@ -20,7 +20,7 @@ from marco_msgs.msg import (
     FieldPackageStatus,
     StationApproachConfig,
 )
-from marco_msgs.msg import MappingStatus, RobotStatus
+from marco_msgs.msg import LocalizationStatus, MappingStatus, RobotStatus
 from marco_msgs.srv import (
     ActivateField,
     ArchiveField,
@@ -90,6 +90,7 @@ class RouteEditorNode(Node):
         self._mission_state = RobotStatus.STATE_IDLE
         self._robot_status_seen = False
         self._mapping_state = MappingStatus.STATE_IDLE
+        self._localization_status: LocalizationStatus | None = None
         self._linear_speed = 0.0
         self._angular_speed = 0.0
         self._estop_active = False
@@ -136,6 +137,13 @@ class RouteEditorNode(Node):
             callback_group=self._client_callbacks,
         )
         self.create_subscription(
+            LocalizationStatus,
+            "/localization/status",
+            self._on_localization_status,
+            latched,
+            callback_group=self._client_callbacks,
+        )
+        self.create_subscription(
             Odometry,
             "/odom",
             self._on_odom,
@@ -162,6 +170,11 @@ class RouteEditorNode(Node):
         self._map_parameters = self.create_client(
             SetParameters,
             "/map_server/set_parameters",
+            callback_group=self._client_callbacks,
+        )
+        self._map_parameters_get = self.create_client(
+            GetParameters,
+            "/map_server/get_parameters",
             callback_group=self._client_callbacks,
         )
         self._route_parameters_get = self.create_client(
@@ -273,6 +286,41 @@ class RouteEditorNode(Node):
     def _publish_safe_stop(self) -> None:
         for publisher in self._stop_publishers:
             publisher.publish(Twist())
+
+    def _on_localization_status(self, message: LocalizationStatus) -> None:
+        self._localization_status = message
+
+    def _require_matching_localization(self, field_name: str) -> None:
+        status = self._localization_status
+        if (
+            status is None
+            or status.state != LocalizationStatus.STATE_LOCALIZING
+            or status.process_id <= 0
+        ):
+            raise StoreError(
+                "field activation requires an active localization session"
+            )
+        expected_map = os.path.realpath(
+            str(self._store.field_directory(field_name) / "map.yaml")
+        )
+        if (
+            status.field_name != field_name
+            or os.path.realpath(status.map_yaml) != expected_map
+        ):
+            raise StoreError(
+                f"field '{field_name}' cannot be activated: localization "
+                f"is running on '{status.field_name}' ({status.map_yaml})"
+            )
+        if not self._map_parameters_get.wait_for_service(timeout_sec=0.15):
+            raise StoreError("map_server is unavailable; loaded map cannot be verified")
+        loaded_map = self._runtime_parameter(
+            self._map_parameters_get, "yaml_filename"
+        )
+        if loaded_map != expected_map:
+            raise StoreError(
+                f"field '{field_name}' cannot be activated: map_server "
+                f"loaded {loaded_map}, expected {expected_map}"
+            )
 
     def _ensure_activation_safe(self, require_robot_status: bool = False) -> None:
         runtime_present = any(
@@ -1362,6 +1410,7 @@ class RouteEditorNode(Node):
                     raise StoreError(
                         "current package must have a matching successful validation"
                     )
+                self._require_matching_localization(request.field_name)
                 # Mission consumers see inactive while the controlled runtime
                 # restart is in progress.  The active=true publication happens
                 # only after both graph users and DynamicEdges are verified.

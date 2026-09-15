@@ -10,3 +10,10 @@ scan_to_scan_filter_chain:
         max_range: 12.0
         max_range_difference: 0.15
         filter_window: 2
+    filter2:
+      name: chassis_angular_mask
+      type: laser_filters/LaserScanAngularBoundsFilterInPlace
+      params:
+        lower_angle: -0.9599310886
+        upper_angle: 0.9599310886
+        replace_with_nan: true

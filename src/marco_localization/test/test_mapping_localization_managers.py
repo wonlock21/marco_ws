@@ -226,3 +226,22 @@ def test_localization_rejects_active_mapping():
 
     assert response.accepted is False
     assert "Haritalama calisirken" in response.message
+
+
+def test_localization_rejects_map_different_from_active_field(tmp_path):
+    (tmp_path / "active.yaml").write_text(
+        json.dumps({"field_name": "saha_01"}), encoding="utf-8"
+    )
+    manager = SimpleNamespace(
+        _process=None,
+        _mapping_state=MappingStatus.STATE_IDLE,
+        _slam_toolbox_is_running=lambda: False,
+        _data_root=lambda: tmp_path,
+    )
+    request = SimpleNamespace(field_name="saha_02")
+    response = SimpleNamespace(accepted=None, message="", map_yaml="")
+
+    localization.LocalizationManager._on_start(manager, request, response)
+
+    assert response.accepted is False
+    assert "Aktif saha 'saha_01'" in response.message

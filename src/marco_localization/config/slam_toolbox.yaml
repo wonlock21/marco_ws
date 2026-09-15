@@ -65,7 +65,7 @@ slam_toolbox:
     use_scan_matching: true
     use_scan_barycenter: true
     minimum_travel_distance: 0.25
-    minimum_travel_heading: 0.35
+    minimum_travel_heading: 0.10
     scan_buffer_size: 10
     # Isin menzili degil, buffer'daki tarama POZLARI arasindaki mesafe siniri.
     # Bu nedenle max_laser_range ile ayni olmak zorunda degildir.

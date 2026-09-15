@@ -33,7 +33,7 @@ def generate_launch_description():
         name='self_scan_filter',
         output='screen',
 	parameters=[{
-        'blocked_regions_deg': [-70.0, 70.0],
+        'blocked_regions_deg': [-55.0, 55.0],
     }],
     )
 

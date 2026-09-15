@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from marco_msgs.msg import MappingStatus, RobotStatus
+from marco_msgs.msg import LocalizationStatus, MappingStatus, RobotStatus
 from marco_route.field_store import StoreError
 from marco_route.graph_model import EdgeData, FieldGraph, NodeData
 import marco_route.route_editor_node as route_editor_module
@@ -66,6 +66,95 @@ def test_deactivate_requires_observed_robot_status_even_without_runtime():
 
     with pytest.raises(StoreError, match="robot status is available"):
         editor._ensure_activation_safe(require_robot_status=True)
+
+
+def test_activation_rejects_different_localization_field(tmp_path):
+    editor = _editor()
+    editor._store = SimpleNamespace(
+        field_directory=lambda name: tmp_path / name
+    )
+    editor._map_parameters_get = _Client(ready=True)
+    editor._localization_status = LocalizationStatus()
+    editor._localization_status.state = LocalizationStatus.STATE_LOCALIZING
+    editor._localization_status.process_id = 123
+    editor._localization_status.field_name = "saha_01"
+    editor._localization_status.map_yaml = str(tmp_path / "saha_01" / "map.yaml")
+
+    with pytest.raises(StoreError, match="localization is running on 'saha_01'"):
+        editor._require_matching_localization("saha_02")
+
+
+def test_activation_requires_verified_matching_loaded_map(tmp_path):
+    editor = _editor()
+    editor._store = SimpleNamespace(
+        field_directory=lambda name: tmp_path / name
+    )
+    editor._map_parameters_get = _Client(ready=True)
+    status = LocalizationStatus()
+    status.state = LocalizationStatus.STATE_LOCALIZING
+    status.process_id = 123
+    status.field_name = "saha_02"
+    status.map_yaml = str(tmp_path / "saha_02" / "map.yaml")
+    editor._localization_status = status
+    editor._runtime_parameter = lambda _client, _name: str(
+        tmp_path / "saha_01" / "map.yaml"
+    )
+
+    with pytest.raises(StoreError, match="map_server loaded"):
+        editor._require_matching_localization("saha_02")
+
+    editor._runtime_parameter = lambda _client, _name: str(
+        tmp_path / "saha_02" / "map.yaml"
+    )
+    editor._require_matching_localization("saha_02")
+
+
+def test_activation_rejects_missing_or_inactive_localization():
+    editor = _editor()
+    editor._localization_status = None
+    with pytest.raises(StoreError, match="active localization session"):
+        editor._require_matching_localization("saha_01")
+
+    editor._localization_status = LocalizationStatus()
+    editor._localization_status.state = LocalizationStatus.STATE_IDLE
+    with pytest.raises(StoreError, match="active localization session"):
+        editor._require_matching_localization("saha_01")
+
+
+def test_wrong_map_activation_does_not_switch_runtime(tmp_path):
+    editor = _editor()
+    editor._operation_lock = threading.RLock()
+    editor._ensure_activation_safe = lambda: None
+    editor._validate = lambda _name: (
+        None, SimpleNamespace(valid=True), "validated-hash"
+    )
+    editor._status_message = lambda *_args: SimpleNamespace()
+    editor.get_parameter = lambda _name: SimpleNamespace(value=True)
+    editor._store = SimpleNamespace(
+        field_directory=lambda name: tmp_path / name,
+        read_validation=lambda _name: {
+            "package_hash": "validated-hash",
+            "valid": True,
+            "competition_profile": True,
+        },
+    )
+    status = LocalizationStatus()
+    status.state = LocalizationStatus.STATE_LOCALIZING
+    status.process_id = 123
+    status.field_name = "saha_01"
+    status.map_yaml = str(tmp_path / "saha_01" / "map.yaml")
+    editor._localization_status = status
+    switched = []
+    editor._transition_runtime = lambda *args: switched.append(args)
+
+    response = editor._on_activate(
+        SimpleNamespace(field_name="saha_02", expected_hash=""),
+        SimpleNamespace(),
+    )
+
+    assert response.success is False
+    assert "localization is running on 'saha_01'" in response.message
+    assert switched == []
 
 
 def test_runtime_command_match_requires_exact_launcher_and_graph():

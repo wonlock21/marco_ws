@@ -466,7 +466,7 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_lookahead_y', 160)
         self.declare_parameter('lane_lookahead_band_half_height', 5)
         self.declare_parameter('lane_min_wheel_speed', 0.055)
-        self.declare_parameter('wheel_separation', 0.440)
+        self.declare_parameter('wheel_separation', 0.423)
         self.declare_parameter('max_angular_speed', 0.075)
 
     def _configure_gpu(self):
