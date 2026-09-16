@@ -95,6 +95,12 @@ def schedule_lane_linear_speed(
     return cruise - (cruise - minimum) * turn_ratio
 
 
+def lane_motion_speed(speed, reverse_motion=False):
+    """Serit takip hizini kamera/mekanik hareket yonune uygula."""
+    magnitude = abs(float(speed))
+    return -magnitude if reverse_motion else magnitude
+
+
 def lane_tracking_demand(
         position_error, heading_error, position_gain, heading_gain,
         control_error):
@@ -242,6 +248,8 @@ class ImgProcessNode(Node):
             self.get_parameter('lane_linear_speed').value)
         self.lane_min_linear_speed = float(
             self.get_parameter('lane_min_linear_speed').value)
+        self.lane_reverse_motion = bool(
+            self.get_parameter('lane_reverse_motion').value)
         self.lane_steering_alpha = float(
             self.get_parameter('lane_steering_alpha').value)
         self.lane_steering_release_alpha = float(
@@ -431,6 +439,7 @@ class ImgProcessNode(Node):
         self.declare_parameter('kp_lane', 0.00030)
         self.declare_parameter('lane_linear_speed', 0.067)
         self.declare_parameter('lane_min_linear_speed', 0.016)
+        self.declare_parameter('lane_reverse_motion', False)
         self.declare_parameter('lane_steering_alpha', 0.25)
         self.declare_parameter('lane_steering_release_alpha', 0.60)
         self.declare_parameter('lane_center_deadband_ratio', 0.01)
@@ -466,7 +475,7 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_lookahead_y', 160)
         self.declare_parameter('lane_lookahead_band_half_height', 5)
         self.declare_parameter('lane_min_wheel_speed', 0.055)
-        self.declare_parameter('wheel_separation', 0.423)
+        self.declare_parameter('wheel_separation', 0.460)
         self.declare_parameter('max_angular_speed', 0.075)
 
     def _configure_gpu(self):
@@ -688,12 +697,14 @@ class ImgProcessNode(Node):
             speed_demand * self.max_angular_speed,
             self.max_angular_speed,
         )
+        command_linear = lane_motion_speed(
+            linear_speed, self.lane_reverse_motion)
         half_track = self.wheel_separation * 0.5
-        left_target = linear_speed - angular * half_track
-        right_target = linear_speed + angular * half_track
-        self.publish_movement(linear_speed, angular)
+        left_target = command_linear - angular * half_track
+        right_target = command_linear + angular * half_track
+        self.publish_movement(command_linear, angular)
         self.lane_missed_frames = 0
-        self.last_lane_command = (linear_speed, angular)
+        self.last_lane_command = (command_linear, angular)
         self.get_logger().info(
             f'[SERIT PD] lookahead_hata={error:+.1f}px '
             f'({position_error:+.1%}) | egim={heading_error:+.1%} | '
@@ -703,7 +714,7 @@ class ImgProcessNode(Node):
             f'D={self.pd_kd * derivative:+.4f} | '
             f'hiz_talebi={speed_demand:.1%} | '
             f'hedef_w={target_angular:+.3f} filtre_w={angular:+.3f} | '
-            f'cmd_vel: v={linear_speed:.3f} w={angular:+.3f} rad/s | '
+            f'cmd_vel: v={command_linear:.3f} w={angular:+.3f} rad/s | '
             f'teker hedef sol={left_target * 1000.0:+.0f} '
             f'sag={right_target * 1000.0:+.0f} mm/s',
             throttle_duration_sec=0.5)
@@ -759,15 +770,17 @@ class ImgProcessNode(Node):
         linear_speed = enforce_minimum_wheel_speed(
             linear_speed, self.filtered_lane_angular,
             self.wheel_separation, self.lane_min_wheel_speed)
+        command_linear = lane_motion_speed(
+            linear_speed, self.lane_reverse_motion)
         half_track = self.wheel_separation * 0.5
-        left_target = linear_speed - (
+        left_target = command_linear - (
             self.filtered_lane_angular * half_track)
-        right_target = linear_speed + (
+        right_target = command_linear + (
             self.filtered_lane_angular * half_track)
-        self.publish_movement(linear_speed, self.filtered_lane_angular)
+        self.publish_movement(command_linear, self.filtered_lane_angular)
         self.lane_missed_frames = 0
         self.last_lane_command = (
-            float(linear_speed), float(self.filtered_lane_angular))
+            float(command_linear), float(self.filtered_lane_angular))
         self.get_logger().info(
             f'[SERIT] hata={error:+.1f} px ({normalized_error:+.1%}) | '
             f'mod={control_mode} | '
@@ -777,7 +790,7 @@ class ImgProcessNode(Node):
             f'hedef_w={target_angular:+.3f} rad/s | '
             f'filtre_w={self.filtered_lane_angular:+.3f} rad/s '
             f'(alpha={self.lane_steering_alpha:.2f}) | '
-            f'cmd_vel: v={linear_speed:.3f} m/s '
+            f'cmd_vel: v={command_linear:.3f} m/s '
             f'w={self.filtered_lane_angular:+.3f} rad/s | '
             f'teker hedef sol={left_target * 1000.0:+.0f} '
             f'sag={right_target * 1000.0:+.0f} mm/s',

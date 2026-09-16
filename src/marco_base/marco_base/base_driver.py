@@ -130,12 +130,6 @@ class BaseDriver(Node):
         self.lift_dropoff_duration_s = float(
             self.get_parameter("lift_dropoff_duration_s").value
         )
-        self.tilt_pickup_duration_s = float(
-            self.get_parameter("tilt_pickup_duration_s").value
-        )
-        self.tilt_dropoff_duration_s = float(
-            self.get_parameter("tilt_dropoff_duration_s").value
-        )
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
         self.publish_tf = self.get_parameter("publish_tf").value
@@ -244,10 +238,9 @@ class BaseDriver(Node):
         self.declare_parameter("baudrate", 115200)
         self.declare_parameter("use_fake_hardware", False)
 
-        # Etkin yaricap properties.xacro ile ayni tutulur. Etkin odometri
-        # araligi ise URDF'deki fiziksel teker merkez araligindan farklidir.
-        self.declare_parameter("wheel_radius", 0.1177)
-        self.declare_parameter("wheel_separation", 0.423)
+        # Teker yaricapi ve araligi properties.xacro ile ayni tutulur.
+        self.declare_parameter("wheel_radius", 0.125)
+        self.declare_parameter("wheel_separation", 0.460)
         self.declare_parameter("ticks_per_revolution", 360)
         self.declare_parameter("max_wheel_speed", 0.838)
         # Gecici saha kalibrasyonu icin komut RPM carpani. Normal kullanimda
@@ -267,8 +260,6 @@ class BaseDriver(Node):
         self.declare_parameter("lift_action_server_enabled", True)
         self.declare_parameter("lift_pickup_duration_s", 0.0)
         self.declare_parameter("lift_dropoff_duration_s", 0.0)
-        self.declare_parameter("tilt_pickup_duration_s", 0.0)
-        self.declare_parameter("tilt_dropoff_duration_s", 0.0)
 
         # STM32 encoder geri bildirimini hedef komutla birlikte kalici kaydet.
         self.declare_parameter("wheel_measurement_log_enabled", True)
@@ -693,14 +684,8 @@ class BaseDriver(Node):
 
     def _lift_phase_durations(self, command: int):
         if command == LiftLoad.Goal.COMMAND_PICKUP:
-            return (
-                ("lift_pickup_duration_s", self.lift_pickup_duration_s),
-                ("tilt_pickup_duration_s", self.tilt_pickup_duration_s),
-            )
-        return (
-            ("tilt_dropoff_duration_s", self.tilt_dropoff_duration_s),
-            ("lift_dropoff_duration_s", self.lift_dropoff_duration_s),
-        )
+            return (("lift_pickup_duration_s", self.lift_pickup_duration_s),)
+        return (("lift_dropoff_duration_s", self.lift_dropoff_duration_s),)
 
     def _lift_goal_error(self, goal: LiftLoad.Goal) -> str:
         if goal.command not in (
@@ -872,6 +857,15 @@ class BaseDriver(Node):
                     LiftLoad.Result.RESULT_ABORTED,
                     "pickup yuk kontrolunde iptal edildi; STOP gonderildi",
                 )
+            now = time.monotonic()
+            if now >= overall_deadline:
+                self._send_fork_stop()
+                goal_handle.abort()
+                return self._lift_result(
+                    False,
+                    LiftLoad.Result.RESULT_TIMEOUT,
+                    "pickup overall timeout; STOP gonderildi",
+                )
             status_wall = self._last_status_wall
             if status_wall is not None and status_wall > stop_sent_wall:
                 error = self._lift_hardware_error()
@@ -890,15 +884,6 @@ class BaseDriver(Node):
                     False,
                     LiftLoad.Result.RESULT_HARDWARE_FAULT,
                     "pickup tamamlandi ancak yuk algilanmadi",
-                )
-            now = time.monotonic()
-            if now >= overall_deadline:
-                self._send_fork_stop()
-                goal_handle.abort()
-                return self._lift_result(
-                    False,
-                    LiftLoad.Result.RESULT_TIMEOUT,
-                    "pickup overall timeout; STOP gonderildi",
                 )
             if now >= verification_deadline:
                 self._send_fork_stop()
@@ -919,7 +904,7 @@ class BaseDriver(Node):
         )
 
     def _execute_lift(self, goal_handle):
-        """Execute the production lift/tilt sequence under one safety ceiling."""
+        """Execute the production lift sequence under one safety ceiling."""
         goal = goal_handle.request
         command_name = (
             "pickup" if goal.command == LiftLoad.Goal.COMMAND_PICKUP else "dropoff"
@@ -948,27 +933,7 @@ class BaseDriver(Node):
                 failure = self._verify_pickup_load(
                     goal_handle, stop_wall, overall_deadline
                 )
-                if failure is not None:
-                    return failure
-                _, failure = self._run_fork_phase(
-                    goal_handle,
-                    p.ForkAction.TILT_UP,
-                    durations["tilt_pickup_duration_s"],
-                    "tilting_up",
-                    overall_deadline,
-                    command_name,
-                )
             else:
-                _, failure = self._run_fork_phase(
-                    goal_handle,
-                    p.ForkAction.TILT_DOWN,
-                    durations["tilt_dropoff_duration_s"],
-                    "tilting_down",
-                    overall_deadline,
-                    command_name,
-                )
-                if failure is not None:
-                    return failure
                 _, failure = self._run_fork_phase(
                     goal_handle,
                     p.ForkAction.DOWN,
@@ -984,7 +949,7 @@ class BaseDriver(Node):
             return self._lift_result(
                 True,
                 LiftLoad.Result.RESULT_OK,
-                f"{command_name} lift/tilt sirasi tamamlandi; STOP gonderildi",
+                f"{command_name} lift sirasi tamamlandi; STOP gonderildi",
             )
         except Exception as exc:
             self._send_fork_stop()

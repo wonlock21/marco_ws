@@ -7,25 +7,23 @@ marco_base_driver:
 
     # --- Kinematik ---
     # wheel_radius encoder odometrisi ve hiz/RPM donusumunde kullanilir.
-    # wheel_separation encoder odometrisi icin etkin araliktir; saha olcumlu
-    # 0.460 m geometrik araliktan farklidir.
+    # wheel_separation encoder odometrisi icin etkin araliktir.
     #
-    # Nominal tahrik tekeri capi 250 mm; duz saha kalibrasyonuna gore odometri
-    # ve hiz/RPM donusumu icin etkin yaricap 117.7 mm'dir.
+    # Nominal tahrik tekeri capi 250 mm; odometri ve hiz/RPM donusumu icin
+    # yaricap 125 mm'dir.
     # Eski CAD geometrik araligi 430 mm idi; guncel fiziksel olcum 460 mm.
     #
     # NOT: tahrik uniteleri yayli (4 adet 3 mm telli, 75 mm serbest boy
     # helezon yay). CAD'de teker zeminden 11.5 mm yukarida cizilmis; arac
     # agirligi altinda yaylar sikisip teker basiyor. Etkin yaricap yuk
     # altinda lastik ezilmesi kadar azalabilir.
-    wheel_radius: 0.1177
-    # Duz mesafe olcegi guncellendikten sonra 1080 derece donus olcegini
-    # yaklasik koruyan etkin aralik; fiziksel merkez araligi 0.460 m kalir.
-    wheel_separation: 0.423
+    wheel_radius: 0.125
+    # Etkin odometri araligi fiziksel merkez araligiyla aynidir.
+    wheel_separation: 0.460
     # Firmware bir turda yonlu/kumulatif 360 tick gonderir; tekrar x4 uygulanmaz.
     ticks_per_revolution: 360
     # /cmd_vel bu fiziksel m/s sinirinda oransal kirpilir, ardindan 0x01 icin
-    # RPM'e cevrilir. 0.1177 m yaricapta bu limit yaklasik 217 RPM'dir.
+    # RPM'e cevrilir. 0.125 m yaricapta bu limit yaklasik 204 RPM'dir.
     # Bu yalniz ust komut siniridir; normal surus hizlari ayri profillerde
     # daha dusuk tutulmalidir.
     max_wheel_speed: 2.670353756
@@ -56,8 +54,6 @@ marco_base_driver:
     # /lift_load goal'u hareket baslatmadan reddedilir.
     lift_pickup_duration_s: 8.0
     lift_dropoff_duration_s: 8.0
-    tilt_pickup_duration_s: 4.0
-    tilt_dropoff_duration_s: 4.0
 
     # Her STM32 odometri paketindeki gercek teker hizini, son gonderilen hedef
     # ile birlikte CSV'ye yazar. Terminal cikisi analiz icin 2 Hz ile sinirli.

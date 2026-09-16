@@ -62,9 +62,8 @@
 
   <!-- ==================== TAHRIK TEKERLEKLERI ==================== -->
 
-  <!-- Nominal teker capi 250 mm; duz saha kalibrasyonundan etkin
-       yuvarlanma yaricapi 117.7 mm olarak belirlendi. -->
-  <xacro:property name="wheel_radius"      value="0.1177"/>
+  <!-- Nominal teker capi 250 mm; yuvarlanma yaricapi 125 mm. -->
+  <xacro:property name="wheel_radius"      value="0.125"/>
   <!-- OLCULDU: 50.00 mm -->
   <xacro:property name="wheel_width"       value="0.050"/>
 
@@ -72,9 +71,8 @@
     GUNCEL SAHA OLCUMU: fiziksel tahrik tekeri merkez araligi 460 mm.
     Eski CAD geometrisi 430 mm idi.
 
-    Bu deger fiziksel model icindir. Encoder odometrisi base_driver.yaml'daki
-    1080 derece saha donusleri ve duz mesafe olcumunden turetilen etkin
-    wheel_separation degerini kullanir.
+    Fiziksel model ve encoder odometrisi ayni wheel_separation degerini
+    kullanir.
 
     Tahrik uniteleri yayli: 4 adet 3 mm telli, Ø20 mm sarimli, 75 mm serbest
     boy helezon yay, akssin uzerinde. CAD'de teker zeminden 11.5 mm yukarida
@@ -144,15 +142,15 @@
     GUNCEL SAHA OLCUMU: base_footprint'e gore LiDAR tarama merkezi
     x=+0.370, y=0.000, z=0.320 m.
 
-    base_link, base_footprint'in 0.1177 m ustundedir. Bu nedenle asagidaki
-    base_link'e gore z degeri 0.2023 m'dir; TF zincirinde zemine gore
+    base_link, base_footprint'in 0.125 m ustundedir. Bu nedenle asagidaki
+    base_link'e gore z degeri 0.195 m'dir; TF zincirinde zemine gore
     laser_link z=0.320 m olur. Saha testinde fiziksel on, LiDAR scan
     koordinatinda yaklasik -170..-179 derece goruldugu icin sensors.xacro
     icindeki base_link -> laser_link yaw duzeltmesi pi'dir.
   -->
   <xacro:property name="lidar_x"           value="0.370"/>
   <xacro:property name="lidar_y"           value="0.000"/>
-  <xacro:property name="lidar_z"           value="0.2023"/>
+  <xacro:property name="lidar_z"           value="0.195"/>
 
   <!--
     On ve arka IMX219 kameralari, zemindeki seridi gormek icin asagi egimli.
@@ -160,7 +158,7 @@
     manevrasinda (geri surus) serit takibini o yapar; sartname madde 5.
 
     Bu degerler base_link'e GORE, yani zeminden yukseklik icin wheel_radius
-    (0.1177) eklenmeli. Kamera yuksekligi yeni saha geometrisinde yeniden
+    (0.125) eklenmeli. Kamera yuksekligi yeni saha geometrisinde yeniden
     olculmedigi icin asagidaki eski CAD ofsetleri simdilik korunuyor.
 
     OLCULDU (on kamera): OnAltKapak-1 panelinde tek kamera acikligi var,

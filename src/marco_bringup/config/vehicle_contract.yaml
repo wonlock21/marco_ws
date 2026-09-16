@@ -1,18 +1,17 @@
 # Faz 0 kanonik arac sozlesmesi.
 #
-# Guncel fiziksel teker merkez araligi 0.460 m olculdu. Encoder odometrisi
-# iki sol ve iki sag 1080 derece donus ve duz mesafe kalibrasyonundan sonra
-# 0.423 m etkin araliga ve 0.1177 m etkin yaricapa ayarlandi.
+# Tahrik tekeri capi 0.250 m, merkez araligi 0.460 m ve encoder cozunurlugu
+# 360 tick/tur olarak kullanilir.
 metadata:
   version: "2026-09-14-f5"
   status: provisional_distance_and_turn_calibration
 drive:
-  wheel_radius_m: 0.1177
+  wheel_radius_m: 0.125
   encoder_ticks_per_revolution: 360
   geometric_wheel_separation_m: 0.460
-  odometry_effective_wheel_separation_m: 0.423
+  odometry_effective_wheel_separation_m: 0.460
 geometry:
   footprint: [[0.50, 0.35], [0.50, -0.35], [-1.20, -0.35], [-1.20, 0.35]]
-  lidar_base_link_xyz_m: [0.370, 0.000, 0.2023]
-  base_link_height_m: 0.1177
+  lidar_base_link_xyz_m: [0.370, 0.000, 0.195]
+  base_link_height_m: 0.125
   lidar_scan_height_m: 0.320

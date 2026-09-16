@@ -13,11 +13,18 @@ from lane_tracking.imgprocess_node import (
     image_message_to_bgr,
     lane_end_alignment_valid,
     lane_end_confirmed,
+    lane_motion_speed,
     lane_tracking_demand,
     schedule_lane_linear_speed,
     scale_lane_error,
     shape_lane_control_error,
 )
+
+
+def test_arka_kamera_modu_serit_hizini_negatif_yapar():
+    assert lane_motion_speed(0.125, reverse_motion=True) == -0.125
+    assert lane_motion_speed(0.125, reverse_motion=False) == 0.125
+    assert lane_motion_speed(-0.125, reverse_motion=False) == 0.125
 
 
 def test_ros_bgr8_mesaji_opencv_karesine_cevrilir():

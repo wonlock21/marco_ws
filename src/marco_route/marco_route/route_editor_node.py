@@ -83,6 +83,7 @@ class RouteEditorNode(Node):
         root = os.path.expanduser(str(self.get_parameter("data_root").value))
         self._store = FieldStore(root)
         self._callbacks = MutuallyExclusiveCallbackGroup()
+        self._read_callbacks = ReentrantCallbackGroup()
         self._client_callbacks = ReentrantCallbackGroup()
         self._operation_lock = threading.RLock()
         self._tf = Buffer()
@@ -232,12 +233,22 @@ class RouteEditorNode(Node):
             (GetActiveField, "/fields/get_active", self._on_get_active),
             (PixelToMap, "/fields/pixel_to_map", self._on_pixel_to_map),
         )
+        read_only_services = {
+            "/fields/get_graph",
+            "/fields/get_station_approach_configs",
+            "/fields/get_active",
+            "/fields/pixel_to_map",
+        }
         self._services = [
             self.create_service(
                 service_type,
                 name,
                 callback,
-                callback_group=self._callbacks,
+                callback_group=(
+                    self._read_callbacks
+                    if name in read_only_services
+                    else self._callbacks
+                ),
             )
             for service_type, name, callback in services
         ]
@@ -1599,7 +1610,7 @@ class RouteEditorNode(Node):
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = RouteEditorNode()
-    executor = MultiThreadedExecutor(num_threads=2)
+    executor = MultiThreadedExecutor(num_threads=3)
     executor.add_node(node)
     try:
         executor.spin()
