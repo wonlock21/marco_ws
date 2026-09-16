@@ -64,6 +64,18 @@ def test_station_approach_config_roundtrip(field_store):
 
     field_store.save_graph(graph)
     loaded = field_store.load_graph("field")
+    ingress = next(
+        edge for edge in loaded.edges.values()
+        if edge.start_node_id == 25 and edge.end_node_id == 30
+    )
+    station_exit = next(
+        edge for edge in loaded.edges.values()
+        if edge.start_node_id == 30 and edge.end_node_id == 25
+    )
+    assert ingress.bidirectional is False
+    assert ingress.movement_direction == "reverse"
+    assert station_exit.bidirectional is False
+    assert station_exit.movement_direction == "forward"
     values = config_from_node(loaded.nodes[30])
     assert values["approach_qr_id"] == "q2"
     assert "line_follow_duration_s" not in values
@@ -78,6 +90,23 @@ def test_station_approach_config_roundtrip(field_store):
         if item["station_id"] == "A1" and item["role"] == "pickup_dock"
     )
     assert "dock_heading_yaw" not in station["station_approach"]
+
+    raw = json.loads(
+        field_store.graph_path("field").read_text(encoding="utf-8")
+    )
+    station_features = [
+        feature for feature in raw["features"]
+        if feature.get("geometry", {}).get("type") == "MultiLineString"
+        and {
+            feature["properties"]["startid"],
+            feature["properties"]["endid"],
+        } == {2, 3}
+    ]
+    assert len(station_features) == 2
+    assert {
+        feature["properties"]["metadata"]["movement_direction"]
+        for feature in station_features
+    } == {"forward", "reverse"}
 
 
 def test_station_approach_config_accepts_empty_legacy_qr(field_store):

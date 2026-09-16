@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from marco_msgs.msg import LocalizationStatus, MappingStatus, RobotStatus
+from marco_msgs.msg import FieldEdge, LocalizationStatus, MappingStatus, RobotStatus
+from marco_msgs.srv import SaveFieldEdge
 from marco_route.field_store import StoreError
 from marco_route.graph_model import EdgeData, FieldGraph, NodeData
 import marco_route.route_editor_node as route_editor_module
@@ -290,6 +291,53 @@ def test_graph_read_marks_stale_validation_as_draft(field_store):
     assert loaded == graph
     assert loaded_hash == current_hash
     assert result is None
+
+
+def test_route_editor_persists_station_link_as_two_semantic_edges(field_store):
+    graph = FieldGraph("field")
+    graph.upsert_node(NodeData(
+        1, "A1_yaklasma", "pickup_approach", "A1", 1.0, 1.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        2, "A1", "pickup_dock", "A1", 2.0, 1.0, 0.0
+    ))
+    field_store.save_graph(graph)
+
+    editor = RouteEditorNode.__new__(RouteEditorNode)
+    editor._store = field_store
+    editor._operation_lock = threading.RLock()
+    editor._ensure_editable = lambda _field: None
+    published = []
+    editor._publish_draft = lambda *args: published.append(args)
+
+    edge = FieldEdge()
+    edge.edge_id = 10
+    edge.start_node_id = 1
+    edge.end_node_id = 2
+    edge.bidirectional = True
+    edge.cost = 1.0
+    edge.max_speed = 0.15
+    edge.load_rule = "any"
+    edge.movement_direction = "forward"
+    request = SaveFieldEdge.Request(field_name="field", edge=edge)
+
+    response = editor._on_save_edge(request, SaveFieldEdge.Response())
+
+    assert response.success is True
+    assert response.saved_edge.edge_id == 10
+    assert response.saved_edge.bidirectional is False
+    assert response.saved_edge.movement_direction == "reverse"
+    loaded = field_store.load_graph("field")
+    pair = {
+        (saved.start_node_id, saved.end_node_id): saved
+        for saved in loaded.edges.values()
+    }
+    assert pair[(1, 2)].movement_direction == "reverse"
+    assert pair[(2, 1)].movement_direction == "forward"
+    assert all(not saved.bidirectional for saved in pair.values())
+    assert published
+    published_graph = published[0][1]
+    assert len(published_graph.edges) == 2
 
 
 def test_adopted_runtime_is_stopped_by_exact_pid_and_graph():

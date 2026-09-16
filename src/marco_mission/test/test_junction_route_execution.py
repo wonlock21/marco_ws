@@ -655,3 +655,61 @@ def test_follow_failure_prevents_stop_spin_and_next_segment():
         MissionManager._navigate(probe, 'TARGET', loaded=False)
 
     assert probe.operations == [('follow', 2)]
+
+
+class _DirectStationExitProbe(_ExecutionProbe):
+    def __init__(self, direction='forward'):
+        super().__init__()
+        self._route = _route((0.0, 0.0), (1.0, 0.0))
+        self._path = _path((0.0, 0.0), (1.0, 0.0))
+        self._nodes = {
+            'DOCK': {'id': 1, 'name': 'DOCK', 'role': 'pickup_dock'},
+            'APPROACH': {
+                'id': 2,
+                'name': 'APPROACH',
+                'role': 'pickup_approach',
+            },
+        }
+        self._edge_directions = {10: direction}
+        self.route_goal = None
+
+    def _action(self, client, goal, label):
+        if client is self._compute_route:
+            self.route_goal = goal
+            return SimpleNamespace(path=self._path, route=self._route)
+        return super()._action(client, goal, label)
+
+
+def test_station_exit_requires_direct_forward_edge_and_explicit_dock_start():
+    probe = _DirectStationExitProbe(direction='forward')
+
+    MissionManager._navigate(
+        probe,
+        'APPROACH',
+        loaded=True,
+        explicit_start='DOCK',
+        required_direct_direction='forward',
+    )
+
+    assert probe.route_goal.use_start is True
+    assert probe.route_goal.start_id == 1
+    assert probe.route_goal.goal_id == 2
+    assert probe.operations == [('follow', 2)]
+
+
+def test_station_exit_rejects_reverse_ingress_edge():
+    probe = _DirectStationExitProbe(direction='reverse')
+
+    with pytest.raises(
+        MissionAbort,
+        match='movement_direction=reverse; forward gerekli',
+    ):
+        MissionManager._navigate(
+            probe,
+            'APPROACH',
+            loaded=True,
+            explicit_start='DOCK',
+            required_direct_direction='forward',
+        )
+
+    assert probe.operations == []

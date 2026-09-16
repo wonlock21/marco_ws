@@ -21,6 +21,8 @@ def _run_manager(
     manager = MissionManager.__new__(MissionManager)
     manager._route_nodes = ['A1', 'B2']
     manager._current_stop_index = start_index
+    manager._station_exit_pending = ''
+    manager._station_exit_pending_loaded = False
     manager._loaded = loaded
     manager._return_home = return_home
     manager._home_node = 'HOME'
@@ -154,6 +156,9 @@ def test_pickup_success_commits_dropoff_before_exit_failure():
 
     assert ('begin', 'A1') not in retry_operations
     assert ('lift', 'A1', True) not in retry_operations
+    exit_index = retry_operations.index(('exit', 'A1', True))
+    begin_dropoff_index = retry_operations.index(('begin', 'B2'))
+    assert exit_index < begin_dropoff_index
     assert ('begin', 'B2') in retry_operations
     assert ('dock', 'B2', False, 'lane') in retry_operations
 
@@ -195,7 +200,9 @@ def test_dropoff_success_checkpoint_skips_repeat_and_returns_home():
         item[0] in ('begin', 'dock', 'lift')
         for item in retry_operations
     )
-    assert ('gate', 'HOME', False, 'return') in retry_operations
+    exit_index = retry_operations.index(('exit', 'B2', False))
+    return_index = retry_operations.index(('gate', 'HOME', False, 'return'))
+    assert exit_index < return_index
 
 
 def test_lane_nav2_fallback_success_still_commits_only_after_lift():

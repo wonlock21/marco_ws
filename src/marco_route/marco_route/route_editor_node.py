@@ -1353,7 +1353,12 @@ class RouteEditorNode(Node):
                 self._publish_draft(
                     request.field_name, graph, response.package_hash
                 )
-                response.saved_edge = self._edge_msg(edge)
+                # save_graph may canonicalize a legacy station link into two
+                # directed semantic edges. Return the persisted form of the
+                # requested identity; the full draft publishes its counterpart.
+                response.saved_edge = self._edge_msg(
+                    graph.edges.get(edge.edge_id, edge)
+                )
                 response.success = True
                 response.message = "Edge saved atomically"
             except (StoreError, GraphError, ValueError, TypeError) as error:

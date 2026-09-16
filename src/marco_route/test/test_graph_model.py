@@ -1,6 +1,12 @@
 import pytest
 
-from marco_route.graph_model import EdgeData, FieldGraph, GraphError, NodeData
+from marco_route.graph_model import (
+    EdgeData,
+    FieldGraph,
+    GraphError,
+    NodeData,
+    migrate_station_direction_edges,
+)
 
 
 def node(node_id, name, role="transit", station=""):
@@ -98,3 +104,83 @@ def test_invalid_planning_penalty_metadata_is_rejected_on_serialization():
     ))
     with pytest.raises(GraphError, match="q5_wait_s"):
         graph.to_geojson()
+
+
+@pytest.mark.parametrize(
+    'approach_role,dock_role,station',
+    [
+        ('pickup_approach', 'pickup_dock', 'A1'),
+        ('dropoff_approach', 'dropoff_dock', 'B2'),
+    ],
+)
+def test_legacy_station_edge_migrates_to_two_directed_semantic_edges(
+    approach_role, dock_role, station,
+):
+    graph = FieldGraph('field')
+    graph.upsert_node(NodeData(
+        1, f'{station}_approach', approach_role, station, 0.0, 0.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        2, station, dock_role, station, 1.0, 0.0, 0.0
+    ))
+    graph.upsert_edge(EdgeData(
+        10,
+        1,
+        2,
+        bidirectional=True,
+        max_speed=0.17,
+        load_rule='any',
+        movement_direction='forward',
+        metadata={'unchanged': True},
+    ))
+
+    assert migrate_station_direction_edges(graph) == 1
+
+    ingress = next(
+        edge for edge in graph.edges.values()
+        if edge.start_node_id == 1 and edge.end_node_id == 2
+    )
+    station_exit = next(
+        edge for edge in graph.edges.values()
+        if edge.start_node_id == 2 and edge.end_node_id == 1
+    )
+    assert ingress.edge_id == 10
+    assert ingress.bidirectional is False
+    assert ingress.movement_direction == 'reverse'
+    assert station_exit.bidirectional is False
+    assert station_exit.movement_direction == 'forward'
+    assert station_exit.max_speed == pytest.approx(0.17)
+    assert station_exit.metadata == {'unchanged': True}
+
+    snapshot = dict(graph.edges)
+    assert migrate_station_direction_edges(graph) == 0
+    assert graph.edges == snapshot
+
+
+def test_station_migration_does_not_change_unrelated_edges():
+    graph = FieldGraph('field')
+    graph.upsert_node(NodeData(
+        1, 'A1_approach', 'pickup_approach', 'A1', 0.0, 0.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        2, 'A1', 'pickup_dock', 'A1', 1.0, 0.0, 0.0
+    ))
+    graph.upsert_node(NodeData(
+        3, 'Q5', 'gate_q5', 'Q5', 2.0, 0.0, 0.0
+    ))
+    graph.upsert_edge(EdgeData(10, 1, 2, bidirectional=True))
+    unrelated = EdgeData(
+        20,
+        1,
+        3,
+        bidirectional=True,
+        max_speed=0.31,
+        movement_direction='either',
+        gate_event='custom_gate',
+        metadata={'keep': 'all'},
+    ).checked()
+    graph.upsert_edge(unrelated)
+
+    migrate_station_direction_edges(graph)
+
+    assert graph.edges[20] == unrelated

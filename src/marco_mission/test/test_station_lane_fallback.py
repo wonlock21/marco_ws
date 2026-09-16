@@ -473,6 +473,32 @@ def test_fallback_is_per_station_and_next_station_retries_lane(tmp_path):
     assert follow_calls[0][1].endswith(':A1')
 
 
+def test_reverse_lane_fallback_is_followed_by_forward_station_exit(tmp_path):
+    manager = _manager(
+        tmp_path, ('A1',), (DockToStation.Result.RESULT_LANE_LOST,)
+    )
+    exits = []
+    manager._navigate = lambda target, loaded, **kwargs: exits.append(
+        (target, loaded, kwargs)
+    )
+
+    manager._do_dock('A1', True)
+    manager._exit_station('A1', loaded=True)
+
+    follow = next(
+        item for item in manager.operations if item[0] == 'follow'
+    )
+    assert follow[1].endswith(':A1')
+    assert exits == [(
+        'A1_yaklasma',
+        True,
+        {
+            'explicit_start': 'A1',
+            'required_direct_direction': 'forward',
+        },
+    )]
+
+
 @pytest.mark.parametrize(
     'result_code',
     [

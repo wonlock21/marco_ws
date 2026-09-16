@@ -219,6 +219,77 @@ def _configured_stations(
     return stations
 
 
+def _validate_station_edge_contract(
+    graph: FieldGraph,
+    result: ValidationResult,
+) -> None:
+    """Require distinct reverse docking and forward station-exit edges."""
+    for dock in graph.nodes.values():
+        if dock.role not in ('pickup_dock', 'dropoff_dock'):
+            continue
+        approach_role = (
+            'pickup_approach'
+            if dock.role == 'pickup_dock'
+            else 'dropoff_approach'
+        )
+        approaches = [
+            node for node in graph.nodes.values()
+            if node.station == dock.station and node.role == approach_role
+        ]
+        if len(approaches) != 1:
+            continue
+        approach = approaches[0]
+        pair = [
+            edge for edge in graph.edges.values()
+            if {edge.start_node_id, edge.end_node_id}
+            == {approach.node_id, dock.node_id}
+        ]
+        ingress = [
+            edge for edge in pair
+            if edge.start_node_id == approach.node_id
+            and edge.end_node_id == dock.node_id
+        ]
+        exits = [
+            edge for edge in pair
+            if edge.start_node_id == dock.node_id
+            and edge.end_node_id == approach.node_id
+        ]
+        if any(edge.bidirectional for edge in pair):
+            result.errors.append(
+                f"station '{dock.station}' approach/dock edges must be "
+                'two directed edges, not one bidirectional edge'
+            )
+        if len(ingress) != 1:
+            result.errors.append(
+                f"station '{dock.station}' must have exactly one directed "
+                'approach->dock edge'
+            )
+        elif ingress[0].bidirectional:
+            pass
+        elif ingress[0].movement_direction != 'reverse':
+            result.errors.append(
+                f"station '{dock.station}' approach->dock edge "
+                'must use movement_direction=reverse'
+            )
+        if len(exits) != 1:
+            result.errors.append(
+                f"station '{dock.station}' must have exactly one directed "
+                'dock->approach edge'
+            )
+        elif exits[0].bidirectional:
+            pass
+        elif exits[0].movement_direction != 'forward':
+            result.errors.append(
+                f"station '{dock.station}' dock->approach edge "
+                'must use movement_direction=forward'
+            )
+        if len(pair) != 2:
+            result.errors.append(
+                f"station '{dock.station}' has ambiguous/duplicate "
+                'approach/dock edges'
+            )
+
+
 def validate_field(
     store: FieldStore,
     graph: FieldGraph,
@@ -372,6 +443,7 @@ def validate_field(
         )
 
     if competition_profile:
+        _validate_station_edge_contract(graph, result)
         wait = _station_node(graph, "WAIT")
         pickups = _configured_stations(
             graph, "pickup_dock", PICKUP_STATION_PATTERN, result

@@ -656,6 +656,8 @@ class MissionManager(Node):
         self._task_id = self._source = self._pickup = self._dropoff = ''
         self._route_nodes = []
         self._current_stop_index = 0
+        self._station_exit_pending = ''
+        self._station_exit_pending_loaded = False
         self._return_home = True
         self._resume_context_valid = False
         self._mission_field_hash = ''
@@ -1099,7 +1101,12 @@ class MissionManager(Node):
             station=station,
             target=approach,
         )
-        self._navigate(approach, loaded=loaded)
+        self._navigate(
+            approach,
+            loaded=loaded,
+            explicit_start=station,
+            required_direct_direction='forward',
+        )
         self._event(
             'station_exit_nav_completed',
             station=station,
@@ -2454,6 +2461,9 @@ class MissionManager(Node):
 
     def _resume_station(self) -> str:
         """Return the station/home represented by the saved checkpoint."""
+        pending_exit = str(getattr(self, '_station_exit_pending', ''))
+        if pending_exit:
+            return pending_exit
         index = int(self._current_stop_index)
         if 0 <= index < len(self._route_nodes):
             return self._route_nodes[index]
@@ -2478,9 +2488,12 @@ class MissionManager(Node):
         """Return whether retryable station/home work remains."""
         index = int(self._current_stop_index)
         return bool(
-            self._route_nodes
-            and 0 <= index <= len(self._route_nodes)
-            and (index < len(self._route_nodes) or self._return_home)
+            getattr(self, '_station_exit_pending', '')
+            or (
+                self._route_nodes
+                and 0 <= index <= len(self._route_nodes)
+                and (index < len(self._route_nodes) or self._return_home)
+            )
         )
 
     def _mark_resume_available(self) -> None:
@@ -2590,6 +2603,8 @@ class MissionManager(Node):
             self._abort_reason = ''
             self._route_nodes = list(route_nodes)
             self._current_stop_index = 0
+            self._station_exit_pending = ''
+            self._station_exit_pending_loaded = False
             self._return_home = bool(return_home)
             self._task_id = task_id
             self._pickup, self._dropoff = route_nodes[0], route_nodes[1]
@@ -3084,14 +3099,27 @@ class MissionManager(Node):
             self._status_detail += f': {next_node}'
         self._event('state_transition', next_node=next_node)
 
-    def _navigate(self, target: str, loaded: bool) -> float:
+    def _navigate(
+        self,
+        target: str,
+        loaded: bool,
+        explicit_start: str = '',
+        required_direct_direction: str = '',
+    ) -> float:
         self._await_route_constraints()
         self._set_state(RobotStatus.STATE_MOVING_LOADED if loaded else
                         RobotStatus.STATE_MOVING_UNLOADED, target)
         target_node = self._nodes[target]
         route_goal = ComputeRoute.Goal()
         route_goal.goal_id = int(target_node['id'])
-        route_goal.use_start = False
+        if explicit_start:
+            if explicit_start not in self._nodes:
+                raise MissionAbort(
+                    f'{target}: explicit rota baslangici bulunamadi: '
+                    f'{explicit_start}'
+                )
+            route_goal.start_id = int(self._nodes[explicit_start]['id'])
+        route_goal.use_start = bool(explicit_start)
         route_goal.use_poses = False
         route_result = self._action(
             self._compute_route,
@@ -3102,6 +3130,31 @@ class MissionManager(Node):
         if path.header.frame_id not in ('', 'map') or len(path.poses) < 2:
             raise MissionAbort(f'{target}: Route Server gecerli path uretmedi')
         route = getattr(route_result, 'route', None)
+        if required_direct_direction:
+            if not explicit_start:
+                raise MissionAbort(
+                    f'{target}: yon kontrollu rota explicit start gerektirir'
+                )
+            route_nodes = list(getattr(route, 'nodes', [])) if route else []
+            route_edges = list(getattr(route, 'edges', [])) if route else []
+            expected_nodes = [
+                int(self._nodes[explicit_start]['id']),
+                int(target_node['id']),
+            ]
+            actual_nodes = [int(node.nodeid) for node in route_nodes]
+            if len(route_edges) != 1 or actual_nodes != expected_nodes:
+                raise MissionAbort(
+                    f'{explicit_start}->{target}: Route Server dogrudan '
+                    'station edge secmedi'
+                )
+            edge_id = int(route_edges[0].edgeid)
+            direction = self._edge_directions.get(edge_id, '')
+            if direction != required_direct_direction:
+                raise MissionAbort(
+                    f'{explicit_start}->{target}: edge {edge_id} '
+                    f'movement_direction={direction or "missing"}; '
+                    f'{required_direct_direction} gerekli'
+                )
         maneuvers = []
         final_heading = None
         if route is not None and list(getattr(route, 'edges', [])):
@@ -3379,7 +3432,7 @@ class MissionManager(Node):
         approach, edge_points, edge_id, load_rule = (
             self._station_dock_fallback_edge(station)
         )
-        if load_rule not in ('any', 'loaded', 'unloaded'):
+        if load_rule not in ('any', 'loaded', 'empty'):
             raise MissionAbort(
                 f'{station}: station fallback load_rule gecersiz'
             )
@@ -3387,7 +3440,7 @@ class MissionManager(Node):
             raise MissionAbort(
                 f'{station}: station fallback kenari yalniz yuklu kullanilabilir'
             )
-        if load_rule == 'unloaded' and loaded:
+        if load_rule == 'empty' and loaded:
             raise MissionAbort(
                 f'{station}: station fallback kenari yalniz yuksuz kullanilabilir'
             )
@@ -3592,6 +3645,26 @@ class MissionManager(Node):
             start_index = int(self._current_stop_index)
             if not 0 <= start_index <= len(self._route_nodes):
                 raise MissionAbort('mission checkpoint index gecersiz')
+            pending_exit = str(getattr(self, '_station_exit_pending', ''))
+            if pending_exit:
+                pending_loaded = bool(self._station_exit_pending_loaded)
+                if pending_loaded != bool(loaded):
+                    raise MissionAbort(
+                        'station exit checkpoint yuk durumu tutarsiz'
+                    )
+                self._event(
+                    'station_exit_resume_started',
+                    station=pending_exit,
+                    loaded=pending_loaded,
+                )
+                self._exit_station(pending_exit, loaded=pending_loaded)
+                self._station_exit_pending = ''
+                self._station_exit_pending_loaded = False
+                self._event(
+                    'station_exit_resume_completed',
+                    station=pending_exit,
+                    loaded=pending_loaded,
+                )
             next_target = (
                 self._route_nodes[start_index]
                 if start_index < len(self._route_nodes)
@@ -3639,7 +3712,11 @@ class MissionManager(Node):
                 # Physical load state is committed before advancing the
                 # mission checkpoint. Docking alone never advances it.
                 self._current_stop_index = index + 1
+                self._station_exit_pending = station
+                self._station_exit_pending_loaded = loaded
                 self._exit_station(station, loaded=loaded)
+                self._station_exit_pending = ''
+                self._station_exit_pending_loaded = False
             if self._return_home:
                 self._set_state(RobotStatus.STATE_RETURNING, self._home_node)
                 self._navigate_via_gate(

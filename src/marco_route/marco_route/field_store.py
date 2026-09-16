@@ -14,7 +14,11 @@ from typing import Any
 
 import yaml
 
-from .graph_model import FieldGraph, GraphError
+from .graph_model import (
+    FieldGraph,
+    GraphError,
+    migrate_station_direction_edges,
+)
 from .station_config import config_from_node
 
 
@@ -152,6 +156,7 @@ class FieldStore:
             if path.is_symlink():
                 raise StoreError("route.geojson cannot be a symbolic link")
             try:
+                migrate_station_direction_edges(graph)
                 _atomic_json(path, graph.to_geojson())
                 _atomic_json(field_dir / STATIONS_FILE, stations_document(graph))
                 self._refresh_manifest_hashes(field_dir)

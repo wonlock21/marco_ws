@@ -39,8 +39,8 @@ def test_station_exit_stops_lane_then_navigates_to_own_approach():
     manager._task_pub = _Publisher(order)
     manager._event = lambda name, **fields: order.append(("event", name, fields))
     manager._wait_until_stopped = lambda label: order.append(("stopped", label))
-    manager._navigate = lambda target, loaded: order.append(
-        ("nav", target, loaded)
+    manager._navigate = lambda target, loaded, **kwargs: order.append(
+        ("nav", target, loaded, kwargs)
     )
 
     MissionManager._exit_station(manager, "A1", loaded=True)
@@ -49,7 +49,16 @@ def test_station_exit_stops_lane_then_navigates_to_own_approach():
     stopped_index = next(
         index for index, item in enumerate(order) if item[0] == "stopped"
     )
-    nav_index = order.index(("nav", "q2", True))
+    expected_nav = (
+        "nav",
+        "q2",
+        True,
+        {
+            "explicit_start": "A1",
+            "required_direct_direction": "forward",
+        },
+    )
+    nav_index = order.index(expected_nav)
     assert lane_index < stopped_index < nav_index
     assert manager._station_phase == manager._STATION_EXITING
     assert manager._docking_lane_active is False

@@ -39,7 +39,13 @@ def competition_graph():
         ))
         graph.upsert_edge(EdgeData(
             200 + node_id, node_id, dock_id,
-            bidirectional=True, max_speed=0.15,
+            bidirectional=False, max_speed=0.15,
+            movement_direction="reverse",
+        ))
+        graph.upsert_edge(EdgeData(
+            300 + node_id, dock_id, node_id,
+            bidirectional=False, max_speed=0.15,
+            movement_direction="forward",
         ))
     for edge_id, endpoint in enumerate((1, 20, 21, 22), start=100):
         graph.upsert_edge(EdgeData(
@@ -118,10 +124,16 @@ def test_competition_profile_accepts_more_than_three_stations(field_store):
         131, 27, 9, bidirectional=True, max_speed=0.2
     ))
     graph.upsert_edge(EdgeData(
-        132, 26, 10, bidirectional=True, max_speed=0.15
+        132, 26, 10, max_speed=0.15, movement_direction="reverse"
     ))
     graph.upsert_edge(EdgeData(
-        133, 27, 11, bidirectional=True, max_speed=0.15
+        133, 27, 11, max_speed=0.15, movement_direction="reverse"
+    ))
+    graph.upsert_edge(EdgeData(
+        134, 10, 26, max_speed=0.15, movement_direction="forward"
+    ))
+    graph.upsert_edge(EdgeData(
+        135, 11, 27, max_speed=0.15, movement_direction="forward"
     ))
     field_store.save_graph(graph)
 
@@ -144,6 +156,87 @@ def test_directional_gate_event_and_loaded_reverse_are_required(field_store):
     result = validate_field(field_store, graph, competition_profile=True)
     assert any("gate_event=q5_outbound" in error for error in result.errors)
     assert any("reverse movement" in error for error in result.errors)
+
+
+def _saved_graph_with_station_edge_override(field_store, overrides):
+    graph = competition_graph()
+    field_store.save_graph(graph)
+    for edge_id, edge in overrides.items():
+        graph.edges[edge_id] = edge.checked()
+    return validate_field(field_store, graph, competition_profile=True)
+
+
+def test_forward_approach_to_dock_edge_is_rejected(field_store):
+    result = _saved_graph_with_station_edge_override(
+        field_store,
+        {
+            220: EdgeData(
+                220, 20, 2, max_speed=0.15,
+                movement_direction="forward",
+            ),
+        },
+    )
+
+    assert any(
+        "station 'A1' approach->dock edge must use "
+        "movement_direction=reverse" in error
+        for error in result.errors
+    )
+
+
+def test_reverse_dock_to_approach_edge_is_rejected(field_store):
+    result = _saved_graph_with_station_edge_override(
+        field_store,
+        {
+            320: EdgeData(
+                320, 2, 20, max_speed=0.15,
+                movement_direction="reverse",
+            ),
+        },
+    )
+
+    assert any(
+        "station 'A1' dock->approach edge must use "
+        "movement_direction=forward" in error
+        for error in result.errors
+    )
+
+
+def test_bidirectional_station_edge_is_rejected(field_store):
+    graph = competition_graph()
+    field_store.save_graph(graph)
+    graph.delete_edge(220)
+    graph.delete_edge(320)
+    graph.upsert_edge(EdgeData(
+        220, 20, 2, bidirectional=True, max_speed=0.15,
+        movement_direction="forward",
+    ))
+
+    result = validate_field(field_store, graph, competition_profile=True)
+
+    assert any(
+        "station 'A1' approach/dock edges must be two directed edges"
+        in error for error in result.errors
+    )
+
+
+def test_duplicate_station_direction_is_rejected(field_store):
+    graph = competition_graph()
+    field_store.save_graph(graph)
+    graph.upsert_edge(EdgeData(
+        999, 20, 2, max_speed=0.15, movement_direction="reverse"
+    ))
+
+    result = validate_field(field_store, graph, competition_profile=True)
+
+    assert any(
+        "station 'A1' must have exactly one directed approach->dock edge"
+        in error for error in result.errors
+    )
+    assert any(
+        "station 'A1' has ambiguous/duplicate approach/dock edges"
+        in error for error in result.errors
+    )
 
 
 def test_outside_node_and_station_drift_are_rejected(field_store):

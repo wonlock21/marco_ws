@@ -406,3 +406,121 @@ class FieldGraph:
                 "coordinates": [[[start.x, start.y], [end.x, end.y]]],
             },
         }
+
+
+def _next_edge_id(graph: FieldGraph) -> int:
+    """Return a free logical edge ID without reusing an existing identity."""
+    candidate = max(graph.edges, default=-1) + 1
+    if candidate <= MAX_LOGICAL_ID:
+        return candidate
+    for candidate in range(MAX_LOGICAL_ID + 1):
+        if candidate not in graph.edges:
+            return candidate
+    raise GraphError('no free logical edge ID remains')
+
+
+def migrate_station_direction_edges(graph: FieldGraph) -> int:
+    """Split legacy station links into reverse-in and forward-out edges.
+
+    The migration intentionally handles only an unambiguous legacy pair or an
+    already split pair. Duplicate/ambiguous relations remain untouched so the
+    production validator can reject them instead of guessing operator intent.
+    """
+    changed = 0
+    docks = [
+        node for node in graph.nodes.values()
+        if node.role in ('pickup_dock', 'dropoff_dock')
+    ]
+    for dock in docks:
+        approach_role = (
+            'pickup_approach'
+            if dock.role == 'pickup_dock'
+            else 'dropoff_approach'
+        )
+        approaches = [
+            node for node in graph.nodes.values()
+            if node.station == dock.station and node.role == approach_role
+        ]
+        if len(approaches) != 1:
+            continue
+        approach = approaches[0]
+        pair = [
+            edge for edge in graph.edges.values()
+            if {edge.start_node_id, edge.end_node_id}
+            == {approach.node_id, dock.node_id}
+        ]
+        if len(pair) == 1:
+            legacy = pair[0]
+            is_legacy = bool(legacy.bidirectional) or (
+                legacy.start_node_id == approach.node_id
+                and legacy.end_node_id == dock.node_id
+                and legacy.movement_direction == 'forward'
+            )
+            if not is_legacy:
+                continue
+            ingress_id = (
+                legacy.edge_id
+                if legacy.start_node_id == approach.node_id
+                else _next_edge_id(graph)
+            )
+            exit_id = (
+                legacy.edge_id
+                if legacy.start_node_id == dock.node_id
+                else _next_edge_id(graph)
+            )
+            del graph.edges[legacy.edge_id]
+            common = {
+                'cost': legacy.cost,
+                'max_speed': legacy.max_speed,
+                'load_rule': legacy.load_rule,
+                'gate_event': legacy.gate_event,
+                'metadata': dict(legacy.metadata),
+            }
+            graph.upsert_edge(EdgeData(
+                ingress_id,
+                approach.node_id,
+                dock.node_id,
+                bidirectional=False,
+                movement_direction='reverse',
+                **common,
+            ))
+            graph.upsert_edge(EdgeData(
+                exit_id,
+                dock.node_id,
+                approach.node_id,
+                bidirectional=False,
+                movement_direction='forward',
+                **common,
+            ))
+            changed += 1
+            continue
+        if len(pair) != 2:
+            continue
+        ingress = [
+            edge for edge in pair
+            if edge.start_node_id == approach.node_id
+            and edge.end_node_id == dock.node_id
+        ]
+        exits = [
+            edge for edge in pair
+            if edge.start_node_id == dock.node_id
+            and edge.end_node_id == approach.node_id
+        ]
+        if len(ingress) != 1 or len(exits) != 1:
+            continue
+        expected = (
+            (ingress[0], 'reverse'),
+            (exits[0], 'forward'),
+        )
+        pair_changed = False
+        for edge, direction in expected:
+            if edge.bidirectional or edge.movement_direction != direction:
+                graph.upsert_edge(replace(
+                    edge,
+                    bidirectional=False,
+                    movement_direction=direction,
+                ))
+                pair_changed = True
+        if pair_changed:
+            changed += 1
+    return changed
