@@ -227,8 +227,8 @@ behavior_server:
     transform_tolerance: 0.2
     use_sim_time: false
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.6
-    min_rotational_vel: 0.2
+    max_rotational_vel: 0.30
+    min_rotational_vel: 0.10
     rotational_acc_lim: 1.5
 
 waypoint_follower:

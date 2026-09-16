@@ -134,6 +134,7 @@ def test_path_is_split_at_the_ordered_junction_pose():
 def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
     manager = MissionManager.__new__(MissionManager)
     manager._pose = _localized_pose(1.0, 0.0, 0.0)
+    manager._pose_seen = time.monotonic()
     manager._encoder_yaw = 0.0
     manager._filtered_yaw = 0.0
     manager._filtered_odom_seen = time.monotonic()
@@ -164,7 +165,8 @@ def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
         manager._filtered_odom_seen = time.monotonic()
 
     manager._action = action
-    manager._fresh_map_base_yaw = lambda _label: math.pi / 2.0
+    fresh_yaws = iter((0.0, math.pi / 2.0))
+    manager._fresh_map_base_yaw = lambda _label: next(fresh_yaws)
     manager._wait_until_stopped = lambda _label: operations.append(
         ('stop', None, None)
     )
@@ -193,6 +195,7 @@ def test_junction_spin_works_in_encoder_only_profile_and_stops_after_spin():
 def _junction_correction_probe(fresh_yaws):
     manager = MissionManager.__new__(MissionManager)
     manager._pose = _localized_pose(1.0, 0.0, 0.0)
+    manager._pose_seen = time.monotonic()
     manager._encoder_yaw = 0.0
     manager._filtered_yaw = 0.0
     manager._filtered_odom_seen = time.monotonic()
@@ -261,6 +264,7 @@ def _junction_correction_probe(fresh_yaws):
 
 def test_junction_spin_corrects_map_heading_once_then_continues():
     manager, maneuver, operations, events = _junction_correction_probe([
+        0.0,
         math.radians(80.0),
         math.radians(90.0),
     ])
@@ -286,8 +290,60 @@ def test_junction_spin_corrects_map_heading_once_then_continues():
     assert events[-1][1]['fused_turn_error_rad'] == pytest.approx(0.0)
 
 
+def test_junction_main_spin_uses_fresh_tf_instead_of_cached_amcl_pose():
+    manager, maneuver, operations, events = _junction_correction_probe([
+        0.0,
+        math.pi / 2.0,
+    ])
+    manager._pose = _localized_pose(1.0, 0.0, math.radians(20.0))
+    manager._pose_seen = time.monotonic() - 0.02
+
+    manager._turn_at_junction(maneuver)
+
+    main_spin = next(item for item in operations if item[0] == 'spin')
+    assert math.degrees(main_spin[1]) == pytest.approx(90.0)
+    start_event = next(
+        fields for event, fields in events
+        if event == 'junction_start_heading'
+    )
+    assert start_event['diagnostic_tag'] == 'JUNCTION_START_HEADING'
+    assert start_event['amcl_deg'] == pytest.approx(20.0)
+    assert start_event['tf_deg'] == pytest.approx(0.0)
+    assert start_event['amcl_tf_delta_deg'] == pytest.approx(20.0)
+    assert start_event['spin_command_deg'] == pytest.approx(90.0)
+    end_event = next(
+        fields for event, fields in events
+        if event == 'junction_spin_end'
+    )
+    assert end_event['diagnostic_tag'] == 'JUNCTION_SPIN_END'
+    assert end_event['start_tf_deg'] == pytest.approx(0.0)
+    assert end_event['target_deg'] == pytest.approx(90.0)
+    assert end_event['current_tf_deg'] == pytest.approx(90.0)
+    assert end_event['tf_residual_deg'] == pytest.approx(0.0)
+
+
+def test_junction_main_spin_does_not_fallback_when_fresh_tf_is_unavailable():
+    manager, maneuver, operations, events = _junction_correction_probe([])
+    manager._pose = _localized_pose(1.0, 0.0, math.radians(20.0))
+
+    def unavailable(_label):
+        raise MissionAbort('fresh map->base_footprint TF alinamadi')
+
+    manager._fresh_map_base_yaw = unavailable
+
+    with pytest.raises(
+        MissionAbort, match='fresh map->base_footprint TF alinamadi'
+    ):
+        manager._turn_at_junction(maneuver)
+
+    assert not [item for item in operations if item[0] == 'spin']
+    assert events[-1][0] == 'junction_turn_failed'
+    assert 'fresh map->base_footprint TF alinamadi' in events[-1][1]['reason']
+
+
 def test_junction_spin_aborts_after_five_unsuccessful_fresh_tf_corrections():
     manager, maneuver, operations, _events = _junction_correction_probe([
+        0.0,
         math.radians(80.0),
         math.radians(80.0),
         math.radians(80.0),
@@ -308,6 +364,7 @@ def test_junction_spin_aborts_after_five_unsuccessful_fresh_tf_corrections():
 
 def test_junction_final_validation_ignores_stale_cached_amcl_pose():
     manager, maneuver, operations, events = _junction_correction_probe([
+        0.0,
         math.radians(84.8),
         math.radians(90.0),
     ])
@@ -328,6 +385,7 @@ def test_junction_final_validation_ignores_stale_cached_amcl_pose():
 
 def test_encoder_turn_difference_is_telemetry_when_map_heading_is_correct():
     manager, maneuver, operations, events = _junction_correction_probe([
+        0.0,
         math.pi / 2.0,
     ])
 
@@ -403,7 +461,7 @@ def test_precise_correction_uses_raw_yaw_and_decreasing_speed(
         'junction_turn_correction_timeout_s': 5.0,
         'junction_turn_correction_slowdown_angle_deg': 10.0,
         'junction_turn_correction_stop_margin_deg': 2.5,
-        'junction_turn_correction_max_angle_deg': 20.0,
+        'junction_turn_correction_max_angle_deg': 45.0,
     }
     manager.get_parameter = lambda name: SimpleNamespace(
         value=parameters[name]
@@ -430,6 +488,67 @@ def test_precise_correction_uses_raw_yaw_and_decreasing_speed(
     assert commands[-1] == pytest.approx(0.0)
     assert manager._filtered_yaw == pytest.approx(math.radians(-45.0))
     assert math.degrees(measured) == pytest.approx(9.0)
+
+
+def _junction_correction_angle_limit_probe():
+    manager = MissionManager.__new__(MissionManager)
+    manager._encoder_yaw = 0.0
+    manager._obstacle = False
+    manager._status_detail = ''
+    manager._check_abort = lambda: None
+    manager._check_action_health = lambda require_turn_sensors: None
+    manager._wait_until_stopped = lambda _label: None
+    parameters = {
+        'junction_turn_correction_angular_speed': 0.25,
+        'junction_turn_correction_min_angular_speed': 0.16,
+        'junction_turn_correction_timeout_s': 5.0,
+        'junction_turn_correction_slowdown_angle_deg': 10.0,
+        'junction_turn_correction_stop_margin_deg': 2.5,
+        'junction_turn_correction_max_angle_deg': 45.0,
+    }
+    manager.get_parameter = lambda name: SimpleNamespace(
+        value=parameters[name]
+    )
+    manager._event = lambda _event, **_fields: None
+    commands = []
+
+    class _Publisher:
+        def publish(self, command):
+            angular = float(command.angular.z)
+            commands.append(angular)
+            if abs(angular) > 0.0:
+                manager._encoder_yaw = MissionManager._wrap_angle(
+                    manager._encoder_yaw
+                    + math.copysign(math.radians(5.0), angular)
+                )
+
+    manager._precise_turn_correction_pub = _Publisher()
+    return manager, commands
+
+
+@pytest.mark.parametrize('correction_deg', (21.25, 44.9))
+def test_junction_correction_accepts_angle_below_45_degrees(correction_deg):
+    manager, commands = _junction_correction_angle_limit_probe()
+
+    measured = manager._run_precise_turn_correction(
+        'D3', math.radians(correction_deg), 'junction')
+
+    assert any(value > 0.0 for value in commands)
+    assert commands[-1] == pytest.approx(0.0)
+    assert math.degrees(measured) >= correction_deg - 2.5
+
+
+def test_junction_correction_aborts_above_45_degrees():
+    manager, commands = _junction_correction_angle_limit_probe()
+
+    with pytest.raises(
+        MissionAbort,
+        match=r'guvenli siniri asiyor \(45\.01 derece\)',
+    ):
+        manager._run_precise_turn_correction(
+            'D3', math.radians(45.01), 'junction')
+
+    assert commands == []
 
 
 class _ExecutionProbe:

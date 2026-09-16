@@ -497,7 +497,7 @@ class MissionManager(Node):
             ('junction_turn_correction_min_angular_speed', 0.16),
             ('junction_turn_correction_slowdown_angle_deg', 10.0),
             ('junction_turn_correction_stop_margin_deg', 2.5),
-            ('junction_turn_correction_max_angle_deg', 20.0),
+            ('junction_turn_correction_max_angle_deg', 45.0),
             ('junction_turn_max_correction_attempts', 5),
             ('junction_turn_correction_total_timeout_s', 30.0),
             ('junction_turn_min_angle_deg', 60.0),
@@ -616,6 +616,7 @@ class MissionManager(Node):
         self._plc_assign_started = 0.0
         self._loaded = False
         self._pose: Optional[PoseWithCovarianceStamped] = None
+        self._pose_seen = 0.0
         self._scan_seen = 0.0
         self._odom_seen = 0.0
         self._filtered_odom_seen = 0.0
@@ -905,6 +906,7 @@ class MissionManager(Node):
 
     def _on_pose(self, msg: PoseWithCovarianceStamped) -> None:
         self._pose = msg
+        self._pose_seen = time.monotonic()
 
     def _on_scan(self, _msg: LaserScan) -> None:
         self._scan_seen = time.monotonic()
@@ -1176,6 +1178,22 @@ class MissionManager(Node):
                 + orientation.z * orientation.z
             ),
         )
+
+    def _cached_pose_age_ms(self) -> Optional[float]:
+        """Return diagnostic age of the cached AMCL pose, if available."""
+        if self._pose is None:
+            return None
+        stamp = self._pose.header.stamp
+        stamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+        if stamp_ns > 0:
+            return max(
+                0.0,
+                (self.get_clock().now().nanoseconds - stamp_ns) / 1.0e6,
+            )
+        pose_seen = float(getattr(self, '_pose_seen', 0.0))
+        if pose_seen > 0.0:
+            return max(0.0, (time.monotonic() - pose_seen) * 1000.0)
+        return None
 
     def _fresh_map_base_yaw(self, label: str) -> float:
         """
@@ -1537,35 +1555,72 @@ class MissionManager(Node):
 
     def _turn_at_junction(self, maneuver: JunctionManeuver) -> None:
         """Align with one main Spin and bounded fresh-TF corrections."""
-        self._check_action_health(require_turn_sensors=True)
-        if self._pose is None or not math.isfinite(self._encoder_yaw):
-            raise MissionAbort(
-                f'{maneuver.node_name}: junction yon bilgisi gecersiz'
-            )
-        start_map_yaw = self._yaw_from_pose(self._pose)
-        start_encoder_yaw = self._encoder_yaw
-        relative_turn = self._wrap_angle(
-            maneuver.outgoing_heading - start_map_yaw
-        )
-        timeout = float(
-            self.get_parameter('junction_turn_timeout_s').value)
-        goal = Spin.Goal()
-        goal.target_yaw = float(relative_turn)
-        goal.time_allowance = Duration(seconds=timeout).to_msg()
-        self._status_detail = (
-            f'{maneuver.node_name}: junction donusu '
-            f'{math.degrees(relative_turn):+.1f} derece'
-        )
-        self._event(
-            'junction_turn_started',
-            junction=maneuver.node_name,
-            node_id=maneuver.node_id,
-            incoming_heading=maneuver.incoming_heading,
-            outgoing_heading=maneuver.outgoing_heading,
-            route_turn_rad=maneuver.turn_angle,
-            commanded_turn_rad=relative_turn,
-        )
         try:
+            self._check_action_health(require_turn_sensors=True)
+            if not math.isfinite(self._encoder_yaw):
+                raise MissionAbort(
+                    f'{maneuver.node_name}: junction odom yon bilgisi gecersiz'
+                )
+            start_map_yaw = self._fresh_map_base_yaw(
+                f'{maneuver.node_name} junction donus baslangici'
+            )
+            start_encoder_yaw = self._encoder_yaw
+            relative_turn = self._wrap_angle(
+                maneuver.outgoing_heading - start_map_yaw
+            )
+            cached_amcl_yaw = None
+            if self._pose is not None:
+                candidate_yaw = self._yaw_from_pose(self._pose)
+                if math.isfinite(candidate_yaw):
+                    cached_amcl_yaw = candidate_yaw
+            amcl_tf_delta = (
+                self._wrap_angle(cached_amcl_yaw - start_map_yaw)
+                if cached_amcl_yaw is not None
+                else None
+            )
+            tf_odom_delta = self._wrap_angle(
+                start_map_yaw - start_encoder_yaw
+            )
+            self._event(
+                'junction_start_heading',
+                diagnostic_tag='JUNCTION_START_HEADING',
+                junction=maneuver.node_name,
+                node_id=maneuver.node_id,
+                target_deg=math.degrees(maneuver.outgoing_heading),
+                amcl_deg=(
+                    math.degrees(cached_amcl_yaw)
+                    if cached_amcl_yaw is not None
+                    else None
+                ),
+                amcl_age_ms=self._cached_pose_age_ms(),
+                tf_deg=math.degrees(start_map_yaw),
+                odom_deg=math.degrees(start_encoder_yaw),
+                amcl_tf_delta_deg=(
+                    math.degrees(amcl_tf_delta)
+                    if amcl_tf_delta is not None
+                    else None
+                ),
+                tf_odom_delta_deg=math.degrees(tf_odom_delta),
+                spin_command_deg=math.degrees(relative_turn),
+            )
+            timeout = float(
+                self.get_parameter('junction_turn_timeout_s').value)
+            goal = Spin.Goal()
+            goal.target_yaw = float(relative_turn)
+            goal.time_allowance = Duration(seconds=timeout).to_msg()
+            self._status_detail = (
+                f'{maneuver.node_name}: junction donusu '
+                f'{math.degrees(relative_turn):+.1f} derece'
+            )
+            self._event(
+                'junction_turn_started',
+                junction=maneuver.node_name,
+                node_id=maneuver.node_id,
+                incoming_heading=maneuver.incoming_heading,
+                outgoing_heading=maneuver.outgoing_heading,
+                route_turn_rad=maneuver.turn_angle,
+                commanded_turn_rad=relative_turn,
+            )
             self._action(
                 self._spin,
                 goal,
@@ -1590,6 +1645,17 @@ class MissionManager(Node):
                 relative_turn - measured_turn
             )
             encoder_turn_error = abs(signed_encoder_turn_error)
+            self._event(
+                'junction_spin_end',
+                diagnostic_tag='JUNCTION_SPIN_END',
+                junction=maneuver.node_name,
+                node_id=maneuver.node_id,
+                start_tf_deg=math.degrees(start_map_yaw),
+                target_deg=math.degrees(maneuver.outgoing_heading),
+                current_tf_deg=math.degrees(final_map_yaw),
+                odom_delta_deg=math.degrees(measured_turn),
+                tf_residual_deg=math.degrees(signed_yaw_error),
+            )
             tolerance = math.radians(float(self.get_parameter(
                 'junction_turn_yaw_tolerance_deg').value
             ))
