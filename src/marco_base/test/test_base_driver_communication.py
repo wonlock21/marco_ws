@@ -43,3 +43,23 @@ def test_valid_frames_become_healthy_and_stale_frames_become_unhealthy():
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
+
+def test_communication_heartbeat_uses_independent_callback_group():
+    """High-rate UART callbacks must not starve the ROS health heartbeat."""
+    rclpy.init()
+    node = BaseDriver(parameter_overrides=[
+        Parameter("use_fake_hardware", value=True),
+        Parameter("wheel_measurement_log_enabled", value=False),
+    ])
+    try:
+        assert node._communication_timer.callback_group is (
+            node._communication_callback_group
+        )
+        assert (
+            node._communication_callback_group
+            is not node.default_callback_group
+        )
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()

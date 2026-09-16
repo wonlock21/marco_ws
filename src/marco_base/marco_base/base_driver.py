@@ -30,7 +30,10 @@ from geometry_msgs.msg import Quaternion, Twist, TransformStamped
 from marco_msgs.action import LiftLoad
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import (
+    MutuallyExclusiveCallbackGroup,
+    ReentrantCallbackGroup,
+)
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSPresetProfiles
@@ -213,7 +216,16 @@ class BaseDriver(Node):
         read_rate = self.get_parameter("read_rate").value
         self.create_timer(1.0 / command_rate, self._send_command)
         self.create_timer(1.0 / read_rate, self._read_transport)
-        self.create_timer(0.1, self._publish_communication_health)
+        # UART okuma callback'i 100 Hz durum akisini islerken varsayilan
+        # callback grubunu uzun sure mesgul edebilir. Iletisim heartbeat'ini
+        # ayri grupta tutarak gercek UART akisi saglikliyken ROS tarafinda
+        # yalanci stale/timeout olusmasini engelle.
+        self._communication_callback_group = MutuallyExclusiveCallbackGroup()
+        self._communication_timer = self.create_timer(
+            0.1,
+            self._publish_communication_health,
+            callback_group=self._communication_callback_group,
+        )
 
         # Acilis dizisi (protokol §6): once varsa kilitli hatayi temizle.
         self._write_transport(p.encode_safety(p.SafetyCommand.CLEAR_FAULT))

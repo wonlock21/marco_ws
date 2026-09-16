@@ -19,6 +19,7 @@ from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import (
     PolygonStamped,
     Pose2D,
+    PoseStamped,
     PoseWithCovarianceStamped,
     Twist,
 )
@@ -264,6 +265,69 @@ def _terminal_abort_is_acceptable(
     return accepted, position_error, yaw_error
 
 
+def _remaining_polyline_from_pose(
+    points,
+    robot_x: float,
+    robot_y: float,
+    maximum_cross_track: float,
+):
+    """Trim a directed polyline at the nearest projection of the robot pose."""
+    if len(points) < 2:
+        raise MissionAbort('station fallback kenari en az iki nokta icermeli')
+    normalized = [(float(x), float(y)) for x, y in points]
+    if not all(
+        math.isfinite(value)
+        for point in normalized
+        for value in point
+    ):
+        raise MissionAbort('station fallback kenari sonlu olmayan nokta iceriyor')
+    if not all(math.isfinite(value) for value in (
+        robot_x, robot_y, maximum_cross_track
+    )) or maximum_cross_track <= 0.0:
+        raise MissionAbort('station fallback path esleme toleransi gecersiz')
+
+    nearest = None
+    for index, (start, end) in enumerate(zip(normalized, normalized[1:])):
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length_squared = dx * dx + dy * dy
+        if length_squared <= 1.0e-12:
+            continue
+        ratio = max(0.0, min(1.0, (
+            (robot_x - start[0]) * dx + (robot_y - start[1]) * dy
+        ) / length_squared))
+        projection = (start[0] + ratio * dx, start[1] + ratio * dy)
+        distance = math.hypot(
+            robot_x - projection[0], robot_y - projection[1]
+        )
+        candidate = (distance, index, ratio, projection)
+        if nearest is None or candidate[:3] < nearest[:3]:
+            nearest = candidate
+    if nearest is None:
+        raise MissionAbort('station fallback kenari sifir uzunlukta')
+
+    cross_track, segment_index, _ratio, projection = nearest
+    if cross_track > maximum_cross_track:
+        raise MissionAbort(
+            'station fallback current pose dock kenarindan uzak: '
+            f'{cross_track:.3f} m > {maximum_cross_track:.3f} m'
+        )
+
+    # Keep only the projection and directed suffix. No point behind the robot
+    # can send the fallback back towards the approach node.
+    remaining = [(robot_x, robot_y)]
+    if math.hypot(robot_x - projection[0], robot_y - projection[1]) > 1.0e-6:
+        remaining.append(projection)
+    for point in normalized[segment_index + 1:]:
+        if math.hypot(
+            point[0] - remaining[-1][0], point[1] - remaining[-1][1]
+        ) > 1.0e-6:
+            remaining.append(point)
+    if len(remaining) < 2:
+        remaining.append(normalized[-1])
+    return remaining, cross_track
+
+
 def _yaw_from_quaternion(orientation) -> float:
     """Return planar yaw from a quaternion-like ROS message."""
     return math.atan2(
@@ -458,6 +522,8 @@ class MissionManager(Node):
     _STATION_PICKUP_READY = 'PICKUP_READY'
     _STATION_DROPOFF_READY = 'DROPOFF_READY'
     _STATION_EXITING = 'EXITING_STATION'
+    _STATION_DOCK_POSITION_TOLERANCE_M = 0.075
+    _STATION_DOCK_YAW_TOLERANCE_RAD = math.radians(8.0)
 
     def __init__(self) -> None:
         super().__init__('mission_manager')
@@ -1306,6 +1372,17 @@ class MissionManager(Node):
                 f'{label}: map->base_footprint TF yaw gecersiz'
             )
         return yaw
+
+    def _fresh_map_base_pose(self, label: str):
+        """Return a localization-validated, fresh map-frame robot pose."""
+        transform = self._fresh_base_transform('map', label)
+        translation = transform.transform.translation
+        orientation = transform.transform.rotation
+        yaw = _yaw_from_quaternion(orientation)
+        values = (float(translation.x), float(translation.y), float(yaw))
+        if not all(math.isfinite(value) for value in values):
+            raise MissionAbort(f'{label}: map robot pose sonlu degil')
+        return values
 
     def _fresh_base_transform(self, target_frame: str, label: str):
         """Return a fresh target-frame transform of the robot body."""
@@ -3193,8 +3270,10 @@ class MissionManager(Node):
         self._docking_lane_active = False
         self._docking_stopped = False
         self._wait_until_stopped(f'{station} lane fallback handoff')
-        self._navigate(station, loaded=not pickup)
-        self._current_node = station
+        self._navigate_station_dock_fallback(
+            station,
+            loaded=not pickup,
+        )
         self._event(
             'station_lane_fallback_completed',
             station=station,
@@ -3202,11 +3281,205 @@ class MissionManager(Node):
             target=station,
         )
 
+    def _station_dock_fallback_edge(self, station: str):
+        """Load the directed reverse approach-to-dock graph polyline."""
+        approach_name = self._station_approach_target(station)
+        approach_id = int(self._nodes[approach_name]['id'])
+        dock_id = int(self._nodes[station]['id'])
+        try:
+            with open(self._graph_file, encoding='utf-8') as stream:
+                graph = json.load(stream)
+        except (OSError, json.JSONDecodeError) as error:
+            raise MissionAbort(
+                f'{station}: station fallback graph okunamadi'
+            ) from error
+
+        matches = []
+        for feature in graph.get('features', []):
+            geometry = feature.get('geometry', {})
+            if geometry.get('type') not in ('LineString', 'MultiLineString'):
+                continue
+            properties = feature.get('properties', {})
+            try:
+                start_id = int(properties.get('startid'))
+                end_id = int(properties.get('endid'))
+            except (TypeError, ValueError):
+                continue
+            if start_id == approach_id and end_id == dock_id:
+                matches.append(feature)
+        if len(matches) != 1:
+            raise MissionAbort(
+                f'{station}: approach->dock dogrudan kenari tekil degil'
+            )
+
+        feature = matches[0]
+        properties = feature.get('properties', {})
+        metadata = properties.get('metadata', {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        movement_direction = str(
+            metadata.get('movement_direction', '')
+        ).strip().lower()
+        if movement_direction != 'reverse':
+            raise MissionAbort(
+                f'{station}: approach->dock kenari reverse degil; '
+                'station fallback guvenli baslatilamaz'
+            )
+        load_rule = str(metadata.get('load_rule', 'any')).strip().lower()
+        geometry = feature.get('geometry', {})
+        coordinates = geometry.get('coordinates', [])
+        if geometry.get('type') == 'MultiLineString':
+            if len(coordinates) != 1:
+                raise MissionAbort(
+                    f'{station}: station fallback polyline geometrisi gecersiz'
+                )
+            coordinates = coordinates[0]
+        try:
+            points = [
+                (float(point[0]), float(point[1]))
+                for point in coordinates
+            ]
+        except (TypeError, ValueError, IndexError) as error:
+            raise MissionAbort(
+                f'{station}: station fallback polyline geometrisi gecersiz'
+            ) from error
+        if len(points) < 2:
+            raise MissionAbort(
+                f'{station}: station fallback polyline geometrisi gecersiz'
+            )
+        approach_xy = self._nodes[approach_name]['xy']
+        dock_xy = self._nodes[station]['xy']
+        if (
+            math.hypot(
+                points[0][0] - float(approach_xy[0]),
+                points[0][1] - float(approach_xy[1]),
+            ) > 1.0e-3
+            or math.hypot(
+                points[-1][0] - float(dock_xy[0]),
+                points[-1][1] - float(dock_xy[1]),
+            ) > 1.0e-3
+        ):
+            raise MissionAbort(
+                f'{station}: station fallback polyline yonu '
+                'approach->dock ile uyusmuyor'
+            )
+        try:
+            edge_id = int(properties['id'])
+        except (KeyError, TypeError, ValueError) as error:
+            raise MissionAbort(
+                f'{station}: station fallback edge ID gecersiz'
+            ) from error
+        return approach_name, points, edge_id, load_rule
+
+    def _navigate_station_dock_fallback(
+        self, station: str, loaded: bool
+    ) -> None:
+        """Follow only the remaining reverse station edge, then verify dock."""
+        self._await_route_constraints()
+        approach, edge_points, edge_id, load_rule = (
+            self._station_dock_fallback_edge(station)
+        )
+        if load_rule not in ('any', 'loaded', 'unloaded'):
+            raise MissionAbort(
+                f'{station}: station fallback load_rule gecersiz'
+            )
+        if load_rule == 'loaded' and not loaded:
+            raise MissionAbort(
+                f'{station}: station fallback kenari yalniz yuklu kullanilabilir'
+            )
+        if load_rule == 'unloaded' and loaded:
+            raise MissionAbort(
+                f'{station}: station fallback kenari yalniz yuksuz kullanilabilir'
+            )
+
+        geometry = self._station_dock_target(
+            station, reverse_docking=True
+        )
+        robot_x, robot_y, _robot_yaw = self._fresh_map_base_pose(
+            f'{station} lane fallback baslangic'
+        )
+        match_tolerance = float(self.get_parameter(
+            'junction_path_match_tolerance_m').value)
+        remaining, cross_track = _remaining_polyline_from_pose(
+            edge_points,
+            robot_x,
+            robot_y,
+            match_tolerance,
+        )
+
+        path = Path()
+        path.header.frame_id = 'map'
+        path.header.stamp = self.get_clock().now().to_msg()
+        target_yaw = float(geometry['target_body_yaw'])
+        for x, y in remaining:
+            pose = PoseStamped()
+            pose.header = copy.deepcopy(path.header)
+            pose.pose.position.x = float(x)
+            pose.pose.position.y = float(y)
+            pose.pose.orientation.z = math.sin(target_yaw / 2.0)
+            pose.pose.orientation.w = math.cos(target_yaw / 2.0)
+            path.poses.append(pose)
+
+        self._set_state(
+            RobotStatus.STATE_MOVING_LOADED if loaded
+            else RobotStatus.STATE_MOVING_UNLOADED,
+            station,
+        )
+        self._edge = f'{approach}->{station}'
+        self._event(
+            'station_lane_fallback_path_planned',
+            station=station,
+            target=station,
+            edge_id=edge_id,
+            movement_direction='reverse',
+            pose_count=len(path.poses),
+            cross_track_error_m=cross_track,
+        )
+        goal = FollowPath.Goal()
+        goal.path = path
+        goal.controller_id = 'FollowPath'
+        goal.goal_checker_id = 'general_goal_checker'
+        self._action(
+            self._follow_path,
+            goal,
+            f'follow_route:station_dock_fallback:{station}',
+            require_turn_sensors=True,
+        )
+        self._wait_until_stopped(f'{station} fallback FollowPath sonu')
+
+        final_x, final_y, final_yaw = self._fresh_map_base_pose(
+            f'{station} lane fallback final'
+        )
+        verified, position_error, yaw_error = _terminal_abort_is_acceptable(
+            target_x=float(geometry['dock_x']),
+            target_y=float(geometry['dock_y']),
+            target_yaw=target_yaw,
+            robot_x=final_x,
+            robot_y=final_y,
+            robot_yaw=final_yaw,
+            position_tolerance=self._STATION_DOCK_POSITION_TOLERANCE_M,
+            yaw_tolerance=self._STATION_DOCK_YAW_TOLERANCE_RAD,
+        )
+        if not verified:
+            raise MissionAbort(
+                f'{station}: fallback Nav2 success ama dock pose dogrulanamadi; '
+                f'konum hatasi={position_error:.3f} m, '
+                f'yon hatasi={math.degrees(yaw_error):.1f} derece'
+            )
+        self._current_node = station
+        self._edge = ''
+        self._event(
+            'station_lane_fallback_pose_verified',
+            station=station,
+            position_error_m=position_error,
+            yaw_error_rad=yaw_error,
+        )
+
     def _do_dock(self, station: str, pickup: bool) -> None:
         goal = DockToStation.Goal()
         goal.station_id = station
-        goal.position_tolerance = 0.075
-        goal.yaw_tolerance = math.radians(5.0)
+        goal.position_tolerance = self._STATION_DOCK_POSITION_TOLERANCE_M
+        goal.yaw_tolerance = self._STATION_DOCK_YAW_TOLERANCE_RAD
         goal.approach_type = (DockToStation.Goal.APPROACH_PICKUP if pickup else
                               DockToStation.Goal.APPROACH_DROPOFF)
         station_flow = self._nodes[station].get('role') in (
