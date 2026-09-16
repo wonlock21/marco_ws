@@ -109,6 +109,56 @@ def test_onceki_seritle_tutarli_kontur_secilir():
     assert error > 45.0
 
 
+def test_tek_miss_sonrasi_yakindaki_serit_takip_edilir():
+    detector = LaneDetector()
+    first = blue_frame()
+    cv2.rectangle(first, (225, 60), (250, 239), ORANGE, -1)
+    assert detector.process(first, center_x=160)[0] is True
+
+    assert detector.process(blue_frame(), center_x=160)[0] is False
+    assert detector._previous_center_x is not None
+
+    nearby = blue_frame()
+    cv2.rectangle(nearby, (210, 60), (240, 239), ORANGE, -1)
+    found, error = detector.process(nearby, center_x=160)
+
+    assert found is True
+    assert error > 45.0
+    assert detector._consecutive_detection_misses == 0
+
+
+def test_iki_miss_sonrasi_eski_continuity_merkezi_temizlenir():
+    detector = LaneDetector()
+    first = blue_frame()
+    cv2.rectangle(first, (225, 60), (250, 239), ORANGE, -1)
+    assert detector.process(first, center_x=160)[0] is True
+
+    assert detector.process(blue_frame(), center_x=160)[0] is False
+    assert detector._previous_center_x is not None
+    assert detector.process(blue_frame(), center_x=160)[0] is False
+
+    assert detector._previous_center_x is None
+    assert detector._consecutive_detection_misses == 2
+
+
+def test_kalici_miss_sonrasi_farkli_taraftaki_serit_reacquire_edilir():
+    detector = LaneDetector()
+    right = blue_frame()
+    cv2.rectangle(right, (235, 60), (270, 239), ORANGE, -1)
+    assert detector.process(right, center_x=160)[0] is True
+
+    assert detector.process(blue_frame(), center_x=160)[0] is False
+    assert detector.process(blue_frame(), center_x=160)[0] is False
+
+    left = blue_frame()
+    cv2.rectangle(left, (10, 60), (45, 239), ORANGE, -1)
+    found, error = detector.process(left, center_x=160)
+
+    assert found is True
+    assert error < -100.0
+    assert detector._consecutive_detection_misses == 0
+
+
 def test_ileride_saga_yatmis_serit_pozitif_yon_hatasi_uretir():
     frame = blue_frame()
     points = np.array([[110, 239], [145, 239], [230, 70], [205, 70]])
@@ -140,8 +190,12 @@ def test_yeni_oturum_onceki_kontur_konumunu_unutur():
     right = blue_frame()
     cv2.rectangle(right, (235, 60), (270, 239), ORANGE, -1)
     assert detector.process(right, center_x=160)[0] is True
+    assert detector.process(blue_frame(), center_x=160)[0] is False
+    assert detector._consecutive_detection_misses == 1
 
     detector.reset_tracking()
+    assert detector._previous_center_x is None
+    assert detector._consecutive_detection_misses == 0
     left = blue_frame()
     cv2.rectangle(left, (10, 60), (45, 239), ORANGE, -1)
     found, error = detector.process(left, center_x=160)

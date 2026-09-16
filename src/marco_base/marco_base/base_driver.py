@@ -836,73 +836,6 @@ class BaseDriver(Node):
             f"{command_name} base driver kapanisi nedeniyle durduruldu",
         )
 
-    def _verify_pickup_load(
-        self, goal_handle, stop_sent_wall: float, overall_deadline: float
-    ):
-        """Require one post-STOP status carrying LOAD_DETECTED."""
-        feedback = LiftLoad.Feedback()
-        feedback.phase = "verifying_load"
-        feedback.position = math.nan
-        goal_handle.publish_feedback(feedback)
-        verification_deadline = min(
-            overall_deadline,
-            stop_sent_wall + self.communication_timeout,
-        )
-        while rclpy.ok() and not self._shutdown_requested.is_set():
-            if goal_handle.is_cancel_requested:
-                self._send_fork_stop()
-                goal_handle.canceled()
-                return self._lift_result(
-                    False,
-                    LiftLoad.Result.RESULT_ABORTED,
-                    "pickup yuk kontrolunde iptal edildi; STOP gonderildi",
-                )
-            now = time.monotonic()
-            if now >= overall_deadline:
-                self._send_fork_stop()
-                goal_handle.abort()
-                return self._lift_result(
-                    False,
-                    LiftLoad.Result.RESULT_TIMEOUT,
-                    "pickup overall timeout; STOP gonderildi",
-                )
-            status_wall = self._last_status_wall
-            if status_wall is not None and status_wall > stop_sent_wall:
-                error = self._lift_hardware_error()
-                if error:
-                    self._send_fork_stop()
-                    goal_handle.abort()
-                    return self._lift_result(
-                        False,
-                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                        f"pickup yuk kontrolu basarisiz: {error}",
-                    )
-                if p.StatusFlag.LOAD_DETECTED in self._status.flags:
-                    return None
-                goal_handle.abort()
-                return self._lift_result(
-                    False,
-                    LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                    "pickup tamamlandi ancak yuk algilanmadi",
-                )
-            if now >= verification_deadline:
-                self._send_fork_stop()
-                goal_handle.abort()
-                return self._lift_result(
-                    False,
-                    LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                    "pickup STOP sonrasi fresh STM32 status gelmedi",
-                )
-            time.sleep(0.02)
-
-        self._send_fork_stop()
-        goal_handle.abort()
-        return self._lift_result(
-            False,
-            LiftLoad.Result.RESULT_ABORTED,
-            "pickup yuk kontrolu base driver kapanisi nedeniyle durdu",
-        )
-
     def _execute_lift(self, goal_handle):
         """Execute the production lift sequence under one safety ceiling."""
         goal = goal_handle.request
@@ -920,18 +853,13 @@ class BaseDriver(Node):
             durations = dict(self._lift_phase_durations(goal.command))
             overall_deadline = time.monotonic() + float(goal.timeout)
             if goal.command == LiftLoad.Goal.COMMAND_PICKUP:
-                stop_wall, failure = self._run_fork_phase(
+                _, failure = self._run_fork_phase(
                     goal_handle,
                     p.ForkAction.UP,
                     durations["lift_pickup_duration_s"],
                     "moving_up",
                     overall_deadline,
                     command_name,
-                )
-                if failure is not None:
-                    return failure
-                failure = self._verify_pickup_load(
-                    goal_handle, stop_wall, overall_deadline
                 )
             else:
                 _, failure = self._run_fork_phase(

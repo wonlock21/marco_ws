@@ -21,18 +21,30 @@ from std_msgs.msg import Bool, String
 
 def reverse_lane_command(lane, angular_sign, max_linear, max_angular):
     """Convert a forward lane command to bounded rear-camera reverse motion."""
-    values = (lane.linear.x, lane.angular.z, angular_sign)
+    values = (
+        lane.linear.x,
+        lane.angular.z,
+        angular_sign,
+        max_linear,
+        max_angular,
+    )
     if not all(math.isfinite(float(value)) for value in values):
         raise ValueError('non-finite lane command')
+
+    raw_linear = -abs(float(lane.linear.x))
+    raw_angular = float(angular_sign) * float(lane.angular.z)
+    linear_limit = abs(float(max_linear))
+    angular_limit = abs(float(max_angular))
+
+    scale = 1.0
+    if abs(raw_linear) > linear_limit:
+        scale = min(scale, linear_limit / abs(raw_linear))
+    if abs(raw_angular) > angular_limit:
+        scale = min(scale, angular_limit / abs(raw_angular))
+
     cmd = Twist()
-    cmd.linear.x = -min(abs(float(lane.linear.x)), abs(float(max_linear)))
-    cmd.angular.z = max(
-        -abs(float(max_angular)),
-        min(
-            abs(float(max_angular)),
-            float(angular_sign) * float(lane.angular.z),
-        ),
-    )
+    cmd.linear.x = raw_linear * scale
+    cmd.angular.z = raw_angular * scale
     return cmd
 
 
@@ -62,13 +74,15 @@ class DockServer(Node):
             'lane_active_timeout_s': 0.50,
             'activation_timeout_s': 2.0,
             'reverse_docking_timeout_s': 30.0,
+            # Kept declared for compatibility with older parameter files.
             'zero_command_timeout_s': 0.40,
+            'lane_end_zero_grace_s': 1.5,
             'odom_timeout_s': 0.50,
             'stop_timeout_s': 3.0,
             'stop_settle_s': 0.40,
             'stop_linear_tolerance': 0.01,
             'stop_angular_tolerance': 0.03,
-            'reverse_angular_sign': -1.0}
+            'reverse_angular_sign': 1.0}
         for name, value in defaults.items():
             self.declare_parameter(name, value)
         self._p = {
@@ -288,6 +302,13 @@ class DockServer(Node):
             return self._rear_lane_failure(
                 handle, result, DockToStation.Result.RESULT_ABORTED,
                 'reverse docking timeout parametresi gecersiz')
+        zero_grace = float(self._p['lane_end_zero_grace_s'])
+        if not math.isfinite(zero_grace) or zero_grace <= 0.0:
+            with self._busy_lock:
+                self._busy = False
+            return self._rear_lane_failure(
+                handle, result, DockToStation.Result.RESULT_ABORTED,
+                'lane-end zero grace parametresi gecersiz')
         if goal.timeout > 0.0:
             timeout = min(timeout, float(goal.timeout))
         requested_at = time.monotonic()
@@ -386,17 +407,21 @@ class DockServer(Node):
                         DockToStation.Result.RESULT_CONTROL_INACTIVE,
                         'serit kontrolu sonlu olmayan komut uretti')
                 lane = self._lane_command
-                moving = abs(float(lane.linear.x)) > 1e-4
-                if moving:
-                    zero_since = None
-                else:
+                command_zero = (
+                    abs(float(lane.linear.x)) <= 1e-4
+                    and abs(float(lane.angular.z)) <= 1e-4)
+                if command_zero:
                     zero_since = zero_since or now
-                    if now - zero_since > float(
-                            self._p['zero_command_timeout_s']):
+                    self._stop()
+                    self._rear_lane_feedback(handle, timeout, started, now)
+                    if now - zero_since > zero_grace:
                         return self._rear_lane_failure(
                             handle, result,
                             DockToStation.Result.RESULT_LANE_LOST,
-                            'serit kaybi: hareket komutu sifir kaldi')
+                            'serit kaybi: lane-end zero grace doldu')
+                    time.sleep(rate)
+                    continue
+                zero_since = None
                 try:
                     cmd = reverse_lane_command(
                         lane, self._p['reverse_angular_sign'],

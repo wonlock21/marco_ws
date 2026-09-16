@@ -101,6 +101,7 @@ class LaneDetector:
         self.last_heading_error = 0.0
         self.last_confidence = 0.0
         self._previous_center_x = None
+        self._consecutive_detection_misses = 0
 
     def reset_tracking(self):
         """Yeni surus oturumu icin zamansal kontur hafizasini temizle."""
@@ -108,6 +109,7 @@ class LaneDetector:
         self.last_confidence = 0.0
         self.last_lookahead_x = None
         self._previous_center_x = None
+        self._consecutive_detection_misses = 0
 
     def process(self, frame, center_x):
         height, width = frame.shape[:2]
@@ -137,6 +139,9 @@ class LaneDetector:
             mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         selected = self._select_contour(contours, width, height)
         if selected is None:
+            self._consecutive_detection_misses += 1
+            if self._consecutive_detection_misses >= 2:
+                self._previous_center_x = None
             self.last_mask = np.zeros_like(mask)
             self.last_selected_mask = np.zeros_like(mask)
             self.last_heading_error = 0.0
@@ -144,6 +149,7 @@ class LaneDetector:
             self.last_lookahead_x = None
             self._draw_lookahead(working_frame, center_x, None)
             return False, 0.0
+        self._consecutive_detection_misses = 0
 
         selected_mask = np.zeros_like(mask)
         cv2.drawContours(selected_mask, [selected], -1, 255, -1)

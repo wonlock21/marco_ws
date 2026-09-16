@@ -33,12 +33,12 @@ dock_server:
     activation_timeout_s: 2.0
     # Normal basari lane-end olayi ile gelir; bu yalniz sistem fail-safe'idir.
     reverse_docking_timeout_s: 30.0
-    zero_command_timeout_s: 0.40
+    # Lane tracker sifir komuta gectikten sonra fresh lane-end icin durarak bekle.
+    lane_end_zero_grace_s: 1.5
     odom_timeout_s: 0.50
     stop_timeout_s: 3.0
     stop_settle_s: 0.40
     stop_linear_tolerance: 0.01
     stop_angular_tolerance: 0.03
-    # Arka kamera + geri hareket icin direksiyon isareti. Fiziksel kabulte
-    # arac seritten ters yone kacarsa yalniz bu deger +1.0 yapilmalidir.
-    reverse_angular_sign: -1.0
+    # Arka kamera lane tracker direksiyon isaretini dogrudan korur.
+    reverse_angular_sign: 1.0

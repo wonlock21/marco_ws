@@ -480,7 +480,7 @@ class MissionManager(Node):
             # cannot advance the station flow.
             ('station_qr_mock_enabled', False),
             ('station_turn_timeout_s', 30.0),
-            ('station_turn_yaw_tolerance_deg', 3.0),
+            ('station_turn_yaw_tolerance_deg', 5.0),
             ('station_turn_min_angle_deg', 150.0),
             ('station_turn_max_angle_deg', 210.0),
             ('station_turn_max_correction_attempts', 5),
@@ -1832,7 +1832,7 @@ class MissionManager(Node):
         dock_target = self._station_dock_target(station, reverse_docking)
         target_yaw = dock_target['target_body_yaw']
         self._check_action_health(require_turn_sensors=True)
-        if not math.isfinite(self._filtered_yaw):
+        if not math.isfinite(self._encoder_yaw):
             raise MissionAbort(f'{station}: donus oncesi yon bilgisi gecersiz')
         start_map_yaw = self._fresh_map_base_yaw(
             f'{station} donus baslangici'
@@ -1853,6 +1853,7 @@ class MissionManager(Node):
             current_tf_yaw_deg=math.degrees(start_map_yaw),
             turn_command_deg=math.degrees(shortest_turn),
         )
+        start_encoder_yaw = self._encoder_yaw
         start_filtered_yaw = self._filtered_yaw
         direction = self._select_station_turn_direction(
             station, start_map_yaw, target_yaw
@@ -1896,9 +1897,9 @@ class MissionManager(Node):
             )
         except MissionActionFailure as error:
             # Spin may report ABORTED after physically completing most of the
-            # turn. Stop, re-measure from live TF and recover only that status
-            # through the same bounded correction loop. Other goal terminal
-            # states remain fatal.
+            # turn. Stop, re-measure the encoder turn and recover only that
+            # status through the same bounded correction loop. Other goal
+            # terminal states remain fatal.
             if error.status != GoalStatus.STATUS_ABORTED:
                 reason = 'obstacle' if self._obstacle else str(error)
                 self._event(
@@ -1938,8 +1939,38 @@ class MissionManager(Node):
         final_map_yaw = self._fresh_map_base_yaw(
             f'{station} ana donus sonu'
         )
-        signed_yaw_error = self._wrap_angle(target_yaw - final_map_yaw)
+        map_yaw_error = self._wrap_angle(target_yaw - final_map_yaw)
+        measured_encoder_turn = self._directed_turn(
+            start_encoder_yaw, self._encoder_yaw, direction
+        )
+        signed_yaw_error = self._wrap_angle(
+            relative_turn - measured_encoder_turn
+        )
         yaw_error = abs(signed_yaw_error)
+        map_odom_disagreement = self._wrap_angle(
+            map_yaw_error - signed_yaw_error
+        )
+        self._event(
+            'station_turn_remeasured',
+            station=station,
+            stage='main_spin',
+            target_yaw=target_yaw,
+            final_map_yaw=final_map_yaw,
+            map_remaining_error_rad=map_yaw_error,
+            measured_encoder_turn=measured_encoder_turn,
+            encoder_remaining_error_rad=signed_yaw_error,
+            map_odom_disagreement_rad=map_odom_disagreement,
+        )
+        if abs(map_odom_disagreement) > tolerance:
+            self._event(
+                'station_turn_map_odom_disagreement',
+                station=station,
+                stage='main_spin',
+                map_remaining_error_rad=map_yaw_error,
+                encoder_remaining_error_rad=signed_yaw_error,
+                disagreement_rad=map_odom_disagreement,
+                tolerance_rad=tolerance,
+            )
         while yaw_error > tolerance:
             elapsed = time.monotonic() - correction_started
             if attempts >= max_attempts or elapsed >= correction_budget:
@@ -1978,10 +2009,17 @@ class MissionManager(Node):
             final_map_yaw = self._fresh_map_base_yaw(
                 f'{station} correction {attempts} sonu'
             )
+            map_yaw_error = self._wrap_angle(target_yaw - final_map_yaw)
+            measured_encoder_turn = self._directed_turn(
+                start_encoder_yaw, self._encoder_yaw, direction
+            )
             signed_yaw_error = self._wrap_angle(
-                target_yaw - final_map_yaw
+                relative_turn - measured_encoder_turn
             )
             yaw_error = abs(signed_yaw_error)
+            map_odom_disagreement = self._wrap_angle(
+                map_yaw_error - signed_yaw_error
+            )
             self._event(
                 'station_turn_correction_finished',
                 station=station,
@@ -1991,15 +2029,36 @@ class MissionManager(Node):
                 measured_turn_rad=measured_correction,
                 final_map_yaw=final_map_yaw,
                 remaining_error_rad=signed_yaw_error,
+                map_remaining_error_rad=map_yaw_error,
+                measured_encoder_turn=measured_encoder_turn,
+                map_odom_disagreement_rad=map_odom_disagreement,
             )
+            if abs(map_odom_disagreement) > tolerance:
+                self._event(
+                    'station_turn_map_odom_disagreement',
+                    station=station,
+                    stage=f'correction_{attempts}',
+                    map_remaining_error_rad=map_yaw_error,
+                    encoder_remaining_error_rad=signed_yaw_error,
+                    disagreement_rad=map_odom_disagreement,
+                    tolerance_rad=tolerance,
+                )
 
-        measured_turn = self._wrap_angle(
-            self._filtered_yaw - start_filtered_yaw
+        measured_turn = measured_encoder_turn
+        measured_filtered_turn = (
+            self._directed_turn(
+                start_filtered_yaw, self._filtered_yaw, direction
+            )
+            if (
+                math.isfinite(start_filtered_yaw)
+                and math.isfinite(self._filtered_yaw)
+            )
+            else math.nan
         )
         fused_turn_error = abs(self._wrap_angle(
-            relative_turn - measured_turn
+            relative_turn - measured_filtered_turn
         ))
-        turn_source = 'imu+encoder' if self._imu_enabled else 'encoder'
+        turn_source = 'encoder'
         self._station_phase = self._STATION_LINE_FOLLOW_READY
         self._status_detail = f'{station}: docking devrine hazir'
         self._event(
@@ -2009,10 +2068,14 @@ class MissionManager(Node):
             target_yaw=target_yaw,
             main_action_outcome=main_action_status,
             final_map_yaw=final_map_yaw,
-            measured_fused_turn=measured_turn,
+            measured_fused_turn=measured_filtered_turn,
+            measured_encoder_turn=measured_turn,
             turn_source=turn_source,
             yaw_error_rad=yaw_error,
+            map_yaw_error_rad=abs(map_yaw_error),
+            map_odom_disagreement_rad=map_odom_disagreement,
             fused_turn_error_rad=fused_turn_error,
+            encoder_turn_error_rad=yaw_error,
             correction_attempts=attempts,
         )
 

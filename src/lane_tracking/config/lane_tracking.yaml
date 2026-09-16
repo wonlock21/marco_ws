@@ -11,8 +11,8 @@ imgprocess_node:
     frame_height: 480
     frame_rate: 25.0
     show_debug_window: true
-    # OpenCV UMat/T-API OpenCL yoksa ayni algoritma CPU'da calisir.
-    use_gpu: true
+    # Production'da deterministik CPU pipeline kullanilir.
+    use_gpu: false
 
     # IDLE durumunda topic susturulur; boylece twist_mux Nav2 komutunu secer.
     # /task_command uzerinden START_LANE ile etkinlesir.
@@ -90,6 +90,11 @@ imgprocess_node:
     # wheel_separation base_driver ile ayni olmalidir.
     lane_min_wheel_speed: 0.000
     wheel_separation: 0.460
+    wheel_radius: 0.125
+    # Donuste 2 RPM altindaki ic teker durdurulur; titremeyi engellemek icin
+    # ayni teker ancak istenen hiz 3 RPM'i astiginda yeniden calistirilir.
+    lane_inner_wheel_stop_rpm: 2.0
+    lane_inner_wheel_resume_rpm: 3.0
     # P kazanci kucuk/orta hatada tam sayi RPM farkini erken olusturur. Daha
     # dusuk acisal sinir ise ekran kenarinda pivot benzeri 0/4 yerine yaklasik
     # 1/3 RPM ile daha yumusak manevra yaptirir.

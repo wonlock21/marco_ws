@@ -29,6 +29,8 @@ def _station_manager(
     approach_xy=(0.0, 0.0),
     dock_xy=(1.0, 0.0),
     turn_direction='right',
+    main_measured_turn=None,
+    correction_measured_scale=1.0,
 ):
     manager = MissionManager.__new__(MissionManager)
     manager._nodes = {
@@ -86,6 +88,17 @@ def _station_manager(
         manager.operations.append((
             label, goal.target_yaw, require_turn_sensors
         ))
+        measured = (
+            goal.target_yaw
+            if main_measured_turn is None
+            else main_measured_turn
+        )
+        manager._encoder_yaw = MissionManager._wrap_angle(
+            manager._encoder_yaw + measured
+        )
+        manager._filtered_yaw = MissionManager._wrap_angle(
+            manager._filtered_yaw + measured
+        )
         if manager.action_calls in failed:
             raise MissionActionFailure(label, GoalStatus.STATUS_ABORTED)
 
@@ -97,10 +110,14 @@ def _station_manager(
             correction_turn,
             timeout_limit_s,
         ))
+        measured = correction_turn * correction_measured_scale
         manager._encoder_yaw = MissionManager._wrap_angle(
-            manager._encoder_yaw + correction_turn
+            manager._encoder_yaw + measured
         )
-        return correction_turn
+        manager._filtered_yaw = MissionManager._wrap_angle(
+            manager._filtered_yaw + measured
+        )
+        return measured
 
     manager._action = action
     manager._run_precise_turn_correction = precise_correction
@@ -273,38 +290,81 @@ def test_station_direction_selector_uses_live_costmap_and_footprint():
     assert fields['right']['safe'] is True
 
 
-def test_station_turn_remeasures_fresh_tf_after_each_correction():
+def test_station_turn_closes_encoder_error_not_map_residual():
     manager = _station_manager([
         0.0,
-        math.radians(170.0),
-        math.radians(176.0),
         math.radians(179.0),
-    ])
+        math.radians(179.0),
+    ], turn_direction='left', main_measured_turn=math.radians(160.0))
 
     manager._turn_at_station('A3')
 
     assert [math.degrees(item[1]) for item in manager.operations] \
-        == pytest.approx([-180.0, 10.0, 4.0])
+        == pytest.approx([180.0, 20.0])
     assert manager.action_calls == 1
     completed = next(
         fields for event, fields in manager.events
         if event == 'station_turn_completed'
     )
-    assert completed['correction_attempts'] == 2
-    assert math.degrees(completed['yaw_error_rad']) == pytest.approx(1.0)
+    assert completed['correction_attempts'] == 1
+    assert math.degrees(completed['yaw_error_rad']) == pytest.approx(0.0)
+    assert math.degrees(completed['map_yaw_error_rad']) == pytest.approx(1.0)
+
+
+def test_station_turn_corrects_field_case_when_map_claims_target_reached():
+    approach_xy = (4.077094, -2.497844)
+    dock_xy = (5.322112, -2.528911)
+    dock_path_heading = math.atan2(
+        dock_xy[1] - approach_xy[1],
+        dock_xy[0] - approach_xy[0],
+    )
+    target_heading = MissionManager._wrap_angle(
+        dock_path_heading + math.pi
+    )
+    start_heading = math.radians(5.083)
+    measured_main_turn = math.radians(161.141)
+    manager = _station_manager(
+        [start_heading, target_heading, target_heading],
+        station='A2',
+        approach_xy=approach_xy,
+        dock_xy=dock_xy,
+        turn_direction='left',
+        main_measured_turn=measured_main_turn,
+    )
+    manager._encoder_yaw = start_heading
+    manager._filtered_yaw = start_heading
+
+    manager._turn_at_station('A2')
+
+    expected_turn = MissionManager._directed_turn(
+        start_heading, target_heading, 'left'
+    )
+    assert math.degrees(manager.operations[0][1]) == pytest.approx(
+        173.491, abs=0.01
+    )
+    assert manager.operations[1][0] == 'station_turn_correction:A2'
+    assert manager.operations[1][1] == pytest.approx(
+        expected_turn - measured_main_turn
+    )
+    completed = next(
+        fields for event, fields in manager.events
+        if event == 'station_turn_completed'
+    )
+    assert completed['correction_attempts'] == 1
+    assert completed['encoder_turn_error_rad'] == pytest.approx(0.0)
 
 
 def test_aborted_main_spin_uses_raw_bounded_corrections():
     manager = _station_manager([
         0.0,
         math.radians(170.0),
-        math.radians(175.0),
         math.radians(179.0),
-    ], failed_action_calls=(1,))
+    ], failed_action_calls=(1,), turn_direction='left',
+        main_measured_turn=math.radians(170.0))
 
     manager._turn_at_station('A3')
 
-    assert len(manager.operations) == 3
+    assert len(manager.operations) == 2
     completed = next(
         fields for event, fields in manager.events
         if event == 'station_turn_completed'
@@ -316,7 +376,7 @@ def test_aborted_main_spin_uses_raw_bounded_corrections():
     ]
     assert corrections[0]['outcome'] == 'success'
     assert corrections[0]['odometry_source'] == '/odom'
-    assert completed['correction_attempts'] == 2
+    assert completed['correction_attempts'] == 1
 
 
 def test_station_heading_aborts_only_after_five_correction_attempts():
@@ -328,7 +388,8 @@ def test_station_heading_aborts_only_after_five_correction_attempts():
         math.radians(170.0),
         math.radians(170.0),
         math.radians(170.0),
-    ])
+    ], turn_direction='left', main_measured_turn=math.radians(170.0),
+        correction_measured_scale=0.0)
 
     with pytest.raises(MissionAbort, match='correction 5/5'):
         manager._turn_at_station('A3')

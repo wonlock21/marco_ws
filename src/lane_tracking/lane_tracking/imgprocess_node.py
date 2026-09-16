@@ -20,6 +20,8 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
 
 from .lane_detector import LaneDetector
+
+
 class ProcessState(Enum):
     IDLE = 1
     LANE_TRACKING = 2
@@ -81,6 +83,67 @@ def enforce_minimum_wheel_speed(
     required_linear = float(minimum_wheel_speed) + (
         abs(float(angular_speed)) * float(wheel_separation) * 0.5)
     return max(float(linear_speed), required_linear)
+
+
+def apply_inner_wheel_stop(
+        left_target, right_target, wheel_radius, stop_rpm, resume_rpm,
+        stopped_wheel=None):
+    """Stop a genuinely turning inner wheel with RPM hysteresis."""
+    left = float(left_target)
+    right = float(right_target)
+    radius = float(wheel_radius)
+    stop_threshold = max(0.0, float(stop_rpm))
+    resume_threshold = max(stop_threshold, float(resume_rpm))
+
+    if radius <= 0.0 or math.isclose(
+            left, right, rel_tol=0.0, abs_tol=1e-9):
+        return left, right, None
+
+    inner_wheel = 'left' if abs(left) < abs(right) else 'right'
+    inner_speed = left if inner_wheel == 'left' else right
+    requested_rpm = (
+        abs(inner_speed) * 60.0 / (2.0 * math.pi * radius))
+
+    if stopped_wheel != inner_wheel:
+        stopped_wheel = None
+    if stopped_wheel is not None:
+        if requested_rpm > resume_threshold:
+            stopped_wheel = None
+    elif requested_rpm < stop_threshold:
+        stopped_wheel = inner_wheel
+
+    if stopped_wheel == 'left':
+        left = 0.0
+    elif stopped_wheel == 'right':
+        right = 0.0
+    return left, right, stopped_wheel
+
+
+def clamp_inner_wheel_reversal(
+        left_target, right_target, translation_speed):
+    """Prevent lane steering from reversing one wheel against translation."""
+    left = float(left_target)
+    right = float(right_target)
+    translation = float(translation_speed)
+    if math.isclose(translation, 0.0, rel_tol=0.0, abs_tol=1e-9):
+        return left, right
+
+    direction = 1.0 if translation > 0.0 else -1.0
+    if left * direction < 0.0:
+        left = 0.0
+    if right * direction < 0.0:
+        right = 0.0
+    return left, right
+
+
+def wheel_targets_to_twist(left_target, right_target, wheel_separation):
+    """Reconstruct differential-drive Twist from final wheel targets."""
+    separation = float(wheel_separation)
+    if separation <= 0.0:
+        raise ValueError('wheel_separation must be positive')
+    left = float(left_target)
+    right = float(right_target)
+    return (left + right) * 0.5, (right - left) / separation
 
 
 def schedule_lane_linear_speed(
@@ -278,6 +341,12 @@ class ImgProcessNode(Node):
             self.get_parameter('lane_min_wheel_speed').value)
         self.wheel_separation = float(
             self.get_parameter('wheel_separation').value)
+        self.wheel_radius = float(
+            self.get_parameter('wheel_radius').value)
+        self.lane_inner_wheel_stop_rpm = float(
+            self.get_parameter('lane_inner_wheel_stop_rpm').value)
+        self.lane_inner_wheel_resume_rpm = float(
+            self.get_parameter('lane_inner_wheel_resume_rpm').value)
         self.max_angular_speed = float(
             self.get_parameter('max_angular_speed').value)
         self.pd_kp = float(self.get_parameter('lane_pd_kp').value)
@@ -297,6 +366,7 @@ class ImgProcessNode(Node):
         self.lane_end_reported = False
         self.lane_end_armed = False
         self.last_lane_command = None
+        self._lane_inner_wheel_stopped = None
         self.show_debug_window = bool(
             self.get_parameter('show_debug_window').value)
         self.use_gpu = self._configure_gpu()
@@ -476,6 +546,9 @@ class ImgProcessNode(Node):
         self.declare_parameter('lane_lookahead_band_half_height', 5)
         self.declare_parameter('lane_min_wheel_speed', 0.055)
         self.declare_parameter('wheel_separation', 0.460)
+        self.declare_parameter('wheel_radius', 0.125)
+        self.declare_parameter('lane_inner_wheel_stop_rpm', 2.0)
+        self.declare_parameter('lane_inner_wheel_resume_rpm', 3.0)
         self.declare_parameter('max_angular_speed', 0.075)
 
     def _configure_gpu(self):
@@ -699,12 +772,10 @@ class ImgProcessNode(Node):
         )
         command_linear = lane_motion_speed(
             linear_speed, self.lane_reverse_motion)
-        half_track = self.wheel_separation * 0.5
-        left_target = command_linear - angular * half_track
-        right_target = command_linear + angular * half_track
-        self.publish_movement(command_linear, angular)
+        (left_target, right_target,
+         command_linear, angular) = self._publish_pd_wheel_command(
+             command_linear, angular)
         self.lane_missed_frames = 0
-        self.last_lane_command = (command_linear, angular)
         self.get_logger().info(
             f'[SERIT PD] lookahead_hata={error:+.1f}px '
             f'({position_error:+.1%}) | egim={heading_error:+.1%} | '
@@ -719,6 +790,38 @@ class ImgProcessNode(Node):
             f'sag={right_target * 1000.0:+.0f} mm/s',
             throttle_duration_sec=0.5)
 
+    def _publish_pd_wheel_command(self, command_linear, angular):
+        half_track = self.wheel_separation * 0.5
+        left_target = float(command_linear) - float(angular) * half_track
+        right_target = float(command_linear) + float(angular) * half_track
+        left_target, right_target = clamp_inner_wheel_reversal(
+            left_target, right_target, command_linear)
+        (left_target, right_target,
+         self._lane_inner_wheel_stopped) = apply_inner_wheel_stop(
+             left_target,
+             right_target,
+             self.wheel_radius,
+             self.lane_inner_wheel_stop_rpm,
+             self.lane_inner_wheel_resume_rpm,
+             self._lane_inner_wheel_stopped,
+         )
+        final_linear, final_angular = wheel_targets_to_twist(
+            left_target, right_target, self.wheel_separation)
+
+        # Keep the existing angular safety limit without restarting a wheel
+        # that the low-RPM policy deliberately stopped.
+        if abs(final_angular) > self.max_angular_speed:
+            scale = self.max_angular_speed / abs(final_angular)
+            left_target *= scale
+            right_target *= scale
+            final_linear, final_angular = wheel_targets_to_twist(
+                left_target, right_target, self.wheel_separation)
+
+        final_linear, final_angular = self.publish_movement(
+            final_linear, final_angular)
+        self.last_lane_command = (final_linear, final_angular)
+        return left_target, right_target, final_linear, final_angular
+
     @staticmethod
     def _draw_state(frame, text, color):
         cv2.putText(frame, f'DURUM: {text}', (10, 30),
@@ -731,6 +834,7 @@ class ImgProcessNode(Node):
         twist_msg.linear.x = float(linear_x)
         twist_msg.angular.z = float(angular_z)
         self.pub_cmd_vel.publish(twist_msg)
+        return twist_msg.linear.x, twist_msg.angular.z
 
     def _filter_lane_steering(self, target_angular):
         alpha = max(0.0, min(1.0, self.lane_steering_alpha))
@@ -842,6 +946,7 @@ class ImgProcessNode(Node):
         self._pd_derivative = 0.0
         self.lane_missed_frames = 0
         self.last_lane_command = None
+        self._lane_inner_wheel_stopped = None
         if new_session:
             self.lane_seen_frames = 0
             self.lane_end_reported = False
@@ -872,6 +977,7 @@ class ImgProcessNode(Node):
         return cv2.hconcat([detection_frame, mask_bgr])
 
     def stop_robot(self):
+        self._lane_inner_wheel_stopped = None
         self.publish_movement(0.0, 0.0)
 
     def _publish_active(self):

@@ -127,14 +127,6 @@ def make_node():
         rclpy.shutdown()
 
 
-def _inject_status_on_phase(node, handle, phase, flags):
-    def update():
-        if handle.feedback[-1].phase == phase:
-            _healthy(node, flags)
-
-    handle.on_feedback = update
-
-
 def test_load_detected_flag_round_trips_without_layout_change():
     flags = p.StatusFlag.LOAD_DETECTED | p.StatusFlag.LIMIT_SWITCH_UP
     encoded = p.encode_status(_status(flags))
@@ -183,14 +175,11 @@ def test_duplicate_goal_is_rejected(make_node):
     node._lift_goal_active = False
 
 
-def test_pickup_runs_lift_then_fresh_load_and_succeeds(make_node):
+def test_pickup_runs_lift_then_stop_and_succeeds_without_load(make_node):
     duration = 0.23
     node = make_node(pickup=duration, communication=0.5)
     _healthy(node)
     handle = FakeGoalHandle(_goal(timeout=0.8))
-    _inject_status_on_phase(
-        node, handle, "verifying_load", p.StatusFlag.LOAD_DETECTED
-    )
 
     result = node._execute_lift(handle)
 
@@ -210,8 +199,7 @@ def test_pickup_runs_lift_then_fresh_load_and_succeeds(make_node):
     assert result.result_code == LiftLoad.Result.RESULT_OK
     assert result.message == "pickup lift sirasi tamamlandi; STOP gonderildi"
     assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)
-    assert "verifying_load" in [item.phase for item in handle.feedback]
-    assert [feedback.phase for feedback in handle.feedback][-1] == "verifying_load"
+    assert "verifying_load" not in [item.phase for item in handle.feedback]
     assert all(math.isnan(feedback.position) for feedback in handle.feedback)
 
 
@@ -228,8 +216,6 @@ def test_early_load_detection_does_not_finish_pickup_early(make_node):
             _healthy(node, p.StatusFlag.LOAD_DETECTED)
             early_seen.append(time.monotonic())
             assert handle.terminal is None
-        elif phase == "verifying_load":
-            _healthy(node, p.StatusFlag.LOAD_DETECTED)
 
     handle.on_feedback = update_status
     started = time.monotonic()
@@ -241,33 +227,30 @@ def test_early_load_detection_does_not_finish_pickup_early(make_node):
     assert result.success
 
 
-def test_pickup_fresh_status_without_load_aborts(make_node):
+def test_pickup_succeeds_when_status_has_no_load_detected(make_node):
     node = make_node()
-    _healthy(node, p.StatusFlag.LOAD_DETECTED)
+    _healthy(node, p.StatusFlag(0))
     handle = FakeGoalHandle(_goal())
-    _inject_status_on_phase(node, handle, "verifying_load", p.StatusFlag(0))
 
     result = node._execute_lift(handle)
 
-    assert handle.terminal == "aborted"
-    assert not result.success
-    assert result.result_code == LiftLoad.Result.RESULT_HARDWARE_FAULT
-    assert result.message == "pickup tamamlandi ancak yuk algilanmadi"
+    assert handle.terminal == "succeeded"
+    assert result.success
+    assert result.result_code == LiftLoad.Result.RESULT_OK
     assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 
-def test_stale_preexisting_load_cannot_succeed(make_node):
+def test_pickup_does_not_require_post_stop_fresh_status(make_node):
     node = make_node(pickup=0.03, communication=0.08)
-    _healthy(node, p.StatusFlag.LOAD_DETECTED)
+    _healthy(node)
     handle = FakeGoalHandle(_goal(timeout=0.3))
 
     result = node._execute_lift(handle)
 
-    assert handle.terminal == "aborted"
-    assert not result.success
-    assert result.result_code == LiftLoad.Result.RESULT_HARDWARE_FAULT
-    assert "fresh STM32 status gelmedi" in result.message
+    assert handle.terminal == "succeeded"
+    assert result.success
+    assert result.result_code == LiftLoad.Result.RESULT_OK
     assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
@@ -433,22 +416,16 @@ def test_communication_loss_during_lift_aborts_and_sends_stop(make_node):
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 
-def test_overall_timeout_during_load_verification_sends_stop(make_node):
-    node = make_node(pickup=0.04, communication=0.2)
+def test_pickup_never_enters_load_verification_phase(make_node):
+    node = make_node(pickup=0.04)
     _healthy(node)
-    handle = FakeGoalHandle(_goal(timeout=0.1))
-
-    def delayed_load_verification():
-        if handle.feedback[-1].phase == "verifying_load":
-            time.sleep(0.08)
-            _healthy(node, p.StatusFlag.LOAD_DETECTED)
-
-    handle.on_feedback = delayed_load_verification
+    handle = FakeGoalHandle(_goal())
 
     result = node._execute_lift(handle)
 
-    assert handle.terminal == "aborted"
-    assert result.result_code == LiftLoad.Result.RESULT_TIMEOUT
+    assert handle.terminal == "succeeded"
+    assert result.result_code == LiftLoad.Result.RESULT_OK
+    assert "verifying_load" not in [item.phase for item in handle.feedback]
     assert p.ForkAction.UP in _fork_actions(node._transport)
     assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
@@ -462,16 +439,15 @@ def test_overall_timeout_during_load_verification_sends_stop(make_node):
         p.StatusFlag.LIMIT_SWITCH_UP | p.StatusFlag.LIMIT_SWITCH_DOWN,
     ),
 )
-def test_limit_switch_flags_do_not_complete_pickup(make_node, flags):
+def test_pickup_success_does_not_depend_on_limit_switch_flags(make_node, flags):
     node = make_node()
     _healthy(node, flags)
     handle = FakeGoalHandle(_goal())
-    _inject_status_on_phase(node, handle, "verifying_load", flags)
 
     result = node._execute_lift(handle)
 
-    assert handle.terminal == "aborted"
-    assert not result.success
-    assert result.message == "pickup tamamlandi ancak yuk algilanmadi"
+    assert handle.terminal == "succeeded"
+    assert result.success
+    assert result.result_code == LiftLoad.Result.RESULT_OK
     assert p.ForkAction.UP in _fork_actions(node._transport)
     assert p.ForkAction.TILT_UP not in _fork_actions(node._transport)

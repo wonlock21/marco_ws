@@ -5,7 +5,10 @@ import pytest
 from sensor_msgs.msg import Image
 
 from lane_tracking.imgprocess_node import (
+    ImgProcessNode,
+    apply_inner_wheel_stop,
     apply_deadband,
+    clamp_inner_wheel_reversal,
     combine_lane_errors,
     compute_lane_turn_command,
     compute_pd_angular,
@@ -18,6 +21,7 @@ from lane_tracking.imgprocess_node import (
     schedule_lane_linear_speed,
     scale_lane_error,
     shape_lane_control_error,
+    wheel_targets_to_twist,
 )
 
 
@@ -200,6 +204,164 @@ def test_duzlukte_mevcut_hiz_degismez():
     )
 
     assert linear == pytest.approx(0.060)
+
+
+def _speed_for_rpm(rpm, radius=0.125):
+    return float(rpm) * 2.0 * np.pi * float(radius) / 60.0
+
+
+def test_reverse_donuste_sag_ic_teker_durur():
+    left, right, stopped = apply_inner_wheel_stop(
+        -0.080, -_speed_for_rpm(1.8), 0.125, 2.0, 3.0)
+
+    assert left == pytest.approx(-0.080)
+    assert right == 0.0
+    assert stopped == 'right'
+
+
+def test_reverse_donuste_sol_ic_teker_durur():
+    left, right, stopped = apply_inner_wheel_stop(
+        -_speed_for_rpm(1.8), -0.080, 0.125, 2.0, 3.0)
+
+    assert left == 0.0
+    assert right == pytest.approx(-0.080)
+    assert stopped == 'left'
+
+
+def test_reverse_sag_ic_teker_tersine_gecemez():
+    left, right = clamp_inner_wheel_reversal(-0.080, 0.010, -0.035)
+
+    assert left == pytest.approx(-0.080)
+    assert right == 0.0
+
+
+def test_reverse_ayni_yondeki_ic_teker_degismez():
+    left, right = clamp_inner_wheel_reversal(-0.080, -0.030, -0.055)
+
+    assert left == pytest.approx(-0.080)
+    assert right == pytest.approx(-0.030)
+
+
+def test_forward_sag_ic_teker_tersine_gecemez():
+    left, right = clamp_inner_wheel_reversal(0.080, -0.010, 0.035)
+
+    assert left == pytest.approx(0.080)
+    assert right == 0.0
+
+
+def test_normal_duz_teker_hedefleri_degismez():
+    left, right = clamp_inner_wheel_reversal(0.060, 0.060, 0.060)
+
+    assert left == pytest.approx(0.060)
+    assert right == pytest.approx(0.060)
+
+
+def test_ic_teker_stop_histerezisi_3_rpm_ustunde_birakir():
+    stopped = None
+    for rpm in (1.8, 2.5):
+        left, right, stopped = apply_inner_wheel_stop(
+            -0.080, -_speed_for_rpm(rpm), 0.125, 2.0, 3.0,
+            stopped)
+        assert left == pytest.approx(-0.080)
+        assert right == 0.0
+        assert stopped == 'right'
+
+    left, right, stopped = apply_inner_wheel_stop(
+        -0.080, -_speed_for_rpm(3.1), 0.125, 2.0, 3.0, stopped)
+    assert left == pytest.approx(-0.080)
+    assert right == pytest.approx(-_speed_for_rpm(3.1))
+    assert stopped is None
+
+
+def test_duz_dusuk_hizda_tekerler_degismez():
+    speed = -_speed_for_rpm(1.8)
+    left, right, stopped = apply_inner_wheel_stop(
+        speed, speed, 0.125, 2.0, 3.0, 'right')
+
+    assert left == pytest.approx(speed)
+    assert right == pytest.approx(speed)
+    assert stopped is None
+
+
+def test_final_teker_hedeflerinden_twist_yeniden_olusturulur():
+    linear, angular = wheel_targets_to_twist(0.0, -0.080, 0.460)
+
+    assert linear == pytest.approx(-0.040)
+    assert angular == pytest.approx(-0.080 / 0.460)
+
+
+class _CommandPublisher:
+
+    def __init__(self):
+        self.messages = []
+
+    def publish(self, message):
+        self.messages.append(message)
+
+
+def test_pd_last_command_gercek_yayinlanan_twisti_tutar():
+    node = ImgProcessNode.__new__(ImgProcessNode)
+    node.wheel_separation = 0.460
+    node.wheel_radius = 0.125
+    node.lane_inner_wheel_stop_rpm = 2.0
+    node.lane_inner_wheel_resume_rpm = 3.0
+    node._lane_inner_wheel_stopped = None
+    node.max_angular_speed = 0.250
+    node.pub_cmd_vel = _CommandPublisher()
+    inner_speed = -_speed_for_rpm(1.8)
+    raw_linear, raw_angular = wheel_targets_to_twist(
+        -0.080, inner_speed, node.wheel_separation)
+
+    left, right, final_linear, final_angular = (
+        node._publish_pd_wheel_command(raw_linear, raw_angular))
+    published = node.pub_cmd_vel.messages[-1]
+
+    assert left == pytest.approx(-0.080)
+    assert right == 0.0
+    assert published.linear.x == pytest.approx(final_linear)
+    assert published.angular.z == pytest.approx(final_angular)
+    assert node.last_lane_command == pytest.approx(
+        (published.linear.x, published.angular.z))
+
+
+def test_pd_reversal_korumasi_final_twiste_uygulanir():
+    node = ImgProcessNode.__new__(ImgProcessNode)
+    node.wheel_separation = 0.460
+    node.wheel_radius = 0.125
+    node.lane_inner_wheel_stop_rpm = 2.0
+    node.lane_inner_wheel_resume_rpm = 3.0
+    node._lane_inner_wheel_stopped = None
+    node.max_angular_speed = 0.250
+    node.pub_cmd_vel = _CommandPublisher()
+    raw_linear, raw_angular = wheel_targets_to_twist(
+        -0.080, 0.010, node.wheel_separation)
+
+    left, right, final_linear, final_angular = (
+        node._publish_pd_wheel_command(raw_linear, raw_angular))
+
+    assert left == pytest.approx(-0.080)
+    assert right == 0.0
+    assert final_linear == pytest.approx(-0.040)
+    assert final_angular == pytest.approx(0.080 / 0.460)
+    assert node._lane_inner_wheel_stopped == 'right'
+
+
+def test_lane_control_reset_inner_wheel_histerezisini_temizler():
+    node = ImgProcessNode.__new__(ImgProcessNode)
+    node.filtered_lane_angular = 0.1
+    node._pd_previous_error = 0.2
+    node._pd_previous_time = object()
+    node._pd_derivative = 0.3
+    node.lane_missed_frames = 2
+    node.last_lane_command = (-0.05, 0.1)
+    node._lane_inner_wheel_stopped = 'right'
+    node.lane_seen_frames = 10
+    node.lane_end_reported = True
+    node.lane_end_armed = True
+
+    node._reset_lane_control()
+
+    assert node._lane_inner_wheel_stopped is None
 
 
 def test_pd_donusu_buyudukce_ileri_hiz_azalir():
