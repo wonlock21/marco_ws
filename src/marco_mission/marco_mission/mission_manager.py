@@ -52,8 +52,8 @@ from marco_msgs.msg import (
     RobotStatus,
 )
 from marco_msgs.srv import (AssignTask, CancelMission, GatePermission,
-                            ResetMissionSafety, StartMission, SubmitManualTask,
-                            SubmitMission, TaskComplete)
+                            ResetMissionSafety, ResumeMission, StartMission,
+                            SubmitManualTask, SubmitMission, TaskComplete)
 
 
 class MissionAbort(RuntimeError):
@@ -591,6 +591,9 @@ class MissionManager(Node):
         self._route_nodes = []
         self._current_stop_index = 0
         self._return_home = True
+        self._resume_context_valid = False
+        self._mission_field_hash = ''
+        self._mission_graph_file = ''
         self._known_task_ids = set()
         self._next_node = self._edge = self._last_qr = ''
         self._last_qr_detected = False
@@ -769,6 +772,8 @@ class MissionManager(Node):
         self.create_service(SubmitMission, '/mission/submit',
                             self._on_submit_mission, callback_group=self._cb)
         self.create_service(CancelMission, '/mission/cancel', self._on_cancel,
+                            callback_group=self._cb)
+        self.create_service(ResumeMission, '/mission/resume', self._on_resume,
                             callback_group=self._cb)
         self.create_service(ResetMissionSafety, '/mission/reset_safety',
                             self._on_reset_safety, callback_group=self._cb)
@@ -2146,6 +2151,24 @@ class MissionManager(Node):
                     latch=True,
                 )
                 return
+            resume_node = None
+            if self._resume_context_valid:
+                incoming_graph = (
+                    os.path.realpath(msg.graph_file) if msg.graph_file else ''
+                )
+                same_checkpoint_field = bool(
+                    msg.active
+                    and msg.package_hash == self._mission_field_hash
+                    and incoming_graph == self._mission_graph_file
+                )
+                if same_checkpoint_field:
+                    resume_node = self._current_node
+                else:
+                    self._invalidate_resume_context()
+                    self._event(
+                        'mission_resume_invalidated',
+                        reason='active field/route changed',
+                    )
             if msg.active and msg.graph_file:
                 try:
                     graph_file = os.path.realpath(msg.graph_file)
@@ -2155,7 +2178,10 @@ class MissionManager(Node):
                     self._edge_directions = edge_directions
                     self._graph_file = graph_file
                     self._resolve_special_nodes()
-                    self._current_node = self._home_node
+                    self._current_node = (
+                        resume_node
+                        if resume_node is not None else self._home_node
+                    )
                 except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
                     self._active_field_ready = False
                     self._event("active_field_rejected", reason=str(error))
@@ -2242,6 +2268,7 @@ class MissionManager(Node):
                 self._next_node = ''
                 self._safe_stop()
                 self._event('queued_mission_aborted', reason=reason)
+                self._mark_resume_available()
                 return
             self._abort_reason = self._abort_reason or reason
             goal = self._active_goal
@@ -2348,6 +2375,84 @@ class MissionManager(Node):
             odom_age=(now - self._odom_seen if self._odom_seen else None),
             odom_timeout=self._odom_freshness)
 
+    def _resume_station(self) -> str:
+        """Return the station/home represented by the saved checkpoint."""
+        index = int(self._current_stop_index)
+        if 0 <= index < len(self._route_nodes):
+            return self._route_nodes[index]
+        if index == len(self._route_nodes) and self._return_home:
+            return self._home_node
+        return ''
+
+    def _resume_event_fields(self) -> Dict[str, Any]:
+        """Build the stable diagnostic fields shared by resume events."""
+        return {
+            'task_id': getattr(self, '_task_id', ''),
+            'current_stop_index': int(self._current_stop_index),
+            'station': self._resume_station(),
+            'loaded': bool(self._loaded),
+        }
+
+    def _invalidate_resume_context(self) -> None:
+        """Prevent a completed or superseded mission from being resumed."""
+        self._resume_context_valid = False
+
+    def _checkpoint_has_remaining_work(self) -> bool:
+        """Return whether retryable station/home work remains."""
+        index = int(self._current_stop_index)
+        return bool(
+            self._route_nodes
+            and 0 <= index <= len(self._route_nodes)
+            and (index < len(self._route_nodes) or self._return_home)
+        )
+
+    def _mark_resume_available(self) -> None:
+        """Expose a failed mission only when checkpoint work remains."""
+        self._resume_context_valid = self._checkpoint_has_remaining_work()
+        if self._resume_context_valid:
+            self._event(
+                'mission_resume_available',
+                **self._resume_event_fields(),
+            )
+
+    def _resume_blocker(
+        self,
+        localization: Optional[LocalizationHealth] = None,
+    ) -> Optional[str]:
+        """Return why the saved checkpoint cannot safely start right now."""
+        if self._busy or self._running:
+            return 'aktif gorev var'
+        if not self._resume_context_valid:
+            return 'devam ettirilebilir gorev yok'
+        if self._active_goal is not None:
+            return 'onceki action halen aktif'
+        if self._estop or self._latched_abort:
+            return 'e-stop/safety kilidi aktif; operator reset gerekli'
+        if self._obstacle:
+            return 'engel algilandi; resume reddedildi'
+        if not self._base_communication_healthy():
+            return 'STM32/UART iletisimi hazir degil'
+        if not self._safety_supervisor_healthy():
+            return 'safety supervisor hazir degil'
+        if not self._lift_server_healthy():
+            return 'production /lift_load action server hazir degil'
+        if self._require_active_field:
+            if not self._production_route_ready():
+                return 'aktif saha route runtime hazir degil'
+            if self._active_field_hash != self._mission_field_hash:
+                return 'aktif saha gorev checkpoint sahasiyla ayni degil'
+        if os.path.realpath(self._graph_file) != self._mission_graph_file:
+            return 'aktif route graph gorev checkpointiyle ayni degil'
+        error = self._validate_route(self._route_nodes)
+        if error:
+            return f'checkpoint rotasi gecersiz: {error}'
+        if self._source == 'plc' and not self._plc_connection_healthy():
+            return 'PLC baglantisi fresh/connected degil'
+        health = localization or self._localization_health()
+        if not health.valid:
+            return f'lokalizasyon gecersiz: {health.reason}'
+        return None
+
     def _reserve(self, task_id: str, route_nodes, source: str,
                  return_home: bool = True, start_immediately: bool = True,
                  require_localization: bool = False,
@@ -2402,6 +2507,7 @@ class MissionManager(Node):
             error = self._validate_route(route_nodes)
             if error:
                 return error
+            self._invalidate_resume_context()
             self._busy = True
             self._running = start_immediately
             self._abort_reason = ''
@@ -2411,6 +2517,10 @@ class MissionManager(Node):
             self._task_id = task_id
             self._pickup, self._dropoff = route_nodes[0], route_nodes[1]
             self._source = source
+            self._mission_field_hash = getattr(
+                self, '_active_field_hash', '')
+            self._mission_graph_file = os.path.realpath(
+                getattr(self, '_graph_file', ''))
             self._mission_started_wall = 0.0
             self._mission_elapsed = 0.0
             self._status_detail = 'gorev kabul edildi'
@@ -2681,6 +2791,38 @@ class MissionManager(Node):
             res.message = error or 'GUI gorevi kabul edildi; baslatma bekleniyor'
         if not res.accepted:
             self._event('task_rejected', requested_source='gui', reason=res.message)
+        return res
+
+    def _on_resume(
+        self,
+        _req: ResumeMission.Request,
+        res: ResumeMission.Response,
+    ) -> ResumeMission.Response:
+        """Restart the saved mission from its last physical checkpoint."""
+        with self._lock:
+            fields = self._resume_event_fields()
+            blocker = self._resume_blocker()
+            self._event(
+                'mission_resume_requested',
+                **fields,
+                reason=blocker or '',
+            )
+            if blocker:
+                res.accepted = False
+                res.message = blocker
+                return res
+            self._busy = True
+            self._running = True
+            self._abort_reason = ''
+            self._resume_context_valid = False
+            self._state = RobotStatus.STATE_TASK_RECEIVED
+            self._next_node = fields['station']
+            self._status_detail = 'gorev checkpointten devam ediyor'
+            self._mission_started_wall = 0.0
+            self._event('mission_resumed', **fields)
+        self._start_mission_thread()
+        res.accepted = True
+        res.message = 'gorev guvenli checkpointten devam ettirildi'
         return res
 
     def _on_cancel(self, _req: CancelMission.Request,
@@ -3174,9 +3316,17 @@ class MissionManager(Node):
             self._gate_direction = ''
             self._gate_crossing_id = ''
             loaded = self._loaded
-            self._set_state(RobotStatus.STATE_TASK_RECEIVED,
-                            self._route_nodes[0])
-            for index, station in enumerate(self._route_nodes):
+            start_index = int(self._current_stop_index)
+            if not 0 <= start_index <= len(self._route_nodes):
+                raise MissionAbort('mission checkpoint index gecersiz')
+            next_target = (
+                self._route_nodes[start_index]
+                if start_index < len(self._route_nodes)
+                else self._home_node
+            )
+            self._set_state(RobotStatus.STATE_TASK_RECEIVED, next_target)
+            for index in range(start_index, len(self._route_nodes)):
+                station = self._route_nodes[index]
                 self._current_stop_index = index
                 pickup = index % 2 == 0
                 self._pickup = station if pickup else self._pickup
@@ -3189,7 +3339,12 @@ class MissionManager(Node):
                     self._station_approach_target(station)
                     if station_flow else station
                 )
-                if index == 0:
+                resume_already_at_approach = (
+                    start_index > 0
+                    and index == start_index
+                    and self._current_node == navigation_target
+                )
+                if index == 0 or resume_already_at_approach:
                     self._navigate(navigation_target, loaded=loaded)
                 else:
                     direction = 'outbound' if not pickup else 'return'
@@ -3208,8 +3363,10 @@ class MissionManager(Node):
                 self._do_lift(station, pickup=pickup)
                 loaded = pickup
                 self._publish_load_state(loaded)
+                # Physical load state is committed before advancing the
+                # mission checkpoint. Docking alone never advances it.
+                self._current_stop_index = index + 1
                 self._exit_station(station, loaded=loaded)
-            self._current_stop_index = len(self._route_nodes)
             if self._return_home:
                 self._set_state(RobotStatus.STATE_RETURNING, self._home_node)
                 self._navigate_via_gate(
@@ -3229,15 +3386,28 @@ class MissionManager(Node):
             if self._mission_started_wall:
                 self._mission_elapsed = max(
                     0.0, time.monotonic() - self._mission_started_wall)
+            resume_candidate = (
+                not success and self._checkpoint_has_remaining_work()
+            )
             self._safe_stop()
-            self._notify_complete(success, reason or 'gorev tamam')
+            if not resume_candidate:
+                self._notify_complete(success, reason or 'gorev tamam')
+            else:
+                self._event(
+                    'mission_completion_deferred_for_resume',
+                    **self._resume_event_fields(),
+                )
             self._event('mission_complete', success=success, reason=reason)
             with self._lock:
                 self._busy = False
                 self._running = False
                 self._active_goal, self._active_kind = None, ''
-                if not self._latched_abort and not self._estop and not success:
-                    self._state = RobotStatus.STATE_ERROR
+                if success:
+                    self._invalidate_resume_context()
+                else:
+                    self._mark_resume_available()
+                    if not self._latched_abort and not self._estop:
+                        self._state = RobotStatus.STATE_ERROR
             self._station_phase = self._STATION_IDLE
 
     def _notify_complete(self, success: bool, message: str) -> None:
@@ -3296,6 +3466,7 @@ class MissionManager(Node):
         msg.route_nodes = list(self._route_nodes)
         msg.current_stop_index = self._current_stop_index
         msg.return_home = self._return_home
+        msg.mission_resumable = self._resume_blocker(health) is None
         msg.last_qr_data = self._last_qr
         msg.last_qr_detected = self._last_qr_detected
         msg.last_qr_pose_in_camera = self._last_qr_pose

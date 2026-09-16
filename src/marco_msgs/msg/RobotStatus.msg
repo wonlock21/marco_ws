@@ -52,6 +52,7 @@ string dropoff_node
 string[] route_nodes          # secim sirasindaki tum alma/birakma duraklari
 uint32 current_stop_index     # route_nodes icinde siradaki/aktif durak
 bool return_home
+bool mission_resumable        # guvenli checkpoint'ten devam su an kabul edilebilir
 string last_qr_data
 bool last_qr_detected
 geometry_msgs/Pose2D last_qr_pose_in_camera

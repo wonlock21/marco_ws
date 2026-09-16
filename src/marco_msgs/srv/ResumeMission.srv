@@ -1,0 +1,4 @@
+# Son basarisiz/iptal edilmis gorevi guvenli mission checkpoint'inden surdur.
+---
+bool accepted
+string message

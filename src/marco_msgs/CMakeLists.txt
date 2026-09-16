@@ -49,6 +49,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SubmitMission.srv"
   "srv/CancelMission.srv"
   "srv/ResetMissionSafety.srv"
+  "srv/ResumeMission.srv"
   "srv/SaveMapping.srv"
   "srv/SaveDemoPoint.srv"
   "srv/SaveDemoRoutePoint.srv"
