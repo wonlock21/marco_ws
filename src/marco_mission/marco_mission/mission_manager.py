@@ -64,11 +64,12 @@ _GATE_WAITING_MESSAGE_PREFIX = 'WAITING_PLC:'
 
 
 class MissionActionFailure(MissionAbort):
-    """Action failure retaining the ROS goal status for bounded recovery."""
+    """Action failure retaining terminal status and its result payload."""
 
-    def __init__(self, label: str, status: int) -> None:
+    def __init__(self, label: str, status: int, result=None) -> None:
         super().__init__(f'{label} status={status}')
         self.status = int(status)
+        self.result = result
 
 
 @dataclass(frozen=True)
@@ -2831,7 +2832,8 @@ class MissionManager(Node):
                 time.sleep(0.02)
             wrapped = result_future.result()
             if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
-                raise MissionActionFailure(label, wrapped.status)
+                raise MissionActionFailure(
+                    label, wrapped.status, wrapped.result)
             result = wrapped.result
             if hasattr(result, 'success') and not result.success:
                 raise MissionAbort(f'{label}: {getattr(result, "message", "failed")}')
@@ -3028,6 +3030,36 @@ class MissionManager(Node):
                 self._turn_at_junction(maneuver)
         return final_heading
 
+    def _run_station_lane_fallback(
+        self,
+        station: str,
+        pickup: bool,
+        dock_result_code: int,
+        reason: str,
+    ) -> None:
+        """Safely hand a failed station lane approach back to Nav2."""
+        self._event(
+            'station_lane_fallback_started',
+            station=station,
+            pickup=pickup,
+            dock_result_code=dock_result_code,
+            reason=reason,
+        )
+        # DockServer publishes a zero dock Twist before returning a failure.
+        # STOP additionally disables lane control before Nav2 can take over.
+        self._task_pub.publish(String(data='STOP'))
+        self._docking_lane_active = False
+        self._docking_stopped = False
+        self._wait_until_stopped(f'{station} lane fallback handoff')
+        self._navigate(station, loaded=not pickup)
+        self._current_node = station
+        self._event(
+            'station_lane_fallback_completed',
+            station=station,
+            pickup=pickup,
+            target=station,
+        )
+
     def _do_dock(self, station: str, pickup: bool) -> None:
         goal = DockToStation.Goal()
         goal.station_id = station
@@ -3072,12 +3104,35 @@ class MissionManager(Node):
                     f'{station}: geri serit sonu bekleniyor '
                     f'({self._docking_elapsed:.1f} s)')
 
+            used_fallback = False
             try:
                 self._action(
                     self._dock, goal, f'lane_end_docking:{station}',
                     self._action_timeout, require_turn_sensors=True,
                     feedback_callback=feedback_callback)
                 self._wait_until_stopped(f'{station} docking sonu')
+            except MissionActionFailure as error:
+                result = error.result
+                result_code = getattr(result, 'result_code', None)
+                reason = getattr(result, 'message', '') or str(error)
+                self._docking_error = reason
+                self._event(
+                    'lane_end_reverse_docking_failed', station=station,
+                    dock_result_code=result_code, reason=reason)
+                recoverable_codes = (
+                    DockToStation.Result.RESULT_LANE_LOST,
+                    DockToStation.Result.RESULT_CONTROL_INACTIVE,
+                    DockToStation.Result.RESULT_CAMERA_LOST,
+                )
+                if result_code not in recoverable_codes:
+                    raise
+                self._run_station_lane_fallback(
+                    station,
+                    pickup,
+                    int(result_code),
+                    reason,
+                )
+                used_fallback = True
             except Exception as error:
                 self._docking_error = str(error)
                 self._event(
@@ -3091,10 +3146,11 @@ class MissionManager(Node):
                 self._STATION_PICKUP_READY
                 if pickup else self._STATION_DROPOFF_READY
             )
-            self._event(
-                'lane_end_reverse_docking_completed', station=station,
-                elapsed_s=self._docking_elapsed,
-                next_phase=self._station_phase)
+            if not used_fallback:
+                self._event(
+                    'lane_end_reverse_docking_completed', station=station,
+                    elapsed_s=self._docking_elapsed,
+                    next_phase=self._station_phase)
             return
         goal.timeout = min(self._action_timeout, 60.0)
         self._action(self._dock, goal, f'docking:{station}', goal.timeout + 2.0)
