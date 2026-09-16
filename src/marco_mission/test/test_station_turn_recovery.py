@@ -7,7 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import Point32, PolygonStamped, TransformStamped
+from geometry_msgs.msg import (
+    Point32,
+    PolygonStamped,
+    PoseWithCovarianceStamped,
+    TransformStamped,
+)
 from nav2_msgs.msg import Costmap
 
 from marco_mission.mission_manager import MissionAbort
@@ -16,13 +21,33 @@ from marco_mission.mission_manager import MissionManager
 from marco_mission.mission_manager import _evaluate_turn_arc
 
 
-def _station_manager(yaw_samples, failed_action_calls=()):
+def _station_manager(
+    yaw_samples,
+    failed_action_calls=(),
+    *,
+    station='A3',
+    approach_xy=(0.0, 0.0),
+    dock_xy=(1.0, 0.0),
+    turn_direction='right',
+):
     manager = MissionManager.__new__(MissionManager)
     manager._nodes = {
-        'A3': {
+        station: {
+            'id': 1,
+            'name': station,
+            'role': 'pickup_dock',
+            'station_id': station,
+            'xy': list(dock_xy),
             # A legacy persisted value must have no effect on runtime target.
             'dock_heading_yaw': 0.25,
             'turn_direction': 'left',
+        },
+        f'{station}_yaklasma': {
+            'id': 2,
+            'name': f'{station}_yaklasma',
+            'role': 'pickup_approach',
+            'station_id': station,
+            'xy': list(approach_xy),
         },
     }
     manager._station_phase = manager._STATION_APPROACHING
@@ -34,7 +59,7 @@ def _station_manager(yaw_samples, failed_action_calls=()):
     manager._status_detail = ''
     manager._check_action_health = lambda require_turn_sensors=False: None
     manager._select_station_turn_direction = (
-        lambda _station, _current, _target: 'right'
+        lambda _station, _current, _target: turn_direction
     )
     samples = iter(yaw_samples)
     manager._fresh_map_base_yaw = lambda _label: next(samples)
@@ -88,15 +113,15 @@ def _station_manager(yaw_samples, failed_action_calls=()):
     return manager
 
 
-def test_station_target_is_route_heading_plus_pi_and_uses_auto_direction():
-    approach_heading = math.radians(30.0)
+def test_station_target_is_dock_geometry_plus_pi_and_uses_auto_direction():
+    dock_path_heading = math.radians(30.0)
     target_heading = math.radians(-150.0)
     manager = _station_manager([
-        approach_heading,
+        dock_path_heading,
         math.radians(-149.0),
-    ])
+    ], dock_xy=(math.cos(dock_path_heading), math.sin(dock_path_heading)))
 
-    manager._turn_at_station('A3', approach_heading)
+    manager._turn_at_station('A3')
 
     assert len(manager.operations) == 1
     assert manager.operations[0][0] == 'station_turn:A3'
@@ -108,6 +133,59 @@ def test_station_target_is_route_heading_plus_pi_and_uses_auto_direction():
     assert completed['target_yaw'] == pytest.approx(target_heading)
     assert completed['correction_attempts'] == 0
     assert manager._station_phase == manager._STATION_LINE_FOLLOW_READY
+
+
+def test_a2_target_uses_graph_geometry_and_fresh_tf_not_route_or_robot_xy():
+    approach_xy = (4.077, -2.498)
+    dock_xy = (5.322, -2.529)
+    dock_path_heading = math.atan2(
+        dock_xy[1] - approach_xy[1],
+        dock_xy[0] - approach_xy[0],
+    )
+    target_heading = MissionManager._wrap_angle(
+        dock_path_heading + math.pi
+    )
+    current_tf_yaw = math.radians(15.0)
+    previous_route_edge_heading = math.radians(9.68)
+    manager = _station_manager(
+        [current_tf_yaw, target_heading],
+        station='A2',
+        approach_xy=approach_xy,
+        dock_xy=dock_xy,
+        turn_direction='left',
+    )
+    # Cached robot position intentionally differs from the persisted approach
+    # point. Station target geometry must not use this live x/y value.
+    manager._pose = PoseWithCovarianceStamped()
+    manager._pose.pose.pose.position.x = approach_xy[0] + 0.06
+    manager._pose.pose.pose.position.y = approach_xy[1] - 0.04
+
+    manager._turn_at_station('A2')
+
+    assert math.degrees(dock_path_heading) == pytest.approx(-1.426, abs=0.01)
+    assert math.degrees(target_heading) == pytest.approx(178.574, abs=0.01)
+    assert target_heading != pytest.approx(MissionManager._wrap_angle(
+        previous_route_edge_heading + math.pi
+    ))
+    assert manager.operations[0][0] == 'station_turn:A2'
+    assert manager.operations[0][1] == pytest.approx(
+        MissionManager._wrap_angle(target_heading - current_tf_yaw)
+    )
+    heading_event = next(
+        fields for event, fields in manager.events
+        if event == 'station_dock_heading'
+    )
+    assert heading_event['station_id'] == 'A2'
+    assert heading_event['approach_node'] == 'A2_yaklasma'
+    assert heading_event['dock_node'] == 'A2'
+    assert heading_event['dock_path_yaw_deg'] == pytest.approx(
+        -1.426, abs=0.01
+    )
+    assert heading_event['target_body_yaw_deg'] == pytest.approx(
+        178.574, abs=0.01
+    )
+    assert heading_event['current_tf_yaw_deg'] == pytest.approx(15.0)
+    assert heading_event['turn_command_deg'] == pytest.approx(163.574, abs=0.01)
 
 
 def _costmap_with_obstacle(x=None, y=None):
@@ -203,7 +281,7 @@ def test_station_turn_remeasures_fresh_tf_after_each_correction():
         math.radians(179.0),
     ])
 
-    manager._turn_at_station('A3', 0.0)
+    manager._turn_at_station('A3')
 
     assert [math.degrees(item[1]) for item in manager.operations] \
         == pytest.approx([-180.0, 10.0, 4.0])
@@ -224,7 +302,7 @@ def test_aborted_main_spin_uses_raw_bounded_corrections():
         math.radians(179.0),
     ], failed_action_calls=(1,))
 
-    manager._turn_at_station('A3', 0.0)
+    manager._turn_at_station('A3')
 
     assert len(manager.operations) == 3
     completed = next(
@@ -253,7 +331,7 @@ def test_station_heading_aborts_only_after_five_correction_attempts():
     ])
 
     with pytest.raises(MissionAbort, match='correction 5/5'):
-        manager._turn_at_station('A3', 0.0)
+        manager._turn_at_station('A3')
 
     assert len(manager.operations) == 6
     assert sum(

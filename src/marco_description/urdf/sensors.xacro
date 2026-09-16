@@ -14,7 +14,7 @@
   <!--
     Aktif RPLIDAR A2M12 yapilandirmasi frame_id'yi "laser_link" olarak
     yayinlar (marco_localization/config/lidar_rplidar_a2m12.yaml); bu link
-    ile birebir eslesir ve mevcut fiziksel montaj pozu korunur.
+    ile birebir eslesir ve fiziksel montaj pozu URDF TF'inde temsil edilir.
     Saha testinde arac fiziksel onundeki hedef /scan_raw icinde yaklasik
     -170..-179 derece goruldu. Fiziksel arac onu base_link +X oldugu icin
     base_link -> laser_link sabit donusumunde yaw=pi uygulanir.

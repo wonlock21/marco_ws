@@ -32,9 +32,6 @@ def generate_launch_description():
         executable='self_scan_filter',
         name='self_scan_filter',
         output='screen',
-	parameters=[{
-        'blocked_regions_deg': [-55.0, 55.0],
-    }],
     )
 
     return LaunchDescription([

@@ -2,8 +2,8 @@
 #
 # Akış: rplidar_node /scan -> /scan_raw remap -> laser_filters -> /scan
 # A2M12 için SLAMTEC'in resmi ROS 2 ayarı 256000 baud ve Sensitivity
-# tarama modudur. Fiziksel montaj değişmediği için mevcut laser_link frame'i
-# korunur.
+# tarama modudur. Fiziksel montaj pozu URDF'deki laser_link TF'inde temsil
+# edilir; driver frame_id bu nedenle laser_link olarak kalır.
 
 rplidar_node:
   ros__parameters:

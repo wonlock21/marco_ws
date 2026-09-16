@@ -1140,6 +1140,47 @@ class MissionManager(Node):
             )
         return str(candidates[0]['name'])
 
+    def _station_dock_target(
+        self, station: str, reverse_docking: bool
+    ) -> Dict[str, Any]:
+        """Derive the station body target solely from persisted graph geometry."""
+        approach_node = self._station_approach_target(station)
+        approach = self._nodes[approach_node]
+        dock = self._nodes[station]
+        try:
+            approach_x, approach_y = (float(value) for value in approach['xy'])
+            dock_x, dock_y = (float(value) for value in dock['xy'])
+        except (KeyError, TypeError, ValueError) as error:
+            raise MissionAbort(
+                f'{station}: approach/dock koordinati gecersiz'
+            ) from error
+        coordinates = (approach_x, approach_y, dock_x, dock_y)
+        if not all(math.isfinite(value) for value in coordinates):
+            raise MissionAbort(
+                f'{station}: approach/dock koordinati gecersiz'
+            )
+        delta_x = dock_x - approach_x
+        delta_y = dock_y - approach_y
+        if math.hypot(delta_x, delta_y) <= 1.0e-6:
+            raise MissionAbort(
+                f'{station}: approach ve dock koordinatlari cakistigi icin '
+                'dock yonu hesaplanamadi'
+            )
+        dock_path_yaw = math.atan2(delta_y, delta_x)
+        target_body_yaw = self._wrap_angle(
+            dock_path_yaw + (math.pi if reverse_docking else 0.0)
+        )
+        return {
+            'approach_node': approach_node,
+            'dock_node': str(dock['name']),
+            'approach_x': approach_x,
+            'approach_y': approach_y,
+            'dock_x': dock_x,
+            'dock_y': dock_y,
+            'dock_path_yaw': dock_path_yaw,
+            'target_body_yaw': target_body_yaw,
+        }
+
     def _wait_until_stopped(self, label: str) -> None:
         timeout = float(self.get_parameter('motion_stop_timeout_s').value)
         settle = float(self.get_parameter('motion_stop_settle_s').value)
@@ -1786,15 +1827,31 @@ class MissionManager(Node):
             correction_attempts=correction_attempts,
         )
 
-    def _turn_at_station(self, station: str, approach_heading: float) -> None:
-        if not math.isfinite(approach_heading):
-            raise MissionAbort(f'{station}: route approach heading gecersiz')
-        target_yaw = self._wrap_angle(approach_heading + math.pi)
+    def _turn_at_station(self, station: str) -> None:
+        reverse_docking = True
+        dock_target = self._station_dock_target(station, reverse_docking)
+        target_yaw = dock_target['target_body_yaw']
         self._check_action_health(require_turn_sensors=True)
         if not math.isfinite(self._filtered_yaw):
             raise MissionAbort(f'{station}: donus oncesi yon bilgisi gecersiz')
         start_map_yaw = self._fresh_map_base_yaw(
             f'{station} donus baslangici'
+        )
+        shortest_turn = self._wrap_angle(target_yaw - start_map_yaw)
+        self._event(
+            'station_dock_heading',
+            station_id=station,
+            approach_node=dock_target['approach_node'],
+            dock_node=dock_target['dock_node'],
+            approach_x=dock_target['approach_x'],
+            approach_y=dock_target['approach_y'],
+            dock_x=dock_target['dock_x'],
+            dock_y=dock_target['dock_y'],
+            dock_path_yaw_deg=math.degrees(dock_target['dock_path_yaw']),
+            reverse_docking=reverse_docking,
+            target_body_yaw_deg=math.degrees(target_yaw),
+            current_tf_yaw_deg=math.degrees(start_map_yaw),
+            turn_command_deg=math.degrees(shortest_turn),
         )
         start_filtered_yaw = self._filtered_yaw
         direction = self._select_station_turn_direction(
@@ -1824,7 +1881,7 @@ class MissionManager(Node):
             'station_turn_started',
             station=station,
             direction=direction,
-            approach_heading=approach_heading,
+            dock_path_yaw=dock_target['dock_path_yaw'],
             relative_turn_rad=relative_turn,
             target_yaw=target_yaw,
         )
@@ -1948,7 +2005,7 @@ class MissionManager(Node):
         self._event(
             'station_turn_completed',
             station=station,
-            approach_heading=approach_heading,
+            dock_path_yaw=dock_target['dock_path_yaw'],
             target_yaw=target_yaw,
             main_action_outcome=main_action_status,
             final_map_yaw=final_map_yaw,
@@ -3014,12 +3071,10 @@ class MissionManager(Node):
                     if station_flow else station
                 )
                 if index == 0:
-                    approach_heading = self._navigate(
-                        navigation_target, loaded=loaded
-                    )
+                    self._navigate(navigation_target, loaded=loaded)
                 else:
                     direction = 'outbound' if not pickup else 'return'
-                    approach_heading = self._navigate_via_gate(
+                    self._navigate_via_gate(
                         navigation_target,
                         loaded=loaded,
                         direction=direction,
@@ -3028,7 +3083,7 @@ class MissionManager(Node):
                     self._wait_until_stopped(
                         f'{station} Nav2-donus devri'
                     )
-                    self._turn_at_station(station, approach_heading)
+                    self._turn_at_station(station)
                 self._do_dock(station, pickup=pickup)
                 self._current_node = station
                 self._do_lift(station, pickup=pickup)

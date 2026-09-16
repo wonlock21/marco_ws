@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ROS kullanmadan kameradan tiklamali HSV serit kalibrasyonu yapar."""
+"""Kameradan veya mevcut ROS goruntu yayinindan tiklamali HSV kalibrasyonu."""
 
 import argparse
 
@@ -149,27 +149,74 @@ def open_camera(args):
     return capture
 
 
+class RosCompressedSource:
+    """Kamerayi tekrar acmadan mevcut CompressedImage yayini alir."""
+
+    def __init__(self, topic):
+        import rclpy
+        from rclpy.qos import (
+            QoSDurabilityPolicy,
+            QoSHistoryPolicy,
+            QoSProfile,
+            QoSReliabilityPolicy,
+        )
+        from sensor_msgs.msg import CompressedImage
+
+        self.rclpy = rclpy
+        self.frame = None
+        rclpy.init(args=None)
+        self.node = rclpy.create_node('hsv_calibrator')
+        sensor_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE,
+        )
+        self.subscription = self.node.create_subscription(
+            CompressedImage, topic, self._on_image, sensor_qos)
+        self.node.get_logger().info(f'Goruntu bekleniyor: {topic}')
+
+    def _on_image(self, message):
+        encoded = np.frombuffer(message.data, dtype=np.uint8)
+        frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+        if frame is not None:
+            self.frame = frame
+
+    def read(self):
+        self.rclpy.spin_once(self.node, timeout_sec=0.05)
+        return None if self.frame is None else self.frame.copy()
+
+    def close(self):
+        self.node.destroy_node()
+        if self.rclpy.ok():
+            self.rclpy.shutdown()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description='ROS bagimsiz, tiklamali canli HSV kalibrasyonu')
+        description='Tiklamali canli HSV kalibrasyonu')
     parser.add_argument('--device', default='/dev/marco_front_camera')
     parser.add_argument('--width', type=int, default=640)
     parser.add_argument('--height', type=int, default=480)
     parser.add_argument('--fps', type=float, default=25.0)
     parser.add_argument('--fourcc', default='MJPG')
+    parser.add_argument(
+        '--ros-topic',
+        help='Mevcut CompressedImage yayini. Verilirse kamera aygiti acilmaz.')
     parser.add_argument('--roi-radius', type=int, default=4)
     parser.add_argument('--hue-margin', type=int, default=5)
     parser.add_argument('--saturation-margin', type=int, default=25)
     parser.add_argument('--value-margin', type=int, default=25)
     args = parser.parse_args()
 
-    if len(args.fourcc) != 4:
+    if not args.ros_topic and len(args.fourcc) != 4:
         parser.error('--fourcc tam olarak dort karakter olmali')
 
     calibrator = HsvCalibrator(
         args.roi_radius, args.hue_margin,
         args.saturation_margin, args.value_margin)
-    capture = open_camera(args)
+    capture = None if args.ros_topic else open_camera(args)
+    ros_source = RosCompressedSource(args.ros_topic) if args.ros_topic else None
     window = 'HSV Kalibrasyon'
     mask_window = 'Onerilen HSV Maskesi'
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
@@ -179,10 +226,18 @@ def main():
 
     try:
         while True:
-            ok, frame = capture.read()
-            if not ok or frame is None:
-                print('Kamera karesi okunamadi.')
-                break
+            if ros_source is not None:
+                frame = ros_source.read()
+                if frame is None:
+                    key = cv2.waitKey(1) & 0xFF
+                    if key in (27, ord('q')):
+                        break
+                    continue
+            else:
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    print('Kamera karesi okunamadi.')
+                    break
             calibrator.frame = frame
             calibrator.hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             mask = build_mask(calibrator.hsv_frame, calibrator.bounds)
@@ -196,7 +251,10 @@ def main():
             elif key == ord('s'):
                 calibrator.print_suggestion()
     finally:
-        capture.release()
+        if capture is not None:
+            capture.release()
+        if ros_source is not None:
+            ros_source.close()
         cv2.destroyAllWindows()
 
 

@@ -140,17 +140,17 @@
     laser_link dogru degilse SLAM haritasi ve AMCL lokalizasyonu kayar.
 
     GUNCEL SAHA OLCUMU: base_footprint'e gore LiDAR tarama merkezi
-    x=+0.370, y=0.000, z=0.320 m.
+    x=+0.260, y=0.000, z=0.560 m.
 
     base_link, base_footprint'in 0.125 m ustundedir. Bu nedenle asagidaki
-    base_link'e gore z degeri 0.195 m'dir; TF zincirinde zemine gore
-    laser_link z=0.320 m olur. Saha testinde fiziksel on, LiDAR scan
+    base_link'e gore z degeri 0.435 m'dir; TF zincirinde zemine gore
+    laser_link z=0.560 m olur. Saha testinde fiziksel on, LiDAR scan
     koordinatinda yaklasik -170..-179 derece goruldugu icin sensors.xacro
     icindeki base_link -> laser_link yaw duzeltmesi pi'dir.
   -->
-  <xacro:property name="lidar_x"           value="0.370"/>
+  <xacro:property name="lidar_x"           value="0.260"/>
   <xacro:property name="lidar_y"           value="0.000"/>
-  <xacro:property name="lidar_z"           value="0.195"/>
+  <xacro:property name="lidar_z"           value="0.435"/>
 
   <!--
     On ve arka IMX219 kameralari, zemindeki seridi gormek icin asagi egimli.

@@ -149,8 +149,8 @@ def test_approach_arrival_advances_station_flow_without_qr():
     manager._wait_until_stopped = lambda label: manager.operations.append(
         ("stopped", label)
     )
-    manager._turn_at_station = lambda station, heading: manager.operations.append(
-        ("turn", station, heading)
+    manager._turn_at_station = lambda station: manager.operations.append(
+        ("turn", station)
     )
     manager._do_dock = lambda station, pickup: manager.operations.append(
         ("dock", station, pickup)
@@ -169,10 +169,10 @@ def test_approach_arrival_advances_station_flow_without_qr():
     manager._run()
 
     assert ("navigate", "A1_approach", False) in manager.operations
-    assert ("turn", "A1", 0.0) in manager.operations
+    assert ("turn", "A1") in manager.operations
     assert ("dock", "A1", True) in manager.operations
     assert ("gate", "B1_approach", True, "outbound") in manager.operations
-    assert ("turn", "B1", 0.0) in manager.operations
+    assert ("turn", "B1") in manager.operations
     assert manager.operations[-1] == ("complete", True, "gorev tamam")
 
 
