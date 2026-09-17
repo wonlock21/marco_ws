@@ -288,13 +288,24 @@ def test_action_failure_retains_terminal_result_payload():
 
 
 @pytest.mark.parametrize(
-    'station,pickup',
-    [('A1', True), ('B2', False)],
+    'station,pickup,position_error,yaw_error_deg',
+    [
+        ('A1', True, 0.050, 4.0),
+        ('A1', True, 0.075, 8.0),
+        ('B2', False, 0.050, 4.0),
+        ('B2', False, 0.075, 8.0),
+    ],
 )
-def test_lane_success_goes_directly_to_lift_without_fallback(
-    tmp_path, station, pickup,
+def test_visual_lane_end_inside_final_pose_goes_directly_to_lift(
+    tmp_path, station, pickup, position_error, yaw_error_deg,
 ):
     manager = _manager(tmp_path, (station,))
+    dock_x = float(manager._nodes[station]['xy'][0])
+    manager.pose_sequence = [(
+        dock_x + position_error,
+        -1.0,
+        math.pi / 2.0 + math.radians(yaw_error_deg),
+    )]
 
     lifts = _dock_then_lift(manager, station, pickup)
 
@@ -304,6 +315,117 @@ def test_lane_success_goes_directly_to_lift_without_fallback(
         for name, _fields in manager.events
     )
     assert lifts == [(station, pickup)]
+    verified = next(
+        fields for name, fields in manager.events
+        if name == 'lane_end_pose_verified'
+    )
+    assert verified['position_error_m'] == pytest.approx(position_error)
+    assert verified['yaw_error_deg'] == pytest.approx(yaw_error_deg)
+
+
+@pytest.mark.parametrize(
+    'position_error,yaw_error_deg',
+    [
+        (0.076, 0.0),
+        (0.100, 0.0),
+        (0.150, 0.0),
+        (0.050, 9.0),
+    ],
+)
+def test_visual_lane_end_near_pose_runs_one_short_refinement(
+    tmp_path, position_error, yaw_error_deg,
+):
+    manager = _manager(tmp_path, ('A1',))
+    near_pose = (
+        position_error,
+        -1.0,
+        math.pi / 2.0 + math.radians(yaw_error_deg),
+    )
+    manager.pose_sequence = [
+        near_pose,
+        near_pose,
+        (0.0, -1.0, math.pi / 2.0),
+    ]
+
+    lifts = _dock_then_lift(manager, 'A1', True)
+
+    assert lifts == [('A1', True)]
+    assert len([
+        item for item in manager.operations if item[0] == 'follow'
+    ]) == 1
+    started = next(
+        fields for name, fields in manager.events
+        if name == 'lane_end_near_refinement_started'
+    )
+    assert started['position_error_m'] == pytest.approx(position_error)
+    assert started['yaw_error_deg'] == pytest.approx(yaw_error_deg)
+    assert not any(
+        name == 'premature_lane_end'
+        for name, _fields in manager.events
+    )
+
+
+@pytest.mark.parametrize('visual_pose', [
+    (0.0, -0.849, math.pi / 2.0),
+    (0.0, -0.450, math.pi / 2.0),
+])
+def test_visual_lane_end_beyond_near_threshold_uses_full_fallback(
+    tmp_path, visual_pose,
+):
+    manager = _manager(tmp_path, ('A1',))
+    manager.pose_sequence = [
+        visual_pose,
+        visual_pose,
+        (0.0, -1.0, math.pi / 2.0),
+    ]
+
+    lifts = _dock_then_lift(manager, 'A1', True)
+
+    assert lifts == [('A1', True)]
+    premature = next(
+        fields for name, fields in manager.events
+        if name == 'premature_lane_end'
+    )
+    expected_error = math.hypot(visual_pose[0], visual_pose[1] + 1.0)
+    assert premature['position_error_m'] == pytest.approx(expected_error)
+    assert any(
+        name == 'station_lane_fallback_started'
+        for name, _fields in manager.events
+    )
+    assert not any(
+        name == 'lane_end_near_refinement_started'
+        for name, _fields in manager.events
+    )
+
+
+@pytest.mark.parametrize(
+    'final_pose,success',
+    [
+        ((0.074, -1.0, math.pi / 2.0 + math.radians(7.9)), True),
+        ((0.076, -1.0, math.pi / 2.0), False),
+        ((0.0, -1.0, math.pi / 2.0 + math.radians(8.1)), False),
+    ],
+)
+def test_near_refinement_requires_final_pose_authority(
+    tmp_path, final_pose, success,
+):
+    manager = _manager(tmp_path, ('A1',))
+    near_pose = (0.100, -1.0, math.pi / 2.0)
+    manager.pose_sequence = [near_pose, near_pose, final_pose]
+    lifts = []
+    manager._do_lift = lambda station, pickup: lifts.append(
+        (station, pickup)
+    )
+
+    if success:
+        manager._do_dock('A1', True)
+        manager._do_lift('A1', True)
+    else:
+        with pytest.raises(MissionAbort, match='dock pose dogrulanamadi'):
+            manager._do_dock('A1', True)
+            manager._do_lift('A1', True)
+
+    assert lifts == ([('A1', True)] if success else [])
 
 
 @pytest.mark.parametrize(
@@ -515,6 +637,7 @@ def test_fallback_is_per_station_and_next_station_retries_lane(tmp_path):
     )
 
     manager._do_dock('A1', True)
+    manager.pose_sequence = [(2.0, -1.0, math.pi / 2.0)]
     manager._do_dock('B2', False)
 
     dock_calls = [item for item in manager.operations if item[0] == 'dock']
@@ -617,6 +740,9 @@ def test_lane_load_completion_source_is_distinct_and_lift_is_once(tmp_path):
     manager = _manager(
         tmp_path, ('A1',),
         (DockToStation.Result.RESULT_LOAD_DETECTED,),
+    )
+    manager._fresh_map_base_pose = lambda _label: (_ for _ in ()).throw(
+        AssertionError('physical contact must bypass visual pose validation')
     )
 
     lifts = _dock_then_lift(manager, 'A1', True)

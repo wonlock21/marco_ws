@@ -258,6 +258,9 @@ def test_production_docking_uses_lane_end_without_station_duration():
         (event, fields)
     )
     manager._wait_until_stopped = lambda _label: None
+    manager._complete_visual_lane_candidate = (
+        lambda _station, _pickup, _session: 'visual_lane_end'
+    )
     captured = {}
 
     def action(
@@ -278,6 +281,7 @@ def test_production_docking_uses_lane_end_without_station_duration():
             camera_valid=True,
             stopped=True,
         )))
+        return SimpleNamespace(result_code=0)
 
     manager._action = action
 
