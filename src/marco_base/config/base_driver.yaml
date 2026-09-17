@@ -52,8 +52,8 @@ marco_base_driver:
 
     # Saha olcumlu production lift hareket sureleri. Ilgili deger 0.0 olursa
     # /lift_load goal'u hareket baslatmadan reddedilir.
-    lift_pickup_duration_s: 8.0
-    lift_dropoff_duration_s: 8.0
+    lift_pickup_duration_s: 15.0
+    lift_dropoff_duration_s: 15.0
 
     # Her STM32 odometri paketindeki gercek teker hizini, son gonderilen hedef
     # ile birlikte CSV'ye yazar. Terminal cikisi analiz icin 2 Hz ile sinirli.
