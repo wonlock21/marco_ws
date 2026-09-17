@@ -4,7 +4,10 @@ import socket
 import threading
 import time
 
+import pytest
+
 from marco_plc.transports.base import RobotStatusSnapshot
+from marco_plc.transports import sru_udp
 from marco_plc.transports.sru_udp import SruUdpTransport
 
 
@@ -73,6 +76,31 @@ def _transport(
     return transport
 
 
+def test_tx_continues_without_any_rx_and_after_rx_becomes_stale():
+    """RX freshness never gates periodic RobotStatus transmission."""
+    server = FakeUdpPlc()
+    server.respond = False
+    transport = _transport(server, period=0.05, stale=0.08)
+    try:
+        assert _wait_for(lambda: len(server.packets) >= 5, timeout=0.5)
+        assert transport.is_connected() is False
+        count_without_rx = len(server.packets)
+
+        server.respond = True
+        assert _wait_for(transport.is_connected)
+        server.respond = False
+        time.sleep(0.12)
+        assert transport.is_connected() is False
+        assert _wait_for(
+            lambda: len(server.packets) >= count_without_rx + 5,
+            timeout=0.5,
+        )
+        assert all(len(packet) == 7 for packet in server.packets)
+    finally:
+        transport.disconnect()
+        server.close()
+
+
 def test_one_hz_heartbeat_period_is_approximately_correct():
     """Send the production-default heartbeat at approximately one hertz."""
     server = FakeUdpPlc()
@@ -102,6 +130,33 @@ def test_valid_rx_connects_and_stale_rx_disconnects():
         server.close()
 
 
+def test_rx_recovery_preserves_assignment_id_without_duplicate_task():
+    server = FakeUdpPlc(response=b'\x01\x02\x02')
+    transport = _transport(server, period=0.03, stale=0.06)
+    try:
+        assert _wait_for(transport.is_connected)
+        assignment = transport.request_task()
+        assert assignment.success is True
+
+        server.respond = False
+        time.sleep(0.09)
+        assert transport.is_connected() is False
+        packets_at_loss = len(server.packets)
+        assert _wait_for(lambda: len(server.packets) > packets_at_loss + 2)
+
+        server.respond = True
+        assert _wait_for(transport.is_connected)
+        recovered = transport.request_task()
+        assert recovered.success is True
+        assert recovered.task_id == assignment.task_id
+
+        transport.report_task_complete(assignment.task_id, True, 'done')
+        assert transport.request_task().success is False
+    finally:
+        transport.disconnect()
+        server.close()
+
+
 def test_invalid_rx_never_sets_connected():
     """Ignore malformed responses even when they come from the correct peer."""
     server = FakeUdpPlc(response=b'\x01\x01\x02\x00')
@@ -112,6 +167,88 @@ def test_invalid_rx_never_sets_connected():
     finally:
         transport.disconnect()
         server.close()
+
+
+def test_invalid_peer_and_payload_do_not_refresh_rx_state():
+    diagnostics = []
+    transport = SruUdpTransport(
+        server_host='127.0.0.1',
+        server_port=1515,
+        local_host='127.0.0.1',
+        error_callback=diagnostics.append,
+    )
+    with transport._condition:
+        transport._peer = ('127.0.0.1', 1515)
+        transport._socket = object()
+
+    transport._receive(b'\x01\x01\x02', ('127.0.0.1', 1516))
+    transport._receive(b'\x01\x01\x02\x00', ('127.0.0.1', 1515))
+
+    assert transport._last_rx is None
+    assert transport._rx_sequence == 0
+    assert any('beklenmeyen UDP peer' in item for item in diagnostics)
+    assert any('PAKET_RX 3 byte olmali' in item for item in diagnostics)
+
+
+def test_completion_during_rx_loss_blocks_duplicate_after_recovery():
+    server = FakeUdpPlc(response=b'\x03\x01\x02')
+    transport = _transport(server, period=0.03, stale=0.06)
+    try:
+        assert _wait_for(transport.is_connected)
+        assignment = transport.request_task()
+        server.respond = False
+        time.sleep(0.09)
+        assert transport.is_connected() is False
+
+        transport.report_task_complete(assignment.task_id, True, 'done')
+
+        server.respond = True
+        assert _wait_for(transport.is_connected)
+        duplicate = transport.request_task()
+        assert duplicate.success is False
+        assert 'tamamlanan gorev' in duplicate.message
+    finally:
+        transport.disconnect()
+        server.close()
+
+
+def test_initial_socket_failure_is_retried_by_same_worker(monkeypatch):
+    diagnostics = []
+    recovered_socket = _WorkerSocket()
+    attempts = 0
+    transport = SruUdpTransport(
+        server_host='127.0.0.1',
+        server_port=1515,
+        local_host='127.0.0.1',
+        tx_period_s=0.02,
+        reconnect_interval_s=1.0,
+        error_callback=diagnostics.append,
+    )
+    transport.update_robot_status(RobotStatusSnapshot(0, '', '', 0.0, 0.0))
+
+    def open_socket():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError('injected initial bind failure')
+        return recovered_socket, ('127.0.0.1', 1515)
+
+    def no_rx(_readable, _writeable, _exceptional, timeout):
+        time.sleep(min(timeout, 0.002))
+        return [], [], []
+
+    monkeypatch.setattr(transport, '_open_socket', open_socket)
+    monkeypatch.setattr(sru_udp.select, 'select', no_rx)
+    try:
+        assert transport.connect() is True
+        worker = transport._worker
+        assert _wait_for(lambda: attempts >= 2)
+        assert _wait_for(lambda: recovered_socket.sent >= 1)
+        assert transport._worker is worker
+        assert worker.is_alive()
+        assert diagnostics
+    finally:
+        transport.disconnect()
 
 
 def test_assignment_requires_fresh_control_run_and_reuses_local_id():
@@ -243,7 +380,7 @@ def test_mismatched_run_pair_cannot_grant_then_active_pair_can():
 
 
 def test_gate_fails_closed_when_rx_becomes_stale():
-    """Do not classify missing RX as a normal CONTROL=1 wait."""
+    """Missing RX keeps the explicit gate closed in WAITING_PLC."""
     server = FakeUdpPlc(response=b'\x01\x02\x02')
     transport = _transport(
         server, period=0.01, stale=0.05, request_timeout=0.2)
@@ -257,8 +394,114 @@ def test_gate_fails_closed_when_rx_becomes_stale():
         denied = transport.request_gate_permission(
             assignment.task_id, 'cross-stale', 'q5', 'outbound')
         assert denied.granted is False
-        assert not denied.message.startswith('WAITING_PLC:')
+        assert denied.message.startswith('WAITING_PLC:')
         assert transport.is_connected() is False
+    finally:
+        transport.disconnect()
+        server.close()
+
+
+class _WorkerSocket:
+    """Controllable socket double for worker recovery paths."""
+
+    def __init__(self, send_error=False, recv_error=False):
+        self.send_error = send_error
+        self.recv_error = recv_error
+        self.closed = False
+        self.sent = 0
+
+    def sendto(self, payload, _peer):
+        if self.send_error:
+            raise OSError('injected send failure')
+        self.sent += 1
+        return len(payload)
+
+    def recvfrom(self, _size):
+        if self.recv_error:
+            raise OSError('injected recv failure')
+        raise BlockingIOError
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize('failure', ('send', 'recv', 'select'))
+def test_worker_recreates_socket_after_io_failure(monkeypatch, failure):
+    """send/recv/select failures all recycle the socket without restart."""
+    diagnostics = []
+    first = _WorkerSocket(
+        send_error=failure == 'send', recv_error=failure == 'recv')
+    replacement = _WorkerSocket()
+    opened = []
+    select_calls = 0
+    transport = SruUdpTransport(
+        server_host='127.0.0.1',
+        server_port=1515,
+        local_host='127.0.0.1',
+        tx_period_s=0.01,
+        rx_stale_timeout_s=0.05,
+        request_timeout_s=0.05,
+        reconnect_interval_s=0.01,
+        error_callback=diagnostics.append,
+    )
+    transport.update_robot_status(RobotStatusSnapshot(0, '', '', 0.0, 0.0))
+
+    def open_socket():
+        value = first if not opened else replacement
+        opened.append(value)
+        return value, ('127.0.0.1', 1515)
+
+    def select_once(readable, _writeable, _exceptional, timeout):
+        nonlocal select_calls
+        select_calls += 1
+        if failure == 'select' and select_calls == 1:
+            raise ValueError('injected select failure')
+        if failure == 'recv' and readable[0] is first:
+            return readable, [], []
+        time.sleep(min(timeout, 0.002))
+        return [], [], []
+
+    monkeypatch.setattr(transport, '_open_socket', open_socket)
+    monkeypatch.setattr(sru_udp.select, 'select', select_once)
+    try:
+        transport.connect()
+        assert _wait_for(lambda: len(opened) >= 2, timeout=0.3)
+        assert first.closed is True
+        assert _wait_for(lambda: replacement.sent >= 1, timeout=0.3)
+        assert transport._worker.is_alive()
+        assert diagnostics
+    finally:
+        transport.disconnect()
+
+
+def test_delayed_tx_tick_skips_missed_deadlines_without_burst(monkeypatch):
+    """Absolute cadence skips missed slots after one delayed send."""
+    server = FakeUdpPlc()
+    transport = SruUdpTransport(
+        server_host='127.0.0.1',
+        server_port=server.port,
+        local_host='127.0.0.1',
+        tx_period_s=0.05,
+        rx_stale_timeout_s=0.2,
+        request_timeout_s=0.2,
+    )
+    transport.update_robot_status(RobotStatusSnapshot(0, '', '', 0.0, 0.0))
+    original_send = transport._send_status
+    first = True
+
+    def delayed_once(udp_socket):
+        nonlocal first
+        if first:
+            first = False
+            time.sleep(0.12)
+        return original_send(udp_socket)
+
+    monkeypatch.setattr(transport, '_send_status', delayed_once)
+    try:
+        transport.connect()
+        assert _wait_for(lambda: len(server.times) >= 3, timeout=0.5)
+        intervals = [b - a for a, b in zip(server.times, server.times[1:])]
+        assert min(intervals) >= 0.02
     finally:
         transport.disconnect()
         server.close()

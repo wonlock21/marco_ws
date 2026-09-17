@@ -9,6 +9,7 @@ import pytest
 from marco_mission.localization_validity import LocalizationHealth
 from marco_mission.mission_manager import MissionManager
 from marco_msgs.msg import RobotStatus
+from std_msgs.msg import Bool
 
 
 class DeferredFuture:
@@ -291,3 +292,67 @@ def test_late_response_from_timed_out_request_is_ignored(manager):
 
     assert manager.starts == 0
     assert manager._known_task_ids == set()
+
+
+@pytest.mark.parametrize(
+    ('execution', 'station_phase', 'exit_pending'),
+    (
+        ('nav2', 'NONE', ''),
+        ('lane_tracking', 'LINE_FOLLOW', ''),
+        ('lift', 'LIFTING', ''),
+        ('station_exit', 'EXITING', 'A1'),
+    ),
+)
+def test_plc_disconnect_preserves_every_active_execution_checkpoint(
+    manager, execution, station_phase, exit_pending
+):
+    """PLC telemetry loss must not cancel or rewrite an active mission."""
+    manager._busy = True
+    manager._running = True
+    manager._source = 'plc'
+    manager._task_id = 'plc-task-active'
+    manager._pickup = 'A1'
+    manager._dropoff = 'B3'
+    manager._route_nodes = ['A1', 'B3']
+    manager._current_stop_index = 1
+    manager._loaded = execution in ('lift', 'station_exit')
+    manager._station_phase = station_phase
+    manager._station_exit_pending = exit_pending
+    manager._station_exit_pending_loaded = bool(exit_pending)
+    manager._next_node = 'B3'
+    manager._active_route = ['q2', 'q5', 'B3']
+    manager._resume_context_valid = True
+    aborts = []
+    manager._request_abort = lambda reason, latch: aborts.append((reason, latch))
+    before = {
+        name: getattr(manager, name)
+        for name in (
+            '_busy', '_running', '_task_id', '_pickup', '_dropoff',
+            '_route_nodes', '_current_stop_index', '_loaded', '_station_phase',
+            '_station_exit_pending', '_station_exit_pending_loaded',
+            '_next_node', '_active_route', '_resume_context_valid',
+        )
+    }
+
+    manager._on_plc_connected(Bool(data=False))
+
+    assert manager._plc_connected is False
+    assert aborts == []
+    assert {
+        name: getattr(manager, name) for name in before
+    } == before
+
+
+def test_stale_plc_heartbeat_is_not_a_mission_abort_condition(manager):
+    manager._busy = True
+    manager._running = True
+    manager._source = 'plc'
+    manager._plc_connected = False
+    manager._plc_seen = time.monotonic() - 5.0
+    manager._plc_freshness = 0.1
+
+    manager._check_abort()
+
+    assert manager._busy is True
+    assert manager._running is True
+    assert manager._abort_reason == ''

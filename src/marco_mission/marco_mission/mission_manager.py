@@ -2170,11 +2170,10 @@ class MissionManager(Node):
         )
 
     def _on_plc_connected(self, msg: Bool) -> None:
+        """Track PLC link telemetry without coupling it to mission motion."""
         self._plc_connected = bool(msg.data)
         if msg.data:
             self._plc_seen = time.monotonic()
-        elif self._busy and self._source in ('plc', 'mock_plc'):
-            self._request_abort('PLC baglantisi kayboldu', latch=False)
 
     def _on_manual(self, msg: Bool) -> None:
         self._manual = bool(msg.data)
@@ -2984,9 +2983,6 @@ class MissionManager(Node):
             raise MissionAbort(self._abort_reason)
         if not self._base_communication_healthy():
             raise MissionAbort('STM32/UART iletisimi bayat/kayip')
-        if self._source in ('plc', 'mock_plc') and self._plc_seen:
-            if time.monotonic() - self._plc_seen > self._plc_freshness:
-                raise MissionAbort('PLC heartbeat timeout')
 
     def _check_action_health(self, require_turn_sensors: bool) -> None:
         if not require_turn_sensors:

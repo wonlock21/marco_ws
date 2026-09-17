@@ -112,6 +112,7 @@ class PlcBridgeNode(Node):
                     tx_period_s=self._tx_period,
                     rx_stale_timeout_s=self._rx_stale_timeout,
                     request_timeout_s=self._request_timeout,
+                    reconnect_interval_s=self._reconnect_interval,
                     error_callback=self._on_transport_error,
                 )
             except ValueError as error:
@@ -223,7 +224,7 @@ class PlcBridgeNode(Node):
     ) -> GatePermission.Response:
         """Forward all crossing identity fields and deny on every failure."""
         response.crossing_id = request.crossing_id
-        if not self.connected:
+        if not self._transport_available:
             response.granted = False
             response.message = 'PLC baglantisi/transport hazir degil'
             return response
@@ -248,7 +249,7 @@ class PlcBridgeNode(Node):
         self, request: TaskComplete.Request, response: TaskComplete.Response
     ) -> TaskComplete.Response:
         """Forward completion reports or leave them unacknowledged."""
-        if not self.connected:
+        if not self._transport_available:
             response.acknowledged = False
             return response
         try:

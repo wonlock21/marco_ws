@@ -135,7 +135,7 @@ def decode_rx_packet(payload: bytes) -> SruRxPacket:
 
 
 class SruUdpTransport(PlcTransport):
-    """Exchange SRU packets on one persistent UDP socket and fail closed."""
+    """Exchange SRU packets while recovering the UDP socket in-place."""
 
     def __init__(
         self,
@@ -145,6 +145,7 @@ class SruUdpTransport(PlcTransport):
         tx_period_s: float = 1.0,
         rx_stale_timeout_s: float = 2.5,
         request_timeout_s: float = 3.0,
+        reconnect_interval_s: float = 0.5,
         error_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
         if not server_host:
@@ -153,14 +154,16 @@ class SruUdpTransport(PlcTransport):
             raise ValueError('server_port 1..65535 araliginda olmali')
         if tx_period_s <= 0.0 or rx_stale_timeout_s <= 0.0:
             raise ValueError('TX periodu ve RX stale timeout pozitif olmali')
-        if request_timeout_s <= 0.0:
-            raise ValueError('request_timeout_s pozitif olmali')
+        if request_timeout_s <= 0.0 or reconnect_interval_s <= 0.0:
+            raise ValueError(
+                'request_timeout_s ve reconnect_interval_s pozitif olmali')
         self._server_host = server_host
         self._server_port = int(server_port)
         self._local_host = local_host
         self._tx_period = float(tx_period_s)
         self._rx_stale_timeout = float(rx_stale_timeout_s)
         self._request_timeout = float(request_timeout_s)
+        self._reconnect_interval = float(reconnect_interval_s)
         self._error_callback = error_callback
 
         self._condition = threading.Condition(threading.RLock())
@@ -181,19 +184,18 @@ class SruUdpTransport(PlcTransport):
         self._last_error = ''
 
     def connect(self) -> bool:
-        """Open the persistent UDP socket without claiming PLC connectivity."""
+        """Start the self-healing worker without claiming PLC connectivity."""
+        initial_error = None
         with self._condition:
-            if self._socket is not None:
+            if self._worker is not None and self._worker.is_alive():
                 return True
-            peer_ip = socket.gethostbyname(self._server_host)
-            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
-                udp_socket.bind((self._local_host, 0))
-                udp_socket.setblocking(False)
-            except Exception:
-                udp_socket.close()
-                raise
-            self._peer = (peer_ip, self._server_port)
+                udp_socket, peer = self._open_socket()
+            except OSError as error:
+                udp_socket, peer = None, None
+                initial_error = error
+            if peer is not None:
+                self._peer = peer
             self._socket = udp_socket
             self._stop.clear()
             self._worker = threading.Thread(
@@ -203,7 +205,9 @@ class SruUdpTransport(PlcTransport):
                 daemon=True,
             )
             self._worker.start()
-            return True
+        if initial_error is not None:
+            self._report_error(f'PLC UDP socket acilamadi: {initial_error}')
+        return True
 
     def disconnect(self) -> None:
         """Stop the worker and close its persistent UDP socket."""
@@ -217,6 +221,21 @@ class SruUdpTransport(PlcTransport):
             udp_socket.close()
         if worker is not None and worker is not threading.current_thread():
             worker.join(timeout=1.0)
+        with self._condition:
+            if self._worker is worker:
+                self._worker = None
+
+    def _open_socket(self):
+        """Resolve the peer and bind one non-blocking UDP socket."""
+        peer_ip = socket.gethostbyname(self._server_host)
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            udp_socket.bind((self._local_host, 0))
+            udp_socket.setblocking(False)
+        except Exception:
+            udp_socket.close()
+            raise
+        return udp_socket, (peer_ip, self._server_port)
 
     def is_connected(self) -> bool:
         """Require a live socket and at least one fresh validated response."""
@@ -268,7 +287,6 @@ class SruUdpTransport(PlcTransport):
         del task_id, node_id, direction  # These ROS identities are not on wire.
         started = time.monotonic()
         deadline = started + self._request_timeout
-        saw_fresh_gate_rx = False
         wait_message = f'{GATE_WAITING_MESSAGE_PREFIX} PLC izni bekleniyor'
         reported_mismatch = None
         with self._condition:
@@ -279,9 +297,6 @@ class SruUdpTransport(PlcTransport):
             initial_rx_sequence = self._rx_sequence
             initial_waiting_sequence = self._waiting_tx_sequence
             while True:
-                if self._socket is None:
-                    return GatePermissionResult(
-                        False, crossing_id, 'PLC UDP socket hazir degil')
                 waiting_sent = (
                     self._waiting_tx_sequence > initial_waiting_sequence
                     and self._waiting_tx_time >= started
@@ -295,7 +310,6 @@ class SruUdpTransport(PlcTransport):
                 )
                 if new_rx_after_waiting:
                     packet = self._last_rx
-                    saw_fresh_gate_rx = True
                     initial_rx_sequence = self._rx_sequence
                     packet_pair = (packet.pickup_node, packet.dropoff_node)
                     if packet_pair != active_pair:
@@ -318,24 +332,10 @@ class SruUdpTransport(PlcTransport):
                             'kapi izni bekleniyor'
                         )
                 now = time.monotonic()
-                if waiting_sent and not self._fresh_rx_locked(now):
-                    return GatePermissionResult(
-                        False, crossing_id, 'PLC RX bayat/yok')
                 remaining = deadline - now
                 if remaining <= 0.0:
-                    if saw_fresh_gate_rx and self._fresh_rx_locked(now):
-                        return GatePermissionResult(
-                            False, crossing_id, wait_message)
                     return GatePermissionResult(
-                        False, crossing_id, 'fresh PLC gate yaniti timeout')
-                if waiting_sent and self._last_rx is not None:
-                    remaining = min(
-                        remaining,
-                        max(
-                            0.0,
-                            self._last_rx_time + self._rx_stale_timeout - now,
-                        ),
-                    )
+                        False, crossing_id, wait_message)
                 self._condition.wait(timeout=remaining)
 
     def report_task_complete(
@@ -364,10 +364,44 @@ class SruUdpTransport(PlcTransport):
         next_tx = time.monotonic()
         try:
             while not self._stop.is_set():
+                if udp_socket is None:
+                    try:
+                        udp_socket, peer = self._open_socket()
+                    except OSError as error:
+                        self._report_error(
+                            f'PLC UDP socket yeniden acilamadi: {error}')
+                        now = time.monotonic()
+                        if now >= next_tx:
+                            next_tx += self._tx_period
+                            if next_tx <= now:
+                                missed = int(
+                                    (now - next_tx) // self._tx_period) + 1
+                                next_tx += missed * self._tx_period
+                        retry_wait = min(
+                            self._reconnect_interval,
+                            max(0.0, next_tx - time.monotonic()),
+                        )
+                        self._stop.wait(retry_wait)
+                        continue
+                    with self._condition:
+                        if self._stop.is_set():
+                            udp_socket.close()
+                            break
+                        self._peer = peer
+                        self._socket = udp_socket
+                        self._condition.notify_all()
                 now = time.monotonic()
                 if now >= next_tx:
-                    self._send_status(udp_socket)
-                    next_tx = now + self._tx_period
+                    socket_healthy = self._send_status(udp_socket)
+                    completed_at = time.monotonic()
+                    next_tx += self._tx_period
+                    if next_tx <= completed_at:
+                        missed = int(
+                            (completed_at - next_tx) // self._tx_period) + 1
+                        next_tx += missed * self._tx_period
+                    if not socket_healthy:
+                        udp_socket = self._discard_socket(udp_socket)
+                        continue
                 wait_s = min(0.2, max(0.0, next_tx - time.monotonic()))
                 try:
                     readable, _, _ = select.select(
@@ -375,7 +409,8 @@ class SruUdpTransport(PlcTransport):
                 except (OSError, ValueError) as error:
                     if not self._stop.is_set():
                         self._report_error(f'UDP select hatasi: {error}')
-                    return
+                    udp_socket = self._discard_socket(udp_socket)
+                    continue
                 if not readable:
                     continue
                 try:
@@ -385,38 +420,52 @@ class SruUdpTransport(PlcTransport):
                 except OSError as error:
                     if not self._stop.is_set():
                         self._report_error(f'UDP recv hatasi: {error}')
-                    return
+                    udp_socket = self._discard_socket(udp_socket)
+                    continue
                 self._receive(payload, address)
         finally:
-            with self._condition:
-                if self._socket is udp_socket:
-                    self._socket = None
-                self._condition.notify_all()
-            try:
-                udp_socket.close()
-            except OSError:
-                pass
+            self._discard_socket(udp_socket)
 
-    def _send_status(self, udp_socket: socket.socket) -> None:
+    def _discard_socket(self, udp_socket):
+        """Disconnect telemetry and close only the failed worker socket."""
+        if udp_socket is None:
+            return None
+        with self._condition:
+            if self._socket is udp_socket:
+                self._socket = None
+            self._condition.notify_all()
+        try:
+            udp_socket.close()
+        except OSError:
+            pass
+        return None
+
+    def _send_status(self, udp_socket: socket.socket) -> bool:
+        """Attempt one TX tick; return false only for a failed socket."""
         with self._condition:
             status = self._status
             peer = self._peer
         if status is None or peer is None:
-            return
+            return True
         try:
             payload = encode_tx_packet(status)
+        except SruPacketError as error:
+            self._report_error(f'PAKET_TX gonderilemedi: {error}')
+            return True
+        try:
             sent = udp_socket.sendto(payload, peer)
             if sent != TX_PACKET_LENGTH:
                 raise OSError(f'eksik UDP gonderimi: {sent}/{TX_PACKET_LENGTH}')
-        except (OSError, SruPacketError) as error:
+        except OSError as error:
             self._report_error(f'PAKET_TX gonderilemedi: {error}')
-            return
+            return False
         sent_at = time.monotonic()
         if payload[0] == WAITING_PLC_TX_STATUS:
             with self._condition:
                 self._waiting_tx_sequence += 1
                 self._waiting_tx_time = sent_at
                 self._condition.notify_all()
+        return True
 
     def _receive(self, payload: bytes, address) -> None:
         with self._condition:
