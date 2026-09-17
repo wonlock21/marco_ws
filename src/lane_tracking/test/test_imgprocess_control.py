@@ -6,6 +6,8 @@ from sensor_msgs.msg import Image
 
 from lane_tracking.imgprocess_node import (
     ImgProcessNode,
+    LaneAlignmentSample,
+    LaneEndTracker,
     apply_inner_wheel_stop,
     apply_deadband,
     clamp_inner_wheel_reversal,
@@ -18,10 +20,15 @@ from lane_tracking.imgprocess_node import (
     lane_end_confirmed,
     lane_motion_speed,
     lane_tracking_demand,
+    recent_lane_alignment_good,
     schedule_lane_linear_speed,
     scale_lane_error,
     shape_lane_control_error,
     wheel_targets_to_twist,
+)
+from lane_tracking.lane_detector import (
+    DETECTION_SOURCE_HSV_ORANGE,
+    DETECTION_SOURCE_SOBEL_FALLBACK,
 )
 
 
@@ -357,7 +364,6 @@ def test_lane_control_reset_inner_wheel_histerezisini_temizler():
     node._lane_inner_wheel_stopped = 'right'
     node.lane_seen_frames = 10
     node.lane_end_reported = True
-    node.lane_end_armed = True
 
     node._reset_lane_control()
 
@@ -467,3 +473,94 @@ def test_yalniz_serit_modunda_serit_sonu_devre_disidir():
     assert not lane_end_confirmed(
         seen_frames=200, missed_frames=200, minimum_seen_frames=15,
         missing_frames=9, loss_hold_frames=3, enabled=False)
+
+
+@pytest.mark.parametrize(
+    ('offsets', 'expected'),
+    [
+        ([0.05, 0.06, 0.07, 0.04, 0.06, 0.08, 0.34], True),
+        ([0.31, 0.35, 0.33, 0.29, 0.36], False),
+    ],
+)
+def test_recent_alignment_robust_medyanla_siniflanir(offsets, expected):
+    samples = [
+        LaneAlignmentSample(
+            timestamp=index * 0.05,
+            position_error=offset,
+            heading_error=0.05,
+            confidence=0.9,
+            detection_source=DETECTION_SOURCE_HSV_ORANGE,
+            orange_area_ratio=0.05,
+            orange_vertical_extent=0.8,
+        )
+        for index, offset in enumerate(offsets)
+    ]
+
+    assert recent_lane_alignment_good(samples, 0.20, 0.18) is expected
+
+
+def test_tek_terminal_sobel_outlier_hsv_gecmisini_bozmaz():
+    tracker = LaneEndTracker(0.40, 0.12, 0.80, 1.20, 0.20, 0.18)
+    for index, offset in enumerate((0.05, 0.06, 0.07, 0.04, 0.06)):
+        tracker.observe_detection(
+            index * 0.05, offset, 0.05, 0.9,
+            DETECTION_SOURCE_HSV_ORANGE, 0.05, 0.8)
+
+    tracker.observe_detection(
+        0.30, 0.34, 0.30, 0.6,
+        DETECTION_SOURCE_SOBEL_FALLBACK, 0.002, 0.1)
+
+    assert tracker.recent_alignment_good
+
+    sobel_only = LaneEndTracker(0.40, 0.12, 0.80, 1.20, 0.20, 0.18)
+    for index, offset in enumerate((0.31, 0.35, 0.33)):
+        sobel_only.observe_detection(
+            index * 0.05, offset, 0.05, 0.6,
+            DETECTION_SOURCE_SOBEL_FALLBACK, 0.0, 0.0)
+    assert not sobel_only.recent_alignment_good
+
+
+@pytest.mark.parametrize('fps', [15.0, 25.0, 30.0])
+def test_lane_loss_sureleri_fps_bagimsizdir(fps):
+    tracker = LaneEndTracker(0.40, 0.12, 0.80, 1.20, 0.20, 0.18)
+    interval = 1.0 / fps
+    timestamp = 0.0
+    while timestamp <= 1.30:
+        tracker.observe_detection(
+            timestamp, 0.06, 0.05, 0.9,
+            DETECTION_SOURCE_HSV_ORANGE, 0.05, 0.8)
+        timestamp += interval
+
+    missing_start = timestamp
+    first_zero_duration = None
+    lane_end_duration = None
+    while timestamp <= missing_start + 1.0:
+        tracker.observe_missing(timestamp)
+        duration = tracker.missing_duration(timestamp)
+        if (first_zero_duration is None
+                and not tracker.should_hold_last_command(timestamp)):
+            first_zero_duration = duration
+        if tracker.lane_end_ready(timestamp):
+            lane_end_duration = duration
+            break
+        timestamp += interval
+
+    assert first_zero_duration is not None
+    assert 0.12 <= first_zero_duration <= 0.12 + interval + 1e-9
+    assert lane_end_duration is not None
+    assert 0.80 <= lane_end_duration <= 0.80 + interval + 1e-9
+
+
+def test_yeni_lane_session_gecmis_ve_missing_stateini_temizler():
+    tracker = LaneEndTracker(0.40, 0.12, 0.80, 1.20, 0.20, 0.18)
+    tracker.observe_detection(
+        1.0, 0.05, 0.04, 0.9,
+        DETECTION_SOURCE_HSV_ORANGE, 0.05, 0.8)
+    tracker.observe_missing(1.1)
+
+    tracker.reset()
+
+    assert not tracker.history
+    assert tracker.missing_since is None
+    assert tracker.first_seen_time is None
+    assert not tracker.recent_alignment_good

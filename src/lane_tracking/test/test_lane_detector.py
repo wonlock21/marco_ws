@@ -5,6 +5,9 @@ import numpy as np
 import pytest
 
 from lane_tracking.lane_detector import (
+    DETECTION_SOURCE_HSV_ORANGE,
+    DETECTION_SOURCE_NONE,
+    DETECTION_SOURCE_SOBEL_FALLBACK,
     LaneDetector,
     hybrid_orange_lane_mask_cpu,
 )
@@ -23,10 +26,14 @@ def blue_frame(height=240, width=320):
 
 
 def test_serit_yokken_bulunamadi_doner():
-    found, error = LaneDetector().process(blue_frame(), center_x=160)
+    detector = LaneDetector()
+    found, error = detector.process(blue_frame(), center_x=160)
 
     assert found is False
     assert error == 0.0
+    assert detector.last_detection_source == DETECTION_SOURCE_NONE
+    assert detector.last_orange_area_ratio == 0.0
+    assert detector.last_orange_vertical_extent == 0.0
 
 
 def test_sagdaki_turuncu_serit_pozitif_hata_uretir():
@@ -47,6 +54,7 @@ def test_hsv_maskesi_turuncuyu_secer_mavi_zemini_reddeder():
 
     assert np.count_nonzero(mask[:, 130:171]) > 9000
     assert np.count_nonzero(mask[:, :80]) == 0
+
 
 def test_kamerada_kirmiziya_kayan_turuncu_seridi_secer():
     frame = blue_frame()
@@ -82,6 +90,27 @@ def test_turuncu_yokken_sobel_yedegi_seridi_bulur():
     assert found is True
     assert error > 55.0
     assert np.count_nonzero(detector.last_raw_mask) > 0
+    assert detector.last_detection_source == DETECTION_SOURCE_SOBEL_FALLBACK
+
+
+def test_terminal_turuncu_diagnostics_azalir_ve_kaynak_sobel_olur():
+    detector = LaneDetector()
+    normal = np.full((240, 320, 3), 210, dtype=np.uint8)
+    cv2.rectangle(normal, (130, 20), (190, 239), ORANGE, -1)
+
+    assert detector.process(normal, center_x=160)[0] is True
+    normal_area = detector.last_orange_area_ratio
+    normal_extent = detector.last_orange_vertical_extent
+    assert detector.last_detection_source == DETECTION_SOURCE_HSV_ORANGE
+
+    terminal = np.full((240, 320, 3), 210, dtype=np.uint8)
+    cv2.rectangle(terminal, (210, 60), (250, 239), (20, 20, 20), -1)
+    cv2.rectangle(terminal, (155, 215), (163, 230), ORANGE, -1)
+
+    assert detector.process(terminal, center_x=160)[0] is True
+    assert detector.last_detection_source == DETECTION_SOURCE_SOBEL_FALLBACK
+    assert detector.last_orange_area_ratio < normal_area
+    assert detector.last_orange_vertical_extent < normal_extent
 
 
 def test_alt_kenara_uzanmayan_turuncu_nesne_serit_sayilmaz():

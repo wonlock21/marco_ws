@@ -56,13 +56,18 @@ imgprocess_node:
     # Merkezde yumusak, dis bolgede tam otoriteli iki parcali lineer kontrol.
     lane_pd_center_zone: 0.60
     lane_pd_center_gain: 0.55
-    # Tek karelik algilama kaybinda son komutu tutar; ikinci kayip karede
-    # motor komutu guvenli bicimde sifirlanir.
+    # Eski frame parametreleri geriye uyumlu konfigurasyon arayuzu olarak
+    # tutulur; production karari asagidaki monotonic-time degerlerini kullanir.
     lane_loss_hold_frames: 1
-    # Serit sonu yalniz arac son gorulen karede seride yakin/paralelken ve
-    # kayip yaklasik 0.75 s surerse onaylanir. Kenardan cikis donus baslatmaz.
     lane_end_min_seen_frames: 30
     lane_end_missing_frames: 15
+    # Serit sonu tek son kare yerine son 0.4 s icindeki robust hizalanmaya
+    # dayanir. Kisa kayipta komut en fazla 0.12 s tutulur; 0.80 s kesintisiz
+    # kayip ve en az 1.20 s gorulme sonrasi serit sonu onaylanabilir.
+    lane_end_alignment_window_s: 0.40
+    lane_loss_hold_time_s: 0.12
+    lane_end_missing_time_s: 0.80
+    lane_end_min_seen_time_s: 1.20
     lane_end_max_offset_ratio: 0.20
     lane_end_max_heading_error: 0.18
     # Parlaklikta pembeye kayan turuncu serit icin HSV araliklari.

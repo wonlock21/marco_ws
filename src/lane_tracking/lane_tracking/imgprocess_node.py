@@ -1,9 +1,12 @@
 """Kamera tabanli serit takip dugumu."""
 
+from collections import deque
+from dataclasses import dataclass
 from enum import Enum
 import math
 import subprocess
 import sys
+import time
 
 import cv2
 from geometry_msgs.msg import Twist
@@ -19,7 +22,11 @@ from rclpy.qos import (
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
 
-from .lane_detector import LaneDetector
+from .lane_detector import (
+    DETECTION_SOURCE_HSV_ORANGE,
+    DETECTION_SOURCE_SOBEL_FALLBACK,
+    LaneDetector,
+)
 
 
 class ProcessState(Enum):
@@ -234,6 +241,140 @@ def lane_end_alignment_valid(
     )
 
 
+@dataclass(frozen=True)
+class LaneAlignmentSample:
+    """One successful lane detection used only by the end classifier."""
+
+    timestamp: float
+    position_error: float
+    heading_error: float
+    confidence: float
+    detection_source: str
+    orange_area_ratio: float
+    orange_vertical_extent: float
+
+
+def recent_lane_alignment_good(
+        samples, max_offset_ratio, max_heading_error):
+    """Classify recent alignment with source-aware robust medians."""
+    valid_samples = [
+        sample for sample in samples
+        if sample.detection_source in (
+            DETECTION_SOURCE_HSV_ORANGE,
+            DETECTION_SOURCE_SOBEL_FALLBACK,
+        )
+    ]
+    hsv_samples = [
+        sample for sample in valid_samples
+        if sample.detection_source == DETECTION_SOURCE_HSV_ORANGE
+    ]
+    # HSV is the primary lane-end authority while it is present in the
+    # recent window. Sobel remains usable when it is the only available
+    # recovery source, rather than being categorically rejected.
+    authority_samples = hsv_samples or valid_samples
+    if not authority_samples:
+        return False
+    median_offset = float(np.median([
+        abs(sample.position_error) for sample in authority_samples
+    ]))
+    median_heading = float(np.median([
+        abs(sample.heading_error) for sample in authority_samples
+    ]))
+    return lane_end_alignment_valid(
+        median_offset,
+        median_heading,
+        max_offset_ratio,
+        max_heading_error,
+    )
+
+
+class LaneEndTracker:
+    """Monotonic-time lane loss and robust pre-loss alignment state."""
+
+    def __init__(
+            self, alignment_window_s, loss_hold_time_s,
+            missing_time_s, min_seen_time_s,
+            max_offset_ratio, max_heading_error):
+        self.alignment_window_s = max(0.0, float(alignment_window_s))
+        self.loss_hold_time_s = max(0.0, float(loss_hold_time_s))
+        self.missing_time_s = max(0.0, float(missing_time_s))
+        self.min_seen_time_s = max(0.0, float(min_seen_time_s))
+        self.max_offset_ratio = abs(float(max_offset_ratio))
+        self.max_heading_error = abs(float(max_heading_error))
+        self.reset()
+
+    def reset(self):
+        self.history = deque()
+        self.first_seen_time = None
+        self.last_seen_time = None
+        self.accumulated_seen_time = 0.0
+        self._previous_observation_was_detection = False
+        self.missing_since = None
+        self.recent_alignment_good = False
+
+    def observe_detection(
+            self, timestamp, position_error, heading_error, confidence,
+            detection_source, orange_area_ratio, orange_vertical_extent):
+        timestamp = float(timestamp)
+        sample = LaneAlignmentSample(
+            timestamp=timestamp,
+            position_error=float(position_error),
+            heading_error=float(heading_error),
+            confidence=float(confidence),
+            detection_source=str(detection_source),
+            orange_area_ratio=float(orange_area_ratio),
+            orange_vertical_extent=float(orange_vertical_extent),
+        )
+        cutoff = timestamp - self.alignment_window_s
+        while self.history and self.history[0].timestamp < cutoff:
+            self.history.popleft()
+        self.history.append(sample)
+        if self.first_seen_time is None:
+            self.first_seen_time = timestamp
+        if (self._previous_observation_was_detection
+                and self.last_seen_time is not None):
+            detection_interval = max(0.0, timestamp - self.last_seen_time)
+            # Do not turn a camera/processing stall into artificial seen time.
+            if detection_interval <= self.alignment_window_s:
+                self.accumulated_seen_time += detection_interval
+        self.last_seen_time = timestamp
+        self._previous_observation_was_detection = True
+        self.missing_since = None
+        self.recent_alignment_good = recent_lane_alignment_good(
+            self.history,
+            self.max_offset_ratio,
+            self.max_heading_error,
+        )
+
+    def observe_missing(self, timestamp):
+        self._previous_observation_was_detection = False
+        if self.missing_since is None:
+            self.missing_since = float(timestamp)
+
+    def missing_duration(self, timestamp):
+        if self.missing_since is None:
+            return 0.0
+        return max(0.0, float(timestamp) - self.missing_since)
+
+    def seen_duration(self):
+        return self.accumulated_seen_time
+
+    def should_hold_last_command(self, timestamp):
+        return (
+            self.missing_since is not None
+            and self.missing_duration(timestamp) <= self.loss_hold_time_s
+        )
+
+    def lane_end_ready(self, timestamp, enabled=True):
+        return (
+            bool(enabled)
+            and self.missing_since is not None
+            and self.seen_duration() >= self.min_seen_time_s
+            and self.recent_alignment_good
+            and self.missing_duration(timestamp) >= self.missing_time_s
+        )
+
+
 def image_message_to_bgr(msg):
     """Convert common raw ROS image encodings to an owned BGR array."""
     channels_by_encoding = {
@@ -331,6 +472,14 @@ class ImgProcessNode(Node):
             self.get_parameter('lane_end_min_seen_frames').value)
         self.lane_end_missing_frames = int(
             self.get_parameter('lane_end_missing_frames').value)
+        self.lane_end_alignment_window_s = float(
+            self.get_parameter('lane_end_alignment_window_s').value)
+        self.lane_loss_hold_time_s = float(
+            self.get_parameter('lane_loss_hold_time_s').value)
+        self.lane_end_missing_time_s = float(
+            self.get_parameter('lane_end_missing_time_s').value)
+        self.lane_end_min_seen_time_s = float(
+            self.get_parameter('lane_end_min_seen_time_s').value)
         self.lane_end_max_offset_ratio = float(
             self.get_parameter('lane_end_max_offset_ratio').value)
         self.lane_end_max_heading_error = float(
@@ -364,7 +513,15 @@ class ImgProcessNode(Node):
         self.lane_missed_frames = 0
         self.lane_seen_frames = 0
         self.lane_end_reported = False
-        self.lane_end_armed = False
+        self.lane_end_tracker = LaneEndTracker(
+            alignment_window_s=self.lane_end_alignment_window_s,
+            loss_hold_time_s=self.lane_loss_hold_time_s,
+            missing_time_s=self.lane_end_missing_time_s,
+            min_seen_time_s=self.lane_end_min_seen_time_s,
+            max_offset_ratio=self.lane_end_max_offset_ratio,
+            max_heading_error=self.lane_end_max_heading_error,
+        )
+        self.last_lane_position_error = 0.0
         self.last_lane_command = None
         self._lane_inner_wheel_stopped = None
         self.show_debug_window = bool(
@@ -526,6 +683,10 @@ class ImgProcessNode(Node):
         # verilmez. Boylece kamera acilisindaki bos kareler donusu tetiklemez.
         self.declare_parameter('lane_end_min_seen_frames', 15)
         self.declare_parameter('lane_end_missing_frames', 9)
+        self.declare_parameter('lane_end_alignment_window_s', 0.40)
+        self.declare_parameter('lane_loss_hold_time_s', 0.12)
+        self.declare_parameter('lane_end_missing_time_s', 0.80)
+        self.declare_parameter('lane_end_min_seen_time_s', 1.20)
         self.declare_parameter('lane_end_max_offset_ratio', 0.20)
         self.declare_parameter('lane_end_max_heading_error', 0.18)
         self.declare_parameter('lane_end_detection_enabled', True)
@@ -684,6 +845,7 @@ class ImgProcessNode(Node):
     def _process_frame(self, frame):
         self._publish_active()
 
+        sample_time = time.monotonic()
         height, width, _ = frame.shape
         center_x = width // 2
         analysis_frame = frame.copy()
@@ -699,33 +861,45 @@ class ImgProcessNode(Node):
                 if self.lane_control_mode == 'pd_lookahead':
                     lane_x = self.lane_tracker.last_lookahead_x
                     if lane_x is None:
-                        self._handle_lane_loss()
+                        self._handle_lane_loss(sample_time)
                     else:
                         self.lane_seen_frames += 1
                         pd_error = float(center_x) - float(lane_x)
-                        self.lane_end_armed = lane_end_alignment_valid(
+                        self._record_lane_detection(
+                            sample_time,
                             pd_error / max(1.0, float(center_x)),
                             self.lane_tracker.last_heading_error,
-                            self.lane_end_max_offset_ratio,
-                            self.lane_end_max_heading_error,
                         )
                         self.publish_pd_lane_movement(pd_error, center_x)
                 else:
                     self.lane_seen_frames += 1
-                    self.lane_end_armed = lane_end_alignment_valid(
+                    self._record_lane_detection(
+                        sample_time,
                         float(error) / max(1.0, float(center_x)),
                         self.lane_tracker.last_heading_error,
-                        self.lane_end_max_offset_ratio,
-                        self.lane_end_max_heading_error,
                     )
                     self.publish_lane_movement(error, center_x)
             else:
-                self._handle_lane_loss()
+                self._handle_lane_loss(sample_time)
         debug_frame = self._compose_debug_frame(frame)
         if self.show_debug_window:
             cv2.imshow('Orange Pi Kamera Arayuzu', debug_frame)
             cv2.waitKey(1)
         self._publish_debug_image(debug_frame)
+
+    def _record_lane_detection(
+            self, timestamp, position_error, heading_error):
+        self.last_lane_position_error = float(position_error)
+        self.lane_end_tracker.observe_detection(
+            timestamp=timestamp,
+            position_error=position_error,
+            heading_error=heading_error,
+            confidence=self.lane_tracker.last_confidence,
+            detection_source=self.lane_tracker.last_detection_source,
+            orange_area_ratio=self.lane_tracker.last_orange_area_ratio,
+            orange_vertical_extent=(
+                self.lane_tracker.last_orange_vertical_extent),
+        )
 
     def publish_pd_lane_movement(self, error, half_frame_width):
         now = self.get_clock().now()
@@ -900,24 +1074,26 @@ class ImgProcessNode(Node):
             f'sag={right_target * 1000.0:+.0f} mm/s',
             throttle_duration_sec=0.5)
 
-    def _handle_lane_loss(self):
+    def _handle_lane_loss(self, timestamp=None):
+        timestamp = time.monotonic() if timestamp is None else float(timestamp)
+        self.lane_end_tracker.observe_missing(timestamp)
+        missing_duration = self.lane_end_tracker.missing_duration(timestamp)
         self.lane_missed_frames += 1
-        hold_frames = max(0, self.lane_loss_hold_frames)
         if (self.last_lane_command is not None
-                and self.lane_missed_frames <= hold_frames):
+                and self.lane_end_tracker.should_hold_last_command(timestamp)):
             linear_speed, angular_speed = self.last_lane_command
             self.publish_movement(linear_speed, angular_speed)
             self.get_logger().warning(
-                f'[SERIT] gecici kayip {self.lane_missed_frames}/'
-                f'{hold_frames} | son komut korunuyor: '
-                f'v={linear_speed:.3f} m/s w={angular_speed:+.3f} rad/s')
+                f'[SERIT] gecici kayip {missing_duration:.3f}/'
+                f'{self.lane_loss_hold_time_s:.3f} s | '
+                f'son komut korunuyor: v={linear_speed:.3f} m/s '
+                f'w={angular_speed:+.3f} rad/s',
+                throttle_duration_sec=0.5)
             return
 
-        if (not self.lane_end_reported and lane_end_confirmed(
-                self.lane_seen_frames, self.lane_missed_frames,
-                self.lane_end_min_seen_frames, self.lane_end_missing_frames,
-                hold_frames,
-                self.lane_end_detection_enabled and self.lane_end_armed)):
+        if (not self.lane_end_reported
+                and self.lane_end_tracker.lane_end_ready(
+                    timestamp, self.lane_end_detection_enabled)):
             self.lane_end_reported = True
             self.last_lane_command = None
             self.filtered_lane_angular = 0.0
@@ -925,8 +1101,9 @@ class ImgProcessNode(Node):
             self.current_state = ProcessState.IDLE
             self.pub_lane_end.publish(Bool(data=True))
             self.get_logger().info(
-                f'[SERIT SONU] {self.lane_seen_frames} gorulen ve '
-                f'{self.lane_missed_frames} kayip kare sonrasi duruldu; '
+                f'[SERIT SONU] '
+                f'{self.lane_end_tracker.seen_duration():.3f} s gorulen ve '
+                f'{missing_duration:.3f} s kayip sonrasi duruldu; '
                 'serit sonu mission manager icin yayinlandi')
             return
 
@@ -936,7 +1113,10 @@ class ImgProcessNode(Node):
         self.last_lane_command = None
         self.stop_robot()
         self.get_logger().warning(
-            '[SERIT] bulunamadi | cmd_vel: v=0.000 m/s w=0.000 rad/s',
+            f'[SERIT] bulunamadi | kayip={missing_duration:.3f} s | '
+            f'recent_alignment_good='
+            f'{self.lane_end_tracker.recent_alignment_good} | '
+            'cmd_vel: v=0.000 m/s w=0.000 rad/s',
             throttle_duration_sec=0.5)
 
     def _reset_lane_control(self, new_session=True):
@@ -950,7 +1130,9 @@ class ImgProcessNode(Node):
         if new_session:
             self.lane_seen_frames = 0
             self.lane_end_reported = False
-            self.lane_end_armed = False
+            self.last_lane_position_error = 0.0
+            if hasattr(self, 'lane_end_tracker'):
+                self.lane_end_tracker.reset()
         if hasattr(self, 'lane_tracker'):
             self.lane_tracker.reset_tracking()
 
@@ -969,6 +1151,25 @@ class ImgProcessNode(Node):
         label = (
             'IPM ALGILAMA'
             if self.lane_tracker.ipm_enabled else 'ALGILAMA')
+        diagnostic_lines = [
+            (
+                f'source={self.lane_tracker.last_detection_source} '
+                f'offset={self.last_lane_position_error:+.3f} '
+                f'heading={self.lane_tracker.last_heading_error:+.3f} '
+                f'confidence={self.lane_tracker.last_confidence:.3f}'
+            ),
+            (
+                f'orange_area={self.lane_tracker.last_orange_area_ratio:.4f} '
+                f'orange_extent='
+                f'{self.lane_tracker.last_orange_vertical_extent:.3f} '
+                f'aligned={self.lane_end_tracker.recent_alignment_good} '
+                f'missing={self.lane_end_tracker.missing_duration(time.monotonic()):.3f}s'
+            ),
+        ]
+        for index, line in enumerate(diagnostic_lines):
+            cv2.putText(
+                detection_frame, line, (10, 18 + index * 18),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1)
         cv2.putText(
             detection_frame, label, (10, detection_frame.shape[0] - 12),
             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)

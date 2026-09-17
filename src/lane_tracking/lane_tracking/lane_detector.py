@@ -3,9 +3,16 @@
 import cv2
 import numpy as np
 
+
+DETECTION_SOURCE_HSV_ORANGE = 'HSV_ORANGE'
+DETECTION_SOURCE_SOBEL_FALLBACK = 'SOBEL_FALLBACK'
+DETECTION_SOURCE_NONE = 'NONE'
+
+
 def _hybrid_orange_lane_mask(
         frame, hue_min=1, hue_max=25, sat_min=50, val_min=80,
-        minimum_pixel_ratio=0.01, sobel_threshold=40, use_umat=False):
+        minimum_pixel_ratio=0.01, sobel_threshold=40, use_umat=False,
+        return_diagnostics=False):
     """HSV turuncu maskesi uret; renk kaybolursa Sobel'e geri dus."""
     if frame.ndim != 3 or frame.shape[2] != 3:
         raise ValueError('turuncu serit maskesi 3 kanalli BGR kare bekler')
@@ -34,8 +41,18 @@ def _hybrid_orange_lane_mask(
         cleaned_hsv, np.ones((7, 7), np.uint8), iterations=2)
 
     total_pixels = int(frame.shape[0] * frame.shape[1])
-    if cv2.countNonZero(cleaned_hsv) < (
-            total_pixels * float(minimum_pixel_ratio)):
+    orange_pixels = cv2.countNonZero(cleaned_hsv)
+    orange_area_ratio = orange_pixels / max(1, total_pixels)
+    cleaned_hsv_array = (
+        cleaned_hsv.get() if isinstance(cleaned_hsv, cv2.UMat)
+        else cleaned_hsv)
+    occupied_rows = np.flatnonzero(np.any(cleaned_hsv_array != 0, axis=1))
+    orange_vertical_extent = (
+        (int(occupied_rows[-1]) - int(occupied_rows[0]) + 1)
+        / max(1, frame.shape[0])
+        if occupied_rows.size else 0.0)
+
+    if orange_pixels < (total_pixels * float(minimum_pixel_ratio)):
         gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
         sobel_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
         sobel_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
@@ -47,27 +64,41 @@ def _hybrid_orange_lane_mask(
             edge_mask, cv2.MORPH_CLOSE, np.ones((5, 45), np.uint8))
         result = cv2.morphologyEx(
             sobel_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        detection_source = DETECTION_SOURCE_SOBEL_FALLBACK
     else:
         result = cleaned_hsv
-    return result.get() if isinstance(result, cv2.UMat) else result
+        detection_source = DETECTION_SOURCE_HSV_ORANGE
+    result_array = result.get() if isinstance(result, cv2.UMat) else result
+    if return_diagnostics:
+        return (
+            result_array,
+            detection_source,
+            float(orange_area_ratio),
+            float(orange_vertical_extent),
+        )
+    return result_array
 
 
 def hybrid_orange_lane_mask_opencl(
         frame, hue_min=0, hue_max=25, sat_min=50, val_min=80,
-        minimum_pixel_ratio=0.01, sobel_threshold=40):
+        minimum_pixel_ratio=0.01, sobel_threshold=40,
+        return_diagnostics=False):
     """OpenCV T-API ile OpenCL hizlandirmali hibrit turuncu maske."""
     return _hybrid_orange_lane_mask(
         frame, hue_min, hue_max, sat_min, val_min,
-        minimum_pixel_ratio, sobel_threshold, use_umat=True)
+        minimum_pixel_ratio, sobel_threshold, use_umat=True,
+        return_diagnostics=return_diagnostics)
 
 
 def hybrid_orange_lane_mask_cpu(
         frame, hue_min=0, hue_max=25, sat_min=50, val_min=80,
-        minimum_pixel_ratio=0.01, sobel_threshold=40):
+        minimum_pixel_ratio=0.01, sobel_threshold=40,
+        return_diagnostics=False):
     """OpenCL kullanilamadiginda ayni hibrit maskeyi CPU'da uygula."""
     return _hybrid_orange_lane_mask(
         frame, hue_min, hue_max, sat_min, val_min,
-        minimum_pixel_ratio, sobel_threshold, use_umat=False)
+        minimum_pixel_ratio, sobel_threshold, use_umat=False,
+        return_diagnostics=return_diagnostics)
 
 
 class LaneDetector:
@@ -100,6 +131,9 @@ class LaneDetector:
         self.last_lookahead_x = None
         self.last_heading_error = 0.0
         self.last_confidence = 0.0
+        self.last_detection_source = DETECTION_SOURCE_NONE
+        self.last_orange_area_ratio = 0.0
+        self.last_orange_vertical_extent = 0.0
         self._previous_center_x = None
         self._consecutive_detection_misses = 0
 
@@ -108,6 +142,9 @@ class LaneDetector:
         self.last_heading_error = 0.0
         self.last_confidence = 0.0
         self.last_lookahead_x = None
+        self.last_detection_source = DETECTION_SOURCE_NONE
+        self.last_orange_area_ratio = 0.0
+        self.last_orange_vertical_extent = 0.0
         self._previous_center_x = None
         self._consecutive_detection_misses = 0
 
@@ -116,23 +153,27 @@ class LaneDetector:
         working_frame = self._birdseye(frame) if self.ipm_enabled else frame
         self.last_debug_frame = working_frame
         if self.use_opencl:
-            mask = hybrid_orange_lane_mask_opencl(
+            diagnostics = hybrid_orange_lane_mask_opencl(
                 working_frame,
                 hue_min=self.orange_hue_min,
                 hue_max=self.orange_hue_max,
                 sat_min=self.orange_sat_min,
                 val_min=self.orange_val_min,
                 minimum_pixel_ratio=self.orange_min_pixel_ratio,
-                sobel_threshold=self.sobel_threshold)
+                sobel_threshold=self.sobel_threshold,
+                return_diagnostics=True)
         else:
-            mask = hybrid_orange_lane_mask_cpu(
+            diagnostics = hybrid_orange_lane_mask_cpu(
                 working_frame,
                 hue_min=self.orange_hue_min,
                 hue_max=self.orange_hue_max,
                 sat_min=self.orange_sat_min,
                 val_min=self.orange_val_min,
                 minimum_pixel_ratio=self.orange_min_pixel_ratio,
-                sobel_threshold=self.sobel_threshold)
+                sobel_threshold=self.sobel_threshold,
+                return_diagnostics=True)
+        (mask, candidate_source, self.last_orange_area_ratio,
+         self.last_orange_vertical_extent) = diagnostics
         self.last_raw_mask = mask
 
         contours, _ = cv2.findContours(
@@ -147,9 +188,11 @@ class LaneDetector:
             self.last_heading_error = 0.0
             self.last_confidence = 0.0
             self.last_lookahead_x = None
+            self.last_detection_source = DETECTION_SOURCE_NONE
             self._draw_lookahead(working_frame, center_x, None)
             return False, 0.0
         self._consecutive_detection_misses = 0
+        self.last_detection_source = candidate_source
 
         selected_mask = np.zeros_like(mask)
         cv2.drawContours(selected_mask, [selected], -1, 255, -1)
