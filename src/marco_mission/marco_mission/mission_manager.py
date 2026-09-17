@@ -62,6 +62,7 @@ class MissionAbort(RuntimeError):
 
 
 _GATE_WAITING_MESSAGE_PREFIX = 'WAITING_PLC:'
+_ACTION_INTERRUPTED_BY_LOAD = object()
 
 
 class MissionActionFailure(MissionAbort):
@@ -580,6 +581,8 @@ class MissionManager(Node):
             ('require_safety_supervisor', True),
             ('require_base_communication', True),
             ('base_communication_timeout_s', 1.0),
+            ('load_detected_debounce_s', 0.075),
+            ('load_detected_freshness_s', 0.25),
             ('require_active_field', False),
             ('temporary_gui_manual_mode', True),
             ('status_rate_hz', 5.0),
@@ -687,6 +690,16 @@ class MissionManager(Node):
         self._plc_assign_future = None
         self._plc_assign_started = 0.0
         self._loaded = False
+        self._load_detected = False
+        self._load_detected_wall = 0.0
+        self._load_detected_sequence = 0
+        self._load_true_since = 0.0
+        self._load_true_samples = 0
+        self._pickup_contact_session = None
+        self._pickup_contact_session_sequence = 0
+        self._pickup_lift_started = False
+        self._pickup_completed = False
+        self._pickup_completion_source = ''
         self._pose: Optional[PoseWithCovarianceStamped] = None
         self._pose_seen = 0.0
         self._scan_seen = 0.0
@@ -752,6 +765,9 @@ class MissionManager(Node):
                                  callback_group=self._cb)
         self.create_subscription(
             Bool, '/base/communication_ok', self._on_base_communication, 10,
+            callback_group=self._cb)
+        self.create_subscription(
+            Bool, '/base/load_detected', self._on_load_detected, 10,
             callback_group=self._cb)
         self.create_subscription(Bool, '/safety/obstacle_detected',
                                  lambda m: setattr(self, '_obstacle', bool(m.data)), 10,
@@ -1260,7 +1276,9 @@ class MissionManager(Node):
             'target_body_yaw': target_body_yaw,
         }
 
-    def _wait_until_stopped(self, label: str) -> None:
+    def _wait_until_stopped(
+        self, label: str, require_fresh_filtered_odom: bool = False
+    ) -> None:
         timeout = float(self.get_parameter('motion_stop_timeout_s').value)
         settle = float(self.get_parameter('motion_stop_settle_s').value)
         linear_limit = float(
@@ -1272,8 +1290,17 @@ class MissionManager(Node):
         self._safe_stop()
         while time.monotonic() < deadline:
             self._check_abort()
+            odom_fresh = bool(
+                not require_fresh_filtered_odom
+                or (
+                    self._filtered_odom_seen > 0.0
+                    and time.monotonic() - self._filtered_odom_seen
+                    <= self._odom_freshness
+                )
+            )
             stopped = (
-                abs(self._linear_speed) <= linear_limit
+                odom_fresh
+                and abs(self._linear_speed) <= linear_limit
                 and abs(self._angular_speed) <= angular_limit
             )
             if stopped:
@@ -2178,6 +2205,118 @@ class MissionManager(Node):
     def _on_manual(self, msg: Bool) -> None:
         self._manual = bool(msg.data)
 
+    def _on_load_detected(self, msg: Bool) -> None:
+        """Cache only arrivals published from fresh STM32 status frames."""
+        now = time.monotonic()
+        value = bool(msg.data)
+        with self._lock:
+            self._load_detected_sequence += 1
+            self._load_detected = value
+            self._load_detected_wall = now
+            if value:
+                if self._load_true_samples == 0:
+                    self._load_true_since = now
+                self._load_true_samples += 1
+            else:
+                self._load_true_since = 0.0
+                self._load_true_samples = 0
+                session = self._pickup_contact_session
+                if session is not None and session.get('active', False):
+                    session['armed'] = True
+
+    def _begin_pickup_contact_session(self, station: str) -> int:
+        """Open one optional contact window without ever waiting for it."""
+        now = time.monotonic()
+        freshness = float(
+            self.get_parameter('load_detected_freshness_s').value)
+        with self._lock:
+            self._pickup_contact_session_sequence += 1
+            session_id = self._pickup_contact_session_sequence
+            fresh_low = bool(
+                self._load_detected_wall > 0.0
+                and now - self._load_detected_wall <= freshness
+                and not self._load_detected
+            )
+            self._pickup_contact_session = {
+                'id': session_id,
+                'station': station,
+                'started': now,
+                'sequence': self._load_detected_sequence,
+                'armed': fresh_low,
+                'active': bool(
+                    self._busy
+                    and self._running
+                    and self._nodes.get(station, {}).get('role') ==
+                    'pickup_dock'
+                ),
+            }
+            self._pickup_lift_started = False
+            self._pickup_completed = False
+            self._pickup_completion_source = ''
+            return session_id
+
+    def _end_pickup_contact_session(self, session_id: int) -> None:
+        with self._lock:
+            session = self._pickup_contact_session
+            if session is not None and session['id'] == session_id:
+                session['active'] = False
+
+    def _pickup_contact_safety_error(self) -> str:
+        if self._estop or self._latched_abort:
+            return 'e-stop/safety kilidi aktif'
+        if self._obstacle:
+            return 'engel algilandi'
+        if self._manual:
+            return 'manuel mod aktif'
+        if not self._base_communication_healthy():
+            return 'STM32/UART iletisimi bayat/kayip'
+        return ''
+
+    def _pickup_load_detected_ready(
+        self, session_id: int, station: str
+    ) -> bool:
+        now = time.monotonic()
+        freshness = float(
+            self.get_parameter('load_detected_freshness_s').value)
+        debounce = float(
+            self.get_parameter('load_detected_debounce_s').value)
+        with self._lock:
+            session = self._pickup_contact_session
+            if (
+                session is None
+                or session['id'] != session_id
+                or session['station'] != station
+                or not session['active']
+                or not self._busy
+                or not self._running
+                or self._station_phase != self._STATION_LINE_FOLLOW_DOCKING
+                or self._pickup_lift_started
+                or self._pickup_completed
+            ):
+                return False
+            if (
+                self._load_detected_sequence > session['sequence']
+                and not self._load_detected
+            ):
+                session['armed'] = True
+            ready = bool(
+                session['armed']
+                and self._load_detected
+                and self._load_detected_wall > session['started']
+                and now - self._load_detected_wall <= freshness
+                and self._load_true_since >= session['started']
+                and self._load_true_samples >= 2
+                and now - self._load_true_since >= debounce
+            )
+        return ready and not self._pickup_contact_safety_error()
+
+    def _ensure_pickup_contact_safety(self) -> None:
+        reason = self._pickup_contact_safety_error()
+        if reason:
+            raise MissionAbort(
+                f'fiziksel yuk temasi guvenlik kontrolu basarisiz: {reason}'
+            )
+
     def _on_battery(self, msg: BatteryState) -> None:
         self._battery_voltage = float(msg.voltage)
         self._battery_current = float(msg.current)
@@ -3019,7 +3158,8 @@ class MissionManager(Node):
         return f'{label}: route_guard durdurdu ({reason})'
 
     def _action(self, client, goal, label: str, timeout: Optional[float] = None,
-                require_turn_sensors: bool = False, feedback_callback=None):
+                require_turn_sensors: bool = False, feedback_callback=None,
+                interrupt_callback=None):
         limit = timeout or self._action_timeout
         self._check_abort()
         if not client.wait_for_server(timeout_sec=2.0):
@@ -3044,6 +3184,7 @@ class MissionManager(Node):
         action_started_wall = time.monotonic()
         self._event('action_started', action=label)
         result_future = handle.get_result_async()
+        interrupted = False
         try:
             if self._abort_reason:
                 handle.cancel_goal_async()
@@ -3056,11 +3197,37 @@ class MissionManager(Node):
                     raise MissionAbort(route_abort)
                 self._check_abort()
                 self._check_action_health(require_turn_sensors)
+                if interrupt_callback is not None and interrupt_callback():
+                    # FollowPath owns motion until its terminal result. Request
+                    # cancellation first, continuously inject a safe zero into
+                    # the Nav2 command path, and do not return to lift control
+                    # until action ownership has ended.
+                    interrupted = True
+                    handle.cancel_goal_async()
+                    self._precise_turn_correction_pub.publish(Twist())
+                    self._event(
+                        'action_interrupt_requested', action=label,
+                        reason='load_detected')
+                    while not result_future.done():
+                        self._check_abort()
+                        self._check_action_health(require_turn_sensors)
+                        self._ensure_pickup_contact_safety()
+                        self._precise_turn_correction_pub.publish(Twist())
+                        if time.monotonic() >= end:
+                            raise MissionAbort(
+                                f'{label} load_detected cancel timeout')
+                        time.sleep(0.02)
+                    break
                 if time.monotonic() >= end:
                     handle.cancel_goal_async()
                     raise MissionAbort(f'{label} timeout')
                 time.sleep(0.02)
             wrapped = result_future.result()
+            if interrupted and wrapped.status == GoalStatus.STATUS_CANCELED:
+                self._event(
+                    'action_finished', action=label,
+                    outcome='load_detected_interrupt')
+                return _ACTION_INTERRUPTED_BY_LOAD
             if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
                 raise MissionActionFailure(
                     label, wrapped.status, wrapped.result)
@@ -3304,6 +3471,7 @@ class MissionManager(Node):
         pickup: bool,
         dock_result_code: int,
         reason: str,
+        pickup_session_id: Optional[int] = None,
     ) -> None:
         """Safely hand a failed station lane approach back to Nav2."""
         self._event(
@@ -3319,15 +3487,18 @@ class MissionManager(Node):
         self._docking_lane_active = False
         self._docking_stopped = False
         self._wait_until_stopped(f'{station} lane fallback handoff')
-        self._navigate_station_dock_fallback(
+        contact_completion = self._navigate_station_dock_fallback(
             station,
             loaded=not pickup,
+            pickup_session_id=pickup_session_id if pickup else None,
         )
         self._event(
             'station_lane_fallback_completed',
             station=station,
             pickup=pickup,
             target=station,
+            completion_source=(
+                'load_detected' if contact_completion else 'nav2_pose'),
         )
 
     def _station_dock_fallback_edge(self, station: str):
@@ -3421,8 +3592,9 @@ class MissionManager(Node):
         return approach_name, points, edge_id, load_rule
 
     def _navigate_station_dock_fallback(
-        self, station: str, loaded: bool
-    ) -> None:
+        self, station: str, loaded: bool,
+        pickup_session_id: Optional[int] = None,
+    ) -> bool:
         """Follow only the remaining reverse station edge, then verify dock."""
         self._await_route_constraints()
         approach, edge_points, edge_id, load_rule = (
@@ -3488,12 +3660,33 @@ class MissionManager(Node):
         goal.path = path
         goal.controller_id = 'FollowPath'
         goal.goal_checker_id = 'general_goal_checker'
-        self._action(
+        action_kwargs = {'require_turn_sensors': True}
+        if pickup_session_id is not None:
+            action_kwargs['interrupt_callback'] = (
+                lambda: self._pickup_load_detected_ready(
+                    pickup_session_id, station)
+            )
+        action_result = self._action(
             self._follow_path,
             goal,
             f'follow_route:station_dock_fallback:{station}',
-            require_turn_sensors=True,
+            **action_kwargs,
         )
+        if action_result is _ACTION_INTERRUPTED_BY_LOAD:
+            self._precise_turn_correction_pub.publish(Twist())
+            self._ensure_pickup_contact_safety()
+            self._wait_until_stopped(
+                f'{station} load_detected fallback durusu',
+                require_fresh_filtered_odom=True)
+            self._ensure_pickup_contact_safety()
+            self._current_node = station
+            self._edge = ''
+            self._pickup_completion_source = 'load_detected'
+            self._event(
+                'station_fallback_load_detected_completed',
+                station=station,
+            )
+            return True
         self._wait_until_stopped(f'{station} fallback FollowPath sonu')
 
         final_x, final_y, final_yaw = self._fresh_map_base_pose(
@@ -3523,6 +3716,7 @@ class MissionManager(Node):
             position_error_m=position_error,
             yaw_error_rad=yaw_error,
         )
+        return False
 
     def _do_dock(self, station: str, pickup: bool) -> None:
         goal = DockToStation.Goal()
@@ -3550,6 +3744,10 @@ class MissionManager(Node):
             self._docking_camera_valid = False
             self._docking_stopped = False
             self._docking_error = ''
+            pickup_session_id = (
+                self._begin_pickup_contact_session(station)
+                if pickup else None
+            )
             self._event(
                 'lane_end_reverse_docking_started', station=station,
                 camera='rear_camera')
@@ -3569,8 +3767,9 @@ class MissionManager(Node):
                     f'({self._docking_elapsed:.1f} s)')
 
             used_fallback = False
+            dock_result = None
             try:
-                self._action(
+                dock_result = self._action(
                     self._dock, goal, f'lane_end_docking:{station}',
                     self._action_timeout, require_turn_sensors=True,
                     feedback_callback=feedback_callback)
@@ -3595,9 +3794,12 @@ class MissionManager(Node):
                     pickup,
                     int(result_code),
                     reason,
+                    pickup_session_id,
                 )
                 used_fallback = True
             except Exception as error:
+                if pickup_session_id is not None:
+                    self._end_pickup_contact_session(pickup_session_id)
                 self._docking_error = str(error)
                 self._event(
                     'lane_end_reverse_docking_failed', station=station,
@@ -3611,22 +3813,64 @@ class MissionManager(Node):
                 if pickup else self._STATION_DROPOFF_READY
             )
             if not used_fallback:
-                self._event(
-                    'lane_end_reverse_docking_completed', station=station,
-                    elapsed_s=self._docking_elapsed,
-                    next_phase=self._station_phase)
+                result_code = getattr(dock_result, 'result_code', None)
+                if (
+                    pickup
+                    and result_code ==
+                    DockToStation.Result.RESULT_LOAD_DETECTED
+                ):
+                    self._pickup_completion_source = 'load_detected'
+                    self._event(
+                        'load_detected_reverse_docking_completed',
+                        station=station,
+                        elapsed_s=self._docking_elapsed,
+                        next_phase=self._station_phase,
+                    )
+                else:
+                    if pickup:
+                        self._pickup_completion_source = 'visual_lane_end'
+                    self._event(
+                        'lane_end_reverse_docking_completed', station=station,
+                        elapsed_s=self._docking_elapsed,
+                        next_phase=self._station_phase)
+            elif pickup and not self._pickup_completion_source:
+                self._pickup_completion_source = 'nav2_pose'
             return
         goal.timeout = min(self._action_timeout, 60.0)
         self._action(self._dock, goal, f'docking:{station}', goal.timeout + 2.0)
 
     def _do_lift(self, station: str, pickup: bool) -> None:
+        pickup_session_id = None
+        if pickup:
+            with self._lock:
+                session = self._pickup_contact_session
+                if session is not None and session['station'] == station:
+                    pickup_session_id = int(session['id'])
+                    if self._pickup_lift_started:
+                        raise MissionAbort(
+                            f'{station}: pickup lift zaten baslatildi')
+                    self._pickup_lift_started = True
+            if self._pickup_completion_source == 'load_detected':
+                self._ensure_pickup_contact_safety()
         goal = LiftLoad.Goal()
         goal.command = (LiftLoad.Goal.COMMAND_PICKUP if pickup else
                         LiftLoad.Goal.COMMAND_DROPOFF)
         goal.station_id = station
         goal.timeout = min(self._action_timeout, 30.0)
-        self._action(self._lift, goal, f'lift:{"pickup" if pickup else "dropoff"}',
-                     goal.timeout + 2.0)
+        try:
+            self._action(
+                self._lift, goal,
+                f'lift:{"pickup" if pickup else "dropoff"}',
+                goal.timeout + 2.0)
+        except Exception:
+            if pickup_session_id is not None:
+                self._end_pickup_contact_session(pickup_session_id)
+            raise
+        if pickup:
+            with self._lock:
+                self._pickup_completed = True
+            if pickup_session_id is not None:
+                self._end_pickup_contact_session(pickup_session_id)
 
     def _run(self) -> None:
         success, reason = False, ''
@@ -3705,6 +3949,16 @@ class MissionManager(Node):
                 self._do_lift(station, pickup=pickup)
                 loaded = pickup
                 self._publish_load_state(loaded)
+                if pickup:
+                    self._event(
+                        'pickup_operation_completed',
+                        station=station,
+                        completion_source=(
+                            getattr(
+                                self, '_pickup_completion_source', ''
+                            ) or 'docking'),
+                        loaded=True,
+                    )
                 # Physical load state is committed before advancing the
                 # mission checkpoint. Docking alone never advances it.
                 self._current_stop_index = index + 1
@@ -3755,6 +4009,9 @@ class MissionManager(Node):
                     if not self._latched_abort and not self._estop:
                         self._state = RobotStatus.STATE_ERROR
             self._station_phase = self._STATION_IDLE
+            session = getattr(self, '_pickup_contact_session', None)
+            if session is not None:
+                self._end_pickup_contact_session(int(session['id']))
 
     def _notify_complete(self, success: bool, message: str) -> None:
         if not self._task_id or not self._complete.wait_for_service(timeout_sec=1.0):

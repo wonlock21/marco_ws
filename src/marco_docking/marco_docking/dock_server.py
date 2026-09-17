@@ -68,6 +68,10 @@ class DockServer(Node):
             'lane_command_topic': '/cmd_vel_lane',
             'lane_active_topic': '/lane_tracking/active',
             'lane_end_topic': '/lane_tracking/end_detected',
+            'load_detected_topic': '/base/load_detected',
+            'load_detected_debounce_s': 0.075,
+            'load_detected_freshness_s': 0.25,
+            'base_health_timeout_s': 0.50,
             'task_command_topic': '/task_command',
             'filtered_odom_topic': '/odometry/filtered',
             'lane_command_timeout_s': 0.30,
@@ -92,7 +96,15 @@ class DockServer(Node):
         self._lane_valid = self._qr_valid = None
         self._lane_wall = self._qr_wall = 0.0
         self._lane_valid_wall = self._qr_valid_wall = 0.0
-        self._estop = self._obstacle = False
+        self._estop = self._manual = self._obstacle = False
+        self._communication_ok = False
+        self._communication_wall = 0.0
+        self._load_detected = False
+        self._load_detected_wall = 0.0
+        self._load_detected_sequence = 0
+        self._load_true_since = 0.0
+        self._load_true_samples = 0
+        self._load_lock = threading.Lock()
         self._lane_command = Twist()
         self._lane_command_wall = 0.0
         self._lane_active = False
@@ -111,6 +123,15 @@ class DockServer(Node):
                                  callback_group=self._cb)
         self.create_subscription(Bool, '/base/estop', self._on_estop, 10,
                                  callback_group=self._cb)
+        self.create_subscription(
+            Bool, '/base/manual_mode', self._on_manual, 10,
+            callback_group=self._cb)
+        self.create_subscription(
+            Bool, '/base/communication_ok', self._on_communication, 10,
+            callback_group=self._cb)
+        self.create_subscription(
+            Bool, str(self._p['load_detected_topic']), self._on_load_detected,
+            10, callback_group=self._cb)
         self.create_subscription(
             Bool, '/safety/obstacle_detected', self._on_obstacle,
             10, callback_group=self._cb)
@@ -164,6 +185,70 @@ class DockServer(Node):
     def _on_estop(self, msg):
         self._estop = bool(msg.data)
 
+    def _on_manual(self, msg):
+        self._manual = bool(msg.data)
+
+    def _on_communication(self, msg):
+        self._communication_ok = bool(msg.data)
+        self._communication_wall = time.monotonic()
+
+    def _on_load_detected(self, msg):
+        now = time.monotonic()
+        value = bool(msg.data)
+        with self._load_lock:
+            self._load_detected_sequence += 1
+            self._load_detected = value
+            self._load_detected_wall = now
+            if value:
+                if self._load_true_samples == 0:
+                    self._load_true_since = now
+                self._load_true_samples += 1
+            else:
+                self._load_true_since = 0.0
+                self._load_true_samples = 0
+
+    def _new_load_session(self, now):
+        with self._load_lock:
+            fresh = (
+                self._load_detected_wall > 0.0
+                and now - self._load_detected_wall <=
+                float(self._p['load_detected_freshness_s']))
+            return {
+                'started': now,
+                'sequence': self._load_detected_sequence,
+                # A fresh low may arm immediately. A pre-existing high never
+                # does; it must first go low during this docking session.
+                'armed': bool(fresh and not self._load_detected),
+            }
+
+    def _load_trigger_ready(self, session, now):
+        if self._estop or self._manual or self._obstacle:
+            return False
+        if (
+            not self._communication_ok
+            or self._communication_wall <= 0.0
+            or now - self._communication_wall >
+            float(self._p['base_health_timeout_s'])
+        ):
+            return False
+        with self._load_lock:
+            if (
+                self._load_detected_sequence > session['sequence']
+                and not self._load_detected
+            ):
+                session['armed'] = True
+            return bool(
+                session['armed']
+                and self._load_detected
+                and self._load_detected_wall > session['started']
+                and now - self._load_detected_wall <=
+                float(self._p['load_detected_freshness_s'])
+                and self._load_true_since >= session['started']
+                and self._load_true_samples >= 2
+                and now - self._load_true_since >=
+                float(self._p['load_detected_debounce_s'])
+            )
+
     def _on_obstacle(self, msg):
         self._obstacle = bool(msg.data)
 
@@ -210,7 +295,10 @@ class DockServer(Node):
 
     def _finish(self, handle, result, code, message, canceled=False):
         self._stop()
-        result.success = code == DockToStation.Result.RESULT_OK
+        result.success = code in (
+            DockToStation.Result.RESULT_OK,
+            DockToStation.Result.RESULT_LOAD_DETECTED,
+        )
         result.result_code, result.message = code, message
         if canceled:
             handle.canceled()
@@ -250,7 +338,9 @@ class DockServer(Node):
         self._lane_stop()
         return self._finish(handle, result, code, message, canceled=canceled)
 
-    def _wait_for_measured_stop(self, handle, result, timeout, started):
+    def _wait_for_measured_stop(
+        self, handle, result, timeout, started, require_load_safety=False
+    ):
         deadline = time.monotonic() + float(self._p['stop_timeout_s'])
         stable_since = None
         while rclpy.ok() and time.monotonic() < deadline:
@@ -268,6 +358,19 @@ class DockServer(Node):
                 return self._rear_lane_failure(
                     handle, result, DockToStation.Result.RESULT_OBSTACLE,
                     'docking durusunda engel')
+            if require_load_safety and self._manual:
+                return self._rear_lane_failure(
+                    handle, result, DockToStation.Result.RESULT_ABORTED,
+                    'fiziksel temas durusunda manuel mod')
+            if require_load_safety and (
+                not self._communication_ok
+                or self._communication_wall <= 0.0
+                or now - self._communication_wall >
+                float(self._p['base_health_timeout_s'])
+            ):
+                return self._rear_lane_failure(
+                    handle, result, DockToStation.Result.RESULT_ABORTED,
+                    'fiziksel temas durusunda STM32/UART iletisimi bayat')
             odom_fresh = (
                 self._odom_wall
                 and now - self._odom_wall <= float(self._p['odom_timeout_s']))
@@ -312,6 +415,7 @@ class DockServer(Node):
         if goal.timeout > 0.0:
             timeout = min(timeout, float(goal.timeout))
         requested_at = time.monotonic()
+        load_session = self._new_load_session(requested_at)
         deadline = requested_at + timeout
         activation_deadline = time.monotonic() + float(
             self._p['activation_timeout_s'])
@@ -384,6 +488,25 @@ class DockServer(Node):
                         handle, result,
                         DockToStation.Result.RESULT_CAMERA_LOST,
                         'arka kamera bayat/kayip')
+                load_ready = (
+                    goal.approach_type == DockToStation.Goal.APPROACH_PICKUP
+                    and self._load_trigger_ready(load_session, now)
+                )
+                if load_ready:
+                    self._lane_stop()
+                    stop_result = self._wait_for_measured_stop(
+                        handle, result, timeout, started,
+                        require_load_safety=True)
+                    if stop_result is not None:
+                        return stop_result
+                    result.final_position_error = math.nan
+                    result.final_longitudinal_error = math.nan
+                    result.final_yaw_error = math.nan
+                    return self._finish(
+                        handle, result,
+                        DockToStation.Result.RESULT_LOAD_DETECTED,
+                        'fresh/debounced fiziksel yuk temasi ile '
+                        'geri docking tamamlandi')
                 if self._lane_end_wall > started:
                     self._lane_stop()
                     stop_result = self._wait_for_measured_stop(

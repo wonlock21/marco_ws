@@ -28,6 +28,14 @@ class RecordingTransport:
         pass
 
 
+class RecordingPublisher:
+    def __init__(self):
+        self.messages = []
+
+    def publish(self, message):
+        self.messages.append(message)
+
+
 class FakeGoalHandle:
     def __init__(self, request, *, cancel=False, on_feedback=None):
         self.request = request
@@ -137,6 +145,20 @@ def test_load_detected_flag_round_trips_without_layout_change():
     decoded = p.decode_status(frames[0][1])
     assert p.StatusFlag.LOAD_DETECTED in decoded.flags
     assert p.StatusFlag.LIMIT_SWITCH_UP in decoded.flags
+
+
+def test_load_detected_topic_is_published_only_from_status_frames(make_node):
+    node = make_node()
+    publisher = RecordingPublisher()
+    node._load_detected_pub = publisher
+
+    node._on_status(_status(p.StatusFlag(0)))
+    node._on_status(_status(p.StatusFlag.LOAD_DETECTED))
+    published_before_health_timer = len(publisher.messages)
+    node._publish_communication_health()
+
+    assert [message.data for message in publisher.messages] == [False, True]
+    assert len(publisher.messages) == published_before_health_timer
 
 
 def test_fork_action_wire_values_are_stable_and_extended():

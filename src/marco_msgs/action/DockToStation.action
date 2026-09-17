@@ -42,6 +42,7 @@ uint8 RESULT_ABORTED=5
 uint8 RESULT_CAMERA_LOST=6
 uint8 RESULT_CONTROL_INACTIVE=7
 uint8 RESULT_STOP_FAILED=8
+uint8 RESULT_LOAD_DETECTED=9       # fiziksel yuk/palet temasi ile tamamlandi
 uint8 result_code
 
 string message

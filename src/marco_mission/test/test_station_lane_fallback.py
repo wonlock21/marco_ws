@@ -3,12 +3,15 @@
 import json
 import math
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
 from action_msgs.msg import GoalStatus
 from rclpy.time import Time
+from std_msgs.msg import Bool
 
+from marco_mission import mission_manager
 from marco_mission.mission_manager import MissionAbort
 from marco_mission.mission_manager import MissionActionFailure
 from marco_mission.mission_manager import MissionManager
@@ -23,6 +26,16 @@ class _Publisher:
 
     def publish(self, message):
         self.operations.append(('lane', message.data))
+
+
+class _TwistPublisher:
+    def __init__(self, operations):
+        self.operations = operations
+
+    def publish(self, message):
+        self.operations.append(
+            ('nav_zero', message.linear.x, message.angular.z)
+        )
 
 
 class _DoneFuture:
@@ -63,7 +76,10 @@ class _ActionClient:
 
 def _dock_result(code, message='dock failed'):
     result = DockToStation.Result()
-    result.success = code == DockToStation.Result.RESULT_OK
+    result.success = code in (
+        DockToStation.Result.RESULT_OK,
+        DockToStation.Result.RESULT_LOAD_DETECTED,
+    )
     result.result_code = code
     result.message = message
     return result
@@ -133,6 +149,26 @@ def _manager(
     }), encoding='utf-8')
     manager._graph_file = str(graph_file)
     manager._action_timeout = 120.0
+    manager._lock = threading.RLock()
+    manager._busy = True
+    manager._running = True
+    manager._estop = False
+    manager._latched_abort = False
+    manager._manual = False
+    manager._obstacle = False
+    manager._require_base_communication = False
+    manager._base_communication_ok = True
+    manager._base_communication_seen = time.monotonic()
+    manager._load_detected = False
+    manager._load_detected_wall = time.monotonic()
+    manager._load_detected_sequence = 1
+    manager._load_true_since = 0.0
+    manager._load_true_samples = 0
+    manager._pickup_contact_session = None
+    manager._pickup_contact_session_sequence = 0
+    manager._pickup_lift_started = False
+    manager._pickup_completed = False
+    manager._pickup_completion_source = ''
     manager._dock = object()
     manager._follow_path = object()
     manager._station_phase = manager._STATION_LINE_FOLLOW_READY
@@ -141,18 +177,28 @@ def _manager(
     manager.operations = []
     manager.events = []
     manager._task_pub = _Publisher(manager.operations)
+    manager._precise_turn_correction_pub = _TwistPublisher(
+        manager.operations
+    )
     manager._event = lambda name, **fields: manager.events.append(
         (name, fields)
     )
-    manager._wait_until_stopped = lambda label: manager.operations.append(
-        ('stopped', label)
+    manager._wait_until_stopped = (
+        lambda label, **_kwargs: manager.operations.append(
+            ('stopped', label)
+        )
     )
     manager._await_route_constraints = lambda: None
     manager._set_state = lambda state, target='': manager.operations.append(
         ('state', state, target)
     )
+    parameters = {
+        'junction_path_match_tolerance_m': 0.25,
+        'load_detected_freshness_s': 0.25,
+        'load_detected_debounce_s': 0.075,
+    }
     manager.get_parameter = lambda name: SimpleNamespace(
-        value={'junction_path_match_tolerance_m': 0.25}[name]
+        value=parameters[name]
     )
     manager.get_clock = lambda: SimpleNamespace(
         now=lambda: Time(nanoseconds=1_000_000_000)
@@ -173,12 +219,15 @@ def _manager(
 
     def action(
         client, goal, label, _timeout=None, require_turn_sensors=False,
-        feedback_callback=None,
+        feedback_callback=None, interrupt_callback=None,
     ):
         if client is manager._dock:
             manager.operations.append(('dock', label))
             code = next(codes, DockToStation.Result.RESULT_OK)
-            if code != DockToStation.Result.RESULT_OK:
+            if code not in (
+                DockToStation.Result.RESULT_OK,
+                DockToStation.Result.RESULT_LOAD_DETECTED,
+            ):
                 raise MissionActionFailure(
                     label,
                     GoalStatus.STATUS_ABORTED,
@@ -188,6 +237,8 @@ def _manager(
         assert client is manager._follow_path
         assert require_turn_sensors is True
         manager.operations.append(('follow', label, goal))
+        if interrupt_callback is not None and interrupt_callback():
+            return mission_manager._ACTION_INTERRUPTED_BY_LOAD
         return SimpleNamespace()
 
     manager._action = action
@@ -560,3 +611,214 @@ def test_fallback_nav2_failure_propagates_and_prevents_lift(tmp_path):
         name == 'station_lane_fallback_completed'
         for name, _fields in manager.events
     )
+
+
+def test_lane_load_completion_source_is_distinct_and_lift_is_once(tmp_path):
+    manager = _manager(
+        tmp_path, ('A1',),
+        (DockToStation.Result.RESULT_LOAD_DETECTED,),
+    )
+
+    lifts = _dock_then_lift(manager, 'A1', True)
+
+    assert lifts == [('A1', True)]
+    assert manager._pickup_completion_source == 'load_detected'
+    assert any(
+        name == 'load_detected_reverse_docking_completed'
+        for name, _fields in manager.events
+    )
+    assert not any(
+        name == 'lane_end_reverse_docking_completed'
+        for name, _fields in manager.events
+    )
+
+
+def test_nav2_fallback_load_interrupt_stops_then_completes_once(tmp_path):
+    manager = _manager(
+        tmp_path, ('A1',), (DockToStation.Result.RESULT_LANE_LOST,)
+    )
+    original_get_parameter = manager.get_parameter
+    manager.get_parameter = lambda name: (
+        SimpleNamespace(value=0.0)
+        if name == 'load_detected_debounce_s'
+        else original_get_parameter(name)
+    )
+    original_action = manager._action
+
+    def action(client, *args, **kwargs):
+        if client is manager._follow_path:
+            manager._on_load_detected(Bool(data=True))
+            manager._on_load_detected(Bool(data=True))
+        return original_action(client, *args, **kwargs)
+
+    manager._action = action
+    lifts = _dock_then_lift(manager, 'A1', True)
+
+    follow_index = next(
+        index for index, item in enumerate(manager.operations)
+        if item[0] == 'follow'
+    )
+    zero_index = next(
+        index for index, item in enumerate(manager.operations)
+        if item[0] == 'nav_zero'
+    )
+    contact_stop_index = next(
+        index for index, item in enumerate(manager.operations)
+        if item == ('stopped', 'A1 load_detected fallback durusu')
+    )
+    assert follow_index < zero_index < contact_stop_index
+    assert lifts == [('A1', True)]
+    assert manager._pickup_completion_source == 'load_detected'
+    completions = [
+        fields for name, fields in manager.events
+        if name == 'station_lane_fallback_completed'
+    ]
+    assert len(completions) == 1
+    assert completions[0]['completion_source'] == 'load_detected'
+    assert not any(
+        name == 'station_lane_fallback_pose_verified'
+        for name, _fields in manager.events
+    )
+
+
+def test_nav2_completion_wins_race_without_duplicate_lift(tmp_path):
+    manager = _manager(
+        tmp_path, ('A1',), (DockToStation.Result.RESULT_LANE_LOST,)
+    )
+    original_action = manager._action
+
+    def action(client, *args, **kwargs):
+        if client is manager._follow_path:
+            # A terminal Nav2 result is returned even if contact becomes true
+            # at the boundary; the sequential station flow accepts one source.
+            manager._on_load_detected(Bool(data=True))
+            manager._on_load_detected(Bool(data=True))
+            kwargs.pop('interrupt_callback', None)
+        return original_action(client, *args, **kwargs)
+
+    manager._action = action
+    lifts = _dock_then_lift(manager, 'A1', True)
+
+    assert lifts == [('A1', True)]
+    assert manager._pickup_completion_source == 'nav2_pose'
+    assert sum(
+        name == 'station_lane_fallback_completed'
+        for name, _fields in manager.events
+    ) == 1
+
+
+def test_pickup_lift_claim_is_exactly_once_after_contact(tmp_path):
+    manager = _manager(tmp_path, ('A1',))
+    manager._lift = object()
+    manager._station_phase = manager._STATION_PICKUP_READY
+    session_id = manager._begin_pickup_contact_session('A1')
+    manager._pickup_completion_source = 'load_detected'
+    calls = []
+    manager._action = lambda *args, **kwargs: calls.append(args[2])
+
+    manager._do_lift('A1', pickup=True)
+    with pytest.raises(MissionAbort, match='zaten baslatildi'):
+        manager._do_lift('A1', pickup=True)
+
+    assert calls == ['lift:pickup']
+    assert manager._pickup_completed is True
+    assert manager._pickup_contact_session['id'] == session_id
+    assert manager._pickup_contact_session['active'] is False
+
+
+def test_pickup_lift_failure_does_not_mark_loaded_or_success(tmp_path):
+    manager = _manager(tmp_path, ('A1',))
+    manager._lift = object()
+    manager._loaded = False
+    manager._station_phase = manager._STATION_PICKUP_READY
+    manager._begin_pickup_contact_session('A1')
+    manager._pickup_completion_source = 'load_detected'
+    manager._action = lambda *args, **kwargs: (_ for _ in ()).throw(
+        MissionAbort('lift hardware fault')
+    )
+
+    with pytest.raises(MissionAbort, match='lift hardware fault'):
+        manager._do_lift('A1', pickup=True)
+
+    assert manager._loaded is False
+    assert manager._pickup_completed is False
+    assert manager._pickup_contact_session['active'] is False
+
+
+class _CancelableResultFuture:
+    def __init__(self, handle, terminal_status):
+        self.handle = handle
+        self.terminal_status = terminal_status
+
+    def done(self):
+        return self.handle.cancelled or self.terminal_status == 'already_done'
+
+    def result(self):
+        status = (
+            GoalStatus.STATUS_SUCCEEDED
+            if self.terminal_status == 'already_done'
+            else GoalStatus.STATUS_CANCELED
+        )
+        return SimpleNamespace(status=status, result=SimpleNamespace())
+
+
+class _CancelableGoalHandle:
+    accepted = True
+
+    def __init__(self, terminal_status='cancel_on_request'):
+        self.cancelled = False
+        self.cancel_calls = 0
+        self.future = _CancelableResultFuture(self, terminal_status)
+
+    def get_result_async(self):
+        return self.future
+
+    def cancel_goal_async(self):
+        self.cancel_calls += 1
+        self.cancelled = True
+        return _DoneFuture(SimpleNamespace())
+
+
+def _action_manager(handle):
+    manager = MissionManager.__new__(MissionManager)
+    manager._action_timeout = 2.0
+    manager._lock = threading.RLock()
+    manager._active_goal = None
+    manager._active_kind = ''
+    manager._abort_reason = ''
+    manager._check_abort = lambda: None
+    manager._check_action_health = lambda _required=False: None
+    manager._route_guard_abort_for_action = lambda _label, _start: ''
+    manager._ensure_pickup_contact_safety = lambda: None
+    manager._precise_turn_correction_pub = _TwistPublisher([])
+    manager.events = []
+    manager._event = lambda name, **fields: manager.events.append(
+        (name, fields)
+    )
+    return manager, _ActionClient(handle)
+
+
+def test_follow_path_load_interrupt_cancels_action_once():
+    handle = _CancelableGoalHandle()
+    manager, client = _action_manager(handle)
+
+    result = manager._action(
+        client, object(), 'follow_route:station_dock_fallback:A1',
+        interrupt_callback=lambda: True,
+    )
+
+    assert result is mission_manager._ACTION_INTERRUPTED_BY_LOAD
+    assert handle.cancel_calls == 1
+
+
+def test_terminal_nav2_result_wins_over_simultaneous_load_interrupt():
+    handle = _CancelableGoalHandle(terminal_status='already_done')
+    manager, client = _action_manager(handle)
+
+    result = manager._action(
+        client, object(), 'follow_route:station_dock_fallback:A1',
+        interrupt_callback=lambda: True,
+    )
+
+    assert result is not mission_manager._ACTION_INTERRUPTED_BY_LOAD
+    assert handle.cancel_calls == 0

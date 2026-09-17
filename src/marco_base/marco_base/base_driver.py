@@ -5,6 +5,7 @@ Sorumluluklari:
   UART      -> encoder tick   -> odometri            -> /odom, /joint_states
   UART      -> imu_yaw        -> IMU yaw              -> /imu/data_raw
   UART      -> durum bayrak   -> /base/estop, /base/manual_mode, /base/battery
+                               -> /base/load_detected
   UART      -> alis bayatligi -> /base/communication_ok
 
 Bilincli olarak DAHIL EDILMEYENLER:
@@ -180,6 +181,9 @@ class BaseDriver(Node):
         self._joint_pub = self.create_publisher(JointState, "joint_states", 10)
         self._estop_pub = self.create_publisher(Bool, "base/estop", 10)
         self._manual_pub = self.create_publisher(Bool, "base/manual_mode", 10)
+        self._load_detected_pub = self.create_publisher(
+            Bool, "base/load_detected", 10
+        )
         self._communication_pub = self.create_publisher(
             Bool, "base/communication_ok", 10
         )
@@ -662,6 +666,12 @@ class BaseDriver(Node):
 
         self._estop_pub.publish(Bool(data=p.StatusFlag.ESTOP_ACTIVE in frame.flags))
         self._manual_pub.publish(Bool(data=p.StatusFlag.MODE_MANUAL in frame.flags))
+        # Bu yayın yalnız yeni çözülmüş bir STATE_STATUS frame'iyle yapılır.
+        # Böylece son bilinen bayrak, UART bayatken yeni bir temas olayı gibi
+        # tekrar üretilmez.
+        self._load_detected_pub.publish(
+            Bool(data=p.StatusFlag.LOAD_DETECTED in frame.flags)
+        )
 
         battery = BatteryState()
         battery.header.stamp = self.get_clock().now().to_msg()

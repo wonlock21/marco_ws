@@ -2,6 +2,7 @@
 
 import json
 import threading
+import time
 from types import SimpleNamespace
 
 from marco_mission.mission_manager import MissionManager
@@ -223,6 +224,22 @@ def test_legacy_station_turn_direction_is_ignored_before_mission(tmp_path):
 
 def test_production_docking_uses_lane_end_without_station_duration():
     manager = MissionManager.__new__(MissionManager)
+    manager._lock = threading.RLock()
+    manager._busy = True
+    manager._running = True
+    manager._load_detected = False
+    manager._load_detected_wall = time.monotonic()
+    manager._load_detected_sequence = 1
+    manager._load_true_since = 0.0
+    manager._load_true_samples = 0
+    manager._pickup_contact_session = None
+    manager._pickup_contact_session_sequence = 0
+    manager._pickup_lift_started = False
+    manager._pickup_completed = False
+    manager._pickup_completion_source = ''
+    manager.get_parameter = lambda name: SimpleNamespace(value={
+        'load_detected_freshness_s': 0.25,
+    }[name])
     manager._nodes = {
         "A3": {"role": "pickup_dock", "approach_qr_id": ""},
     }
