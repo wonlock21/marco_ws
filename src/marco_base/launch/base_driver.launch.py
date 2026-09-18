@@ -16,6 +16,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -60,6 +61,10 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_separation_actual", default_value="0.0"),
+        DeclareLaunchArgument(
+            "base_communication_recovery_timeout_s", default_value="5.0"),
+        DeclareLaunchArgument(
+            "base_communication_recovery_stable_s", default_value="0.5"),
     ]
 
     driver = Node(
@@ -75,6 +80,18 @@ def generate_launch_description() -> LaunchDescription:
                 "serial_port": LaunchConfiguration("port"),
                 "lift_action_server_enabled": LaunchConfiguration(
                     "lift_action_server"
+                ),
+                "base_communication_recovery_timeout_s": ParameterValue(
+                    LaunchConfiguration(
+                        "base_communication_recovery_timeout_s"
+                    ),
+                    value_type=float,
+                ),
+                "base_communication_recovery_stable_s": ParameterValue(
+                    LaunchConfiguration(
+                        "base_communication_recovery_stable_s"
+                    ),
+                    value_type=float,
                 ),
                 "fake_slip_factor": LaunchConfiguration("fake_slip_factor"),
                 "fake_wheel_scale_error_left": LaunchConfiguration(

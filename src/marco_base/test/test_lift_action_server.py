@@ -1,6 +1,7 @@
 """Fail-closed behavior tests for the production STM32 lift action."""
 
 import math
+import threading
 import time
 from types import SimpleNamespace
 
@@ -116,6 +117,8 @@ def make_node():
         dropoff=0.04,
         dropoff_tilt=0.04,
         communication=0.2,
+        recovery_timeout=0.2,
+        recovery_stable=0.04,
         use_default_durations=False,
     ):
         overrides = [
@@ -123,6 +126,14 @@ def make_node():
             Parameter("wheel_measurement_log_enabled", value=False),
             Parameter("lift_action_server_enabled", value=True),
             Parameter("communication_timeout", value=communication),
+            Parameter(
+                "base_communication_recovery_timeout_s",
+                value=recovery_timeout,
+            ),
+            Parameter(
+                "base_communication_recovery_stable_s",
+                value=recovery_stable,
+            ),
         ]
         if not use_default_durations:
             overrides.extend([
@@ -468,6 +479,7 @@ def test_cancel_during_each_stage_sends_stop_without_success(
     (
         (p.StatusFlag.ESTOP_ACTIVE, "e-stop"),
         (p.StatusFlag.MODE_MANUAL, "manuel mod"),
+        (p.StatusFlag.OVERCURRENT, "asiri akim"),
     ),
 )
 def test_safety_failure_during_lift_aborts_and_sends_stop(
@@ -517,26 +529,209 @@ def test_safety_failure_during_lift_aborts_and_sends_stop(
         ),
     ),
 )
-def test_communication_loss_during_each_stage_aborts_and_sends_stop(
+def test_communication_loss_during_each_stage_pauses_and_recovers(
     make_node, command, failure_phase, expected_action
 ):
-    node = make_node(communication=0.3)
+    node = make_node(
+        pickup=0.12,
+        pickup_tilt=0.12,
+        dropoff=0.12,
+        dropoff_tilt=0.12,
+        communication=1.0,
+        recovery_timeout=0.3,
+        recovery_stable=0.04,
+    )
     _healthy(node)
-    handle = FakeGoalHandle(_goal(command=command))
+    handle = FakeGoalHandle(_goal(timeout=1.0, command=command))
+    loss_at = []
+    restored_at = []
+    timers = []
 
     def lose_communication():
-        if handle.feedback[-1].phase == failure_phase:
+        if handle.feedback[-1].phase == failure_phase and not loss_at:
+            loss_at.append(time.monotonic())
             stale = time.monotonic() - node.communication_timeout - 0.01
             node._last_valid_frame_wall = stale
             node._last_status_wall = stale
+
+            def restore():
+                restored_at.append(time.monotonic())
+                _healthy(node)
+
+            timer = threading.Timer(0.06, restore)
+            timers.append(timer)
+            timer.start()
+
+    handle.on_feedback = lose_communication
+    result = node._execute_lift(handle)
+    for timer in timers:
+        timer.join()
+
+    assert handle.terminal == "succeeded"
+    assert result.success
+    records = _fork_records(node._transport)
+    stop_after_loss = next(
+        record for record in records
+        if record[1] is p.ForkAction.STOP and record[0] >= loss_at[0]
+    )
+    resumed = next(
+        record for record in records
+        if record[1] is expected_action and record[0] > stop_after_loss[0]
+    )
+    assert resumed[0] >= restored_at[0] + 0.03
+    assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
+
+
+def test_communication_recovery_timeout_aborts_with_stop(make_node):
+    node = make_node(
+        pickup=0.1,
+        recovery_timeout=0.08,
+        recovery_stable=0.02,
+    )
+    _healthy(node)
+    handle = FakeGoalHandle(_goal(timeout=0.5))
+
+    def lose_communication():
+        stale = time.monotonic() - node.communication_timeout - 0.01
+        node._last_valid_frame_wall = stale
+        node._last_status_wall = stale
 
     handle.on_feedback = lose_communication
     result = node._execute_lift(handle)
 
     assert handle.terminal == "aborted"
     assert not result.success
-    assert "iletisimi yok veya bayat" in result.message
-    assert expected_action in _fork_actions(node._transport)
+    assert "UART recovery timeout" in result.message
+    assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
+
+
+@pytest.mark.parametrize(
+    "flag",
+    (
+        p.StatusFlag.ESTOP_ACTIVE,
+        p.StatusFlag.MODE_MANUAL,
+        p.StatusFlag.OVERCURRENT,
+    ),
+)
+def test_safety_fault_during_communication_recovery_fails_immediately(
+    make_node, flag
+):
+    node = make_node(pickup=0.1, recovery_timeout=0.3)
+    _healthy(node)
+    handle = FakeGoalHandle(_goal(timeout=0.6))
+    timer = None
+
+    def lose_then_raise_fault():
+        nonlocal timer
+        if timer is not None:
+            return
+        stale = time.monotonic() - node.communication_timeout - 0.01
+        node._last_valid_frame_wall = stale
+        node._last_status_wall = stale
+        timer = threading.Timer(
+            0.04,
+            lambda: setattr(node, "_status", _status(flag)),
+        )
+        timer.start()
+
+    handle.on_feedback = lose_then_raise_fault
+    started = time.monotonic()
+    result = node._execute_lift(handle)
+    if timer is not None:
+        timer.join()
+
+    assert handle.terminal == "aborted"
+    assert not result.success
+    assert time.monotonic() - started < node.base_communication_recovery_timeout_s
+    assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
+
+
+def test_up_recovery_resumes_only_remaining_active_duration(make_node):
+    node = make_node(
+        pickup=0.20,
+        pickup_tilt=0.0,
+        communication=0.2,
+        recovery_timeout=0.3,
+        recovery_stable=0.04,
+    )
+    _healthy(node)
+    handle = FakeGoalHandle(_goal(timeout=0.8))
+    stage_started = []
+    loss_at = []
+    timer = None
+
+    def lose_after_active_motion():
+        nonlocal timer
+        now = time.monotonic()
+        if not stage_started:
+            stage_started.append(now)
+        if not loss_at and now - stage_started[0] >= 0.08:
+            loss_at.append(now)
+            stale = now - node.communication_timeout - 0.01
+            node._last_valid_frame_wall = stale
+            node._last_status_wall = stale
+            timer = threading.Timer(0.06, lambda: _healthy(node))
+            timer.start()
+
+    handle.on_feedback = lose_after_active_motion
+    started = time.monotonic()
+    result = node._execute_lift(handle)
+    if timer is not None:
+        timer.join()
+    elapsed = time.monotonic() - started
+
+    assert handle.terminal == "succeeded"
+    assert result.success
+    assert loss_at
+    assert elapsed >= 0.20 + 0.06 + 0.04 - 0.03
+    assert elapsed < 0.36
+    assert _collapsed_fork_actions(node._transport) == [
+        p.ForkAction.UP,
+        p.ForkAction.STOP,
+        p.ForkAction.UP,
+        p.ForkAction.STOP,
+    ]
+
+
+def test_communication_flap_does_not_reset_lift_recovery_deadline(make_node):
+    node = make_node(
+        pickup=0.12,
+        communication=0.2,
+        recovery_timeout=0.12,
+        recovery_stable=0.06,
+    )
+    _healthy(node)
+    handle = FakeGoalHandle(_goal(timeout=0.5))
+    loss_at = []
+    timers = []
+
+    def lose_then_flap():
+        if loss_at:
+            return
+        loss_at.append(time.monotonic())
+        stale = loss_at[0] - node.communication_timeout - 0.01
+        node._last_valid_frame_wall = stale
+        node._last_status_wall = stale
+        healthy_timer = threading.Timer(0.03, lambda: _healthy(node))
+
+        def stale_again():
+            stale_at = time.monotonic() - node.communication_timeout - 0.01
+            node._last_valid_frame_wall = stale_at
+            node._last_status_wall = stale_at
+
+        stale_timer = threading.Timer(0.06, stale_again)
+        timers.extend((healthy_timer, stale_timer))
+        healthy_timer.start()
+        stale_timer.start()
+
+    handle.on_feedback = lose_then_flap
+    result = node._execute_lift(handle)
+    for timer in timers:
+        timer.join()
+
+    assert handle.terminal == "aborted"
+    assert not result.success
+    assert time.monotonic() - loss_at[0] < 0.20
     assert _fork_actions(node._transport)[-1] is p.ForkAction.STOP
 
 

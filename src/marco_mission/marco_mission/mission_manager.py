@@ -795,6 +795,8 @@ class MissionManager(Node):
             ('require_safety_supervisor', True),
             ('require_base_communication', True),
             ('base_communication_timeout_s', 1.0),
+            ('base_communication_recovery_timeout_s', 5.0),
+            ('base_communication_recovery_stable_s', 0.5),
             ('load_detected_debounce_s', 0.075),
             ('load_detected_freshness_s', 0.25),
             ('require_active_field', False),
@@ -841,6 +843,27 @@ class MissionManager(Node):
             self.get_parameter('temporary_gui_manual_mode').value)
         self._base_communication_timeout = float(
             self.get_parameter('base_communication_timeout_s').value)
+        self._base_communication_recovery_timeout = float(
+            self.get_parameter(
+                'base_communication_recovery_timeout_s').value)
+        self._base_communication_recovery_stable = float(
+            self.get_parameter(
+                'base_communication_recovery_stable_s').value)
+        if (
+            not math.isfinite(self._base_communication_recovery_timeout)
+            or self._base_communication_recovery_timeout <= 0.0
+        ):
+            raise ValueError(
+                'base_communication_recovery_timeout_s sonlu ve '
+                "0'dan buyuk olmali"
+            )
+        if (
+            not math.isfinite(self._base_communication_recovery_stable)
+            or self._base_communication_recovery_stable < 0.0
+        ):
+            raise ValueError(
+                'base_communication_recovery_stable_s sonlu ve negatif olmamali'
+            )
         configured_graph = str(self.get_parameter('graph_file').value).strip()
         if configured_graph:
             self._graph_file = os.path.realpath(configured_graph)
@@ -898,6 +921,9 @@ class MissionManager(Node):
         self._gate_sequence = 0
         self._base_communication_ok = False
         self._base_communication_seen = 0.0
+        self._base_communication_recovery_started = 0.0
+        self._base_communication_recovery_healthy_since = 0.0
+        self._base_communication_recovery_pause_total = 0.0
         self._plc_connected = False
         self._plc_seen = 0.0
         self._plc_assign_inflight = False
@@ -1499,10 +1525,10 @@ class MissionManager(Node):
             self.get_parameter('motion_stop_linear_tolerance').value)
         angular_limit = float(
             self.get_parameter('motion_stop_angular_tolerance').value)
-        deadline = time.monotonic() + timeout
+        deadline = self._mission_active_time() + timeout
         stable_since = None
         self._safe_stop()
-        while time.monotonic() < deadline:
+        while self._mission_active_time() < deadline:
             self._check_abort()
             odom_fresh = bool(
                 not require_fresh_filtered_odom
@@ -1518,8 +1544,8 @@ class MissionManager(Node):
                 and abs(self._angular_speed) <= angular_limit
             )
             if stopped:
-                stable_since = stable_since or time.monotonic()
-                if time.monotonic() - stable_since >= settle:
+                stable_since = stable_since or self._mission_active_time()
+                if self._mission_active_time() - stable_since >= settle:
                     return
             else:
                 stable_since = None
@@ -1871,7 +1897,7 @@ class MissionManager(Node):
         previous_yaw = start_yaw
         accumulated_turn = 0.0
         direction = math.copysign(1.0, correction_turn)
-        deadline = time.monotonic() + timeout
+        deadline = self._mission_active_time() + timeout
         self._status_detail = (
             f'{target_name}: {correction_kind} ince duzeltme '
             f'{math.degrees(correction_turn):+.1f} derece'
@@ -1902,7 +1928,7 @@ class MissionManager(Node):
                 remaining = abs(correction_turn) - directed_travel
                 if remaining <= stop_margin:
                     break
-                if time.monotonic() >= deadline:
+                if self._mission_active_time() >= deadline:
                     raise MissionAbort(
                         f'{target_name}: {correction_label} timeout')
                 command = Twist()
@@ -2014,9 +2040,9 @@ class MissionManager(Node):
                 return
 
             if correction_started is None:
-                correction_started = time.monotonic()
+                correction_started = self._mission_active_time()
                 correction_deadline = correction_started + correction_budget
-            elapsed = time.monotonic() - correction_started
+            elapsed = self._mission_active_time() - correction_started
             if attempts >= max_attempts or elapsed >= correction_budget:
                 raise MissionAbort(
                     f'{target_name}: rota terminal yon hatasi '
@@ -2026,7 +2052,7 @@ class MissionManager(Node):
                     f'{correction_budget:.1f} s'
                 )
 
-            remaining_budget = correction_deadline - time.monotonic()
+            remaining_budget = correction_deadline - self._mission_active_time()
             if remaining_budget <= 0.0:
                 raise MissionAbort(
                     f'{target_name}: rota terminal yon duzeltme suresi doldu'
@@ -2114,7 +2140,15 @@ class MissionManager(Node):
                 self.get_parameter('junction_turn_timeout_s').value)
             goal = Spin.Goal()
             goal.target_yaw = float(relative_turn)
-            goal.time_allowance = Duration(seconds=timeout).to_msg()
+            goal.time_allowance = Duration(
+                seconds=(
+                    timeout + getattr(
+                        self,
+                        '_base_communication_recovery_timeout',
+                        0.0,
+                    )
+                )
+            ).to_msg()
             self._status_detail = (
                 f'{maneuver.node_name}: junction donusu '
                 f'{math.degrees(relative_turn):+.1f} derece'
@@ -2185,7 +2219,7 @@ class MissionManager(Node):
             correction_applied = False
             correction_turn = 0.0
             correction_source = ''
-            correction_started = time.monotonic()
+            correction_started = self._mission_active_time()
             correction_deadline = correction_started + correction_budget
             correction_attempts = 0
             # The route heading is an absolute map-frame target. A live
@@ -2193,7 +2227,7 @@ class MissionManager(Node):
             # needed; raw /odom closes each short relative correction without
             # waiting for a new AMCL pose message.
             while yaw_error > tolerance:
-                elapsed = time.monotonic() - correction_started
+                elapsed = self._mission_active_time() - correction_started
                 if (
                     correction_attempts >= max_attempts
                     or elapsed >= correction_budget
@@ -2210,7 +2244,9 @@ class MissionManager(Node):
                 correction_turn = signed_yaw_error
                 correction_source = 'map'
                 correction_attempts += 1
-                remaining_budget = correction_deadline - time.monotonic()
+                remaining_budget = (
+                    correction_deadline - self._mission_active_time()
+                )
                 self._event(
                     'junction_turn_correction_started',
                     junction=maneuver.node_name,
@@ -2341,7 +2377,11 @@ class MissionManager(Node):
         timeout = float(self.get_parameter('station_turn_timeout_s').value)
         goal = Spin.Goal()
         goal.target_yaw = float(relative_turn)
-        goal.time_allowance = Duration(seconds=timeout).to_msg()
+        goal.time_allowance = Duration(
+            seconds=timeout + getattr(
+                self, '_base_communication_recovery_timeout', 0.0
+            )
+        ).to_msg()
         self._station_phase = self._STATION_TURNING
         self._status_detail = f'{station}: guvenli 180 derece donus'
         self._event(
@@ -2399,7 +2439,7 @@ class MissionManager(Node):
                 f'{station}: station correction parametresi gecersiz'
             )
 
-        correction_started = time.monotonic()
+        correction_started = self._mission_active_time()
         correction_deadline = correction_started + correction_budget
         attempts = 0
         final_map_yaw = self._fresh_map_base_yaw(
@@ -2438,7 +2478,7 @@ class MissionManager(Node):
                 tolerance_rad=tolerance,
             )
         while yaw_error > tolerance:
-            elapsed = time.monotonic() - correction_started
+            elapsed = self._mission_active_time() - correction_started
             if attempts >= max_attempts or elapsed >= correction_budget:
                 raise MissionAbort(
                     f'{station}: donus yon hatasi '
@@ -2449,7 +2489,7 @@ class MissionManager(Node):
                 )
 
             attempts += 1
-            remaining_budget = correction_deadline - time.monotonic()
+            remaining_budget = correction_deadline - self._mission_active_time()
             if remaining_budget <= 0.0:
                 continue
             self._status_detail = (
@@ -2698,11 +2738,12 @@ class MissionManager(Node):
         self._load_state_pub.publish(Bool(data=self._loaded))
 
     def _await_route_constraints(self) -> None:
-        deadline = time.monotonic() + self._route_constraints_timeout
+        deadline = (
+            self._mission_active_time() + self._route_constraints_timeout
+        )
         while not self._route_constraints_ready:
-            if self._abort_reason:
-                raise MissionAbort(self._abort_reason)
-            if time.monotonic() >= deadline:
+            self._check_abort()
+            if self._mission_active_time() >= deadline:
                 raise MissionAbort('rota yuk/yon kurallari uygulanamadi')
             time.sleep(0.02)
 
@@ -2783,21 +2824,134 @@ class MissionManager(Node):
             self._request_abort('e-stop aktif', latch=True)
 
     def _on_base_communication(self, msg: Bool) -> None:
+        now = time.monotonic()
         self._base_communication_ok = bool(msg.data)
-        self._base_communication_seen = time.monotonic()
+        self._base_communication_seen = now
         if not msg.data and self._busy:
-            self._request_abort('STM32/UART iletisimi kayip', latch=True)
+            self._start_base_communication_recovery(now)
+        self._update_base_communication_recovery(now)
 
-    def _base_communication_healthy(self) -> bool:
+    def _base_communication_fresh(self, now: Optional[float] = None) -> bool:
+        now = time.monotonic() if now is None else now
         return (
-            not self._require_base_communication
+            not getattr(self, '_require_base_communication', False)
             or (
-                self._base_communication_ok
-                and self._base_communication_seen > 0.0
-                and time.monotonic() - self._base_communication_seen
-                <= self._base_communication_timeout
+                getattr(self, '_base_communication_ok', False)
+                and getattr(self, '_base_communication_seen', 0.0) > 0.0
+                and now - self._base_communication_seen
+                <= getattr(self, '_base_communication_timeout', 1.0)
             )
         )
+
+    def _base_communication_healthy(self) -> bool:
+        return bool(
+            self._base_communication_fresh()
+            and getattr(
+                self, '_base_communication_recovery_started', 0.0
+            ) <= 0.0
+        )
+
+    def _start_base_communication_recovery(
+        self, now: Optional[float] = None
+    ) -> None:
+        if (
+            not getattr(self, '_require_base_communication', False)
+            or not self._busy
+        ):
+            return
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            if self._base_communication_recovery_started > 0.0:
+                return
+            self._base_communication_recovery_started = now
+            self._base_communication_recovery_healthy_since = 0.0
+            self._status_detail = 'STM32/UART recovery bekleniyor; arac durduruldu'
+        self._safe_stop()
+        self._event(
+            'base_communication_recovery_started',
+            elapsed_s=0.0,
+            stable_s=0.0,
+        )
+
+    def _clear_base_communication_recovery(self, now: Optional[float] = None) -> None:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            started = getattr(
+                self, '_base_communication_recovery_started', 0.0
+            )
+            if started > 0.0:
+                self._base_communication_recovery_pause_total += max(
+                    0.0, now - started)
+            self._base_communication_recovery_started = 0.0
+            self._base_communication_recovery_healthy_since = 0.0
+
+    def _update_base_communication_recovery(
+        self, now: Optional[float] = None
+    ) -> bool:
+        """Advance one fixed UART recovery window; return whether it is active."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            started = getattr(
+                self, '_base_communication_recovery_started', 0.0
+            )
+            if started <= 0.0:
+                return False
+            fresh = self._base_communication_fresh(now)
+            if fresh:
+                if self._base_communication_recovery_healthy_since <= 0.0:
+                    self._base_communication_recovery_healthy_since = now
+                stable_s = max(
+                    0.0,
+                    now - self._base_communication_recovery_healthy_since,
+                )
+            else:
+                self._base_communication_recovery_healthy_since = 0.0
+                stable_s = 0.0
+            elapsed_s = max(0.0, now - started)
+            recovered = stable_s >= self._base_communication_recovery_stable
+            failed = (
+                not recovered
+                and elapsed_s >= self._base_communication_recovery_timeout
+            )
+            if recovered or failed:
+                self._base_communication_recovery_pause_total += elapsed_s
+                self._base_communication_recovery_started = 0.0
+                self._base_communication_recovery_healthy_since = 0.0
+        if recovered:
+            self._status_detail = 'STM32/UART iletisimi stabil geri geldi'
+            self._event(
+                'base_communication_recovered',
+                elapsed_s=elapsed_s,
+                stable_s=stable_s,
+            )
+            return False
+        if failed:
+            self._event(
+                'base_communication_recovery_failed',
+                elapsed_s=elapsed_s,
+                stable_s=stable_s,
+            )
+            self._request_abort(
+                'STM32/UART iletisimi '
+                f'{self._base_communication_recovery_timeout:g} saniye '
+                'icinde geri gelmedi',
+                latch=True,
+            )
+            return False
+        return True
+
+    def _mission_active_time(self, now: Optional[float] = None) -> float:
+        """Monotonic mission clock that excludes UART recovery waits."""
+        now = time.monotonic() if now is None else now
+        paused = getattr(
+            self, '_base_communication_recovery_pause_total', 0.0
+        )
+        started = getattr(
+            self, '_base_communication_recovery_started', 0.0
+        )
+        if started > 0.0:
+            paused += max(0.0, now - started)
+        return now - paused
 
     def _plc_connection_healthy(self) -> bool:
         """Require the bridge heartbeat to be both true and locally fresh."""
@@ -3456,10 +3610,10 @@ class MissionManager(Node):
         if not client.wait_for_service(timeout_sec=min(timeout, 2.0)):
             raise MissionAbort(f'{label} servisi yok')
         future = client.call_async(request)
-        end = time.monotonic() + timeout
+        end = self._mission_active_time() + timeout
         while rclpy.ok() and not future.done():
             self._check_abort()
-            if time.monotonic() >= end:
+            if self._mission_active_time() >= end:
                 raise MissionAbort(f'{label} timeout')
             time.sleep(0.02)
         if future.result() is None:
@@ -3467,12 +3621,31 @@ class MissionManager(Node):
         return future.result()
 
     def _check_abort(self) -> None:
-        if self._abort_reason:
-            raise MissionAbort(self._abort_reason)
-        if not self._base_communication_healthy():
-            raise MissionAbort('STM32/UART iletisimi bayat/kayip')
+        while True:
+            if self._abort_reason:
+                raise MissionAbort(self._abort_reason)
+            if (
+                self._busy
+                and not self._base_communication_fresh()
+                and getattr(
+                    self, '_base_communication_recovery_started', 0.0
+                ) <= 0.0
+            ):
+                self._start_base_communication_recovery()
+            recovering = self._update_base_communication_recovery()
+            if self._abort_reason:
+                raise MissionAbort(self._abort_reason)
+            if not recovering:
+                if not self._base_communication_healthy():
+                    raise MissionAbort('STM32/UART iletisimi bayat/kayip')
+                return
+            if not rclpy.ok():
+                raise MissionAbort('mission manager kapaniyor')
+            time.sleep(0.02)
 
     def _check_action_health(self, require_turn_sensors: bool) -> None:
+        if getattr(self, '_base_communication_recovery_started', 0.0) > 0.0:
+            return
         if not require_turn_sensors:
             return
         now = time.monotonic()
@@ -3515,11 +3688,11 @@ class MissionManager(Node):
             raise MissionAbort(f'{label} action server yok')
         sent = client.send_goal_async(
             goal, feedback_callback=feedback_callback)
-        end = time.monotonic() + limit
+        end = self._mission_active_time() + limit
         while not sent.done():
             self._check_abort()
             self._check_action_health(require_turn_sensors)
-            if time.monotonic() >= end:
+            if self._mission_active_time() >= end:
                 raise MissionAbort(f'{label} goal timeout')
             time.sleep(0.02)
         handle = sent.result()
@@ -3562,12 +3735,12 @@ class MissionManager(Node):
                         self._check_action_health(require_turn_sensors)
                         self._ensure_pickup_contact_safety()
                         self._precise_turn_correction_pub.publish(Twist())
-                        if time.monotonic() >= end:
+                        if self._mission_active_time() >= end:
                             raise MissionAbort(
                                 f'{label} load_detected cancel timeout')
                         time.sleep(0.02)
                     break
-                if time.monotonic() >= end:
+                if self._mission_active_time() >= end:
                     handle.cancel_goal_async()
                     raise MissionAbort(f'{label} timeout')
                 time.sleep(0.02)
@@ -4321,8 +4494,18 @@ class MissionManager(Node):
                     completion_source=completion_source,
                 )
             return
-        goal.timeout = min(self._action_timeout, 60.0)
-        self._action(self._dock, goal, f'docking:{station}', goal.timeout + 2.0)
+        normal_timeout = min(self._action_timeout, 60.0)
+        goal.timeout = (
+            normal_timeout + getattr(
+                self, '_base_communication_recovery_timeout', 0.0
+            )
+        )
+        self._action(
+            self._dock,
+            goal,
+            f'docking:{station}',
+            normal_timeout + 2.0,
+        )
 
     def _do_lift(self, station: str, pickup: bool) -> None:
         pickup_session_id = None
@@ -4471,6 +4654,7 @@ class MissionManager(Node):
             if self._mission_started_wall:
                 self._mission_elapsed = max(
                     0.0, time.monotonic() - self._mission_started_wall)
+            self._clear_base_communication_recovery()
             resume_candidate = (
                 not success and self._checkpoint_has_remaining_work()
             )
@@ -4510,6 +4694,7 @@ class MissionManager(Node):
             time.sleep(0.02)
 
     def _publish_status(self) -> None:
+        self._update_base_communication_recovery()
         health = self._localization_health()
         msg = RobotStatus()
         msg.header.stamp = self.get_clock().now().to_msg()

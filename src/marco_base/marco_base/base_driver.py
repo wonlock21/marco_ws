@@ -128,6 +128,27 @@ class BaseDriver(Node):
         )
         if self.communication_timeout <= 0.0:
             raise ValueError("communication_timeout sifirdan buyuk olmali")
+        self.base_communication_recovery_timeout_s = float(
+            self.get_parameter("base_communication_recovery_timeout_s").value
+        )
+        self.base_communication_recovery_stable_s = float(
+            self.get_parameter("base_communication_recovery_stable_s").value
+        )
+        if (
+            not math.isfinite(self.base_communication_recovery_timeout_s)
+            or self.base_communication_recovery_timeout_s <= 0.0
+        ):
+            raise ValueError(
+                "base_communication_recovery_timeout_s sonlu ve "
+                "0'dan buyuk olmali"
+            )
+        if (
+            not math.isfinite(self.base_communication_recovery_stable_s)
+            or self.base_communication_recovery_stable_s < 0.0
+        ):
+            raise ValueError(
+                "base_communication_recovery_stable_s sonlu ve negatif olmamali"
+            )
         self.lift_pickup_duration_s = float(
             self.get_parameter("lift_pickup_duration_s").value
         )
@@ -279,6 +300,8 @@ class BaseDriver(Node):
         self.declare_parameter("read_rate", 200.0)
         self.declare_parameter("cmd_vel_timeout", 0.5)
         self.declare_parameter("communication_timeout", 0.5)
+        self.declare_parameter("base_communication_recovery_timeout_s", 5.0)
+        self.declare_parameter("base_communication_recovery_stable_s", 0.5)
         self.declare_parameter("lift_action_server_enabled", True)
         self.declare_parameter("lift_pickup_duration_s", 15.0)
         self.declare_parameter("lift_pickup_tilt_duration_s", 1.5)
@@ -691,19 +714,36 @@ class BaseDriver(Node):
 
     # --------------------------------------------------------------- lift action
 
-    def _lift_hardware_error(self) -> str:
-        """Return a fail-closed reason when lift control is not currently safe."""
-        if self._shutdown_requested.is_set():
-            return "base driver kapaniyor"
-        now = time.monotonic()
+    def _lift_communication_error(
+        self,
+        now: float | None = None,
+        fresh_after: float = 0.0,
+    ) -> str:
+        """Return why STM32 status is not fresh enough for fork motion."""
+        now = time.monotonic() if now is None else now
         if (
             self._last_valid_frame_wall is None
             or now - self._last_valid_frame_wall > self.communication_timeout
             or self._last_status_wall is None
             or now - self._last_status_wall > self.communication_timeout
             or self._status is None
+            or (
+                fresh_after > 0.0
+                and (
+                    self._last_valid_frame_wall <= fresh_after
+                    or self._last_status_wall <= fresh_after
+                )
+            )
         ):
             return "STM32/UART status iletisimi yok veya bayat"
+        return ""
+
+    def _lift_safety_error(self) -> str:
+        """Return an unrecoverable fork safety reason."""
+        if self._shutdown_requested.is_set():
+            return "base driver kapaniyor"
+        if self._status is None:
+            return ""
         if p.StatusFlag.ESTOP_ACTIVE in self._status.flags:
             return "e-stop aktif"
         if p.StatusFlag.MODE_MANUAL in self._status.flags:
@@ -711,6 +751,10 @@ class BaseDriver(Node):
         if p.StatusFlag.OVERCURRENT in self._status.flags:
             return "fork asiri akim bayragi aktif"
         return ""
+
+    def _lift_hardware_error(self) -> str:
+        """Return a fail-closed reason when lift control is not currently safe."""
+        return self._lift_safety_error() or self._lift_communication_error()
 
     def _lift_phase_durations(self, command: int):
         if command == LiftLoad.Goal.COMMAND_PICKUP:
@@ -801,8 +845,11 @@ class BaseDriver(Node):
         command_name: str,
     ):
         """Refresh one bounded fork phase and finish it with STOP."""
-        phase_deadline = time.monotonic() + duration
+        remaining = duration
+        last_active = None
         next_refresh = 0.0
+        recovery_started = 0.0
+        recovery_healthy_since = 0.0
         while rclpy.ok() and not self._shutdown_requested.is_set():
             if goal_handle.is_cancel_requested:
                 self._send_fork_stop()
@@ -813,7 +860,7 @@ class BaseDriver(Node):
                     f"{command_name} operator tarafindan iptal edildi; STOP gonderildi",
                 )
 
-            error = self._lift_hardware_error()
+            error = self._lift_safety_error()
             if error:
                 self._send_fork_stop()
                 goal_handle.abort()
@@ -833,7 +880,48 @@ class BaseDriver(Node):
                     f"{command_name} overall timeout; STOP gonderildi",
                 )
 
-            if now >= phase_deadline:
+            communication_error = self._lift_communication_error(
+                now,
+                fresh_after=recovery_started,
+            )
+            if communication_error:
+                if recovery_started <= 0.0:
+                    recovery_started = now
+                    self._send_fork_stop()
+                recovery_healthy_since = 0.0
+                last_active = None
+                next_refresh = 0.0
+                if (
+                    now - recovery_started
+                    >= self.base_communication_recovery_timeout_s
+                ):
+                    self._send_fork_stop()
+                    goal_handle.abort()
+                    return None, self._lift_result(
+                        False,
+                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
+                        f"{command_name} UART recovery timeout; STOP gonderildi",
+                    )
+                time.sleep(0.02)
+                continue
+
+            if recovery_started > 0.0:
+                if recovery_healthy_since <= 0.0:
+                    recovery_healthy_since = now
+                if (
+                    now - recovery_healthy_since
+                    < self.base_communication_recovery_stable_s
+                ):
+                    time.sleep(0.02)
+                    continue
+                recovery_started = 0.0
+                recovery_healthy_since = 0.0
+                last_active = None
+                next_refresh = 0.0
+
+            if last_active is not None:
+                remaining = max(0.0, remaining - (now - last_active))
+            if remaining <= 0.0:
                 if not self._send_fork_stop():
                     goal_handle.abort()
                     return None, self._lift_result(
@@ -846,7 +934,7 @@ class BaseDriver(Node):
             if now >= next_refresh:
                 remaining_ms = max(
                     1,
-                    int(math.ceil((phase_deadline - now) * 1000.0)),
+                    int(math.ceil(remaining * 1000.0)),
                 )
                 lease_ms = min(FORK_COMMAND_LEASE_MS, remaining_ms)
                 try:
@@ -855,15 +943,17 @@ class BaseDriver(Node):
                     self._mark_communication_lost(
                         f"fork {phase} komutu gonderilemedi: {exc}"
                     )
+                    if recovery_started <= 0.0:
+                        recovery_started = now
                     self._send_fork_stop()
-                    goal_handle.abort()
-                    return None, self._lift_result(
-                        False,
-                        LiftLoad.Result.RESULT_HARDWARE_FAULT,
-                        f"{command_name} UART yazma hatasi: {exc}",
-                    )
+                    recovery_healthy_since = 0.0
+                    last_active = None
+                    next_refresh = 0.0
+                    time.sleep(0.02)
+                    continue
                 next_refresh = now + FORK_COMMAND_REFRESH_PERIOD
 
+            last_active = now
             feedback = LiftLoad.Feedback()
             feedback.phase = phase
             feedback.position = math.nan

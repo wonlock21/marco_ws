@@ -49,6 +49,10 @@ marco_base_driver:
     # Gecerli STM32 odometri/durum cercevesi bu surede gelmezse
     # /base/communication_ok=false olur ve safety katmani hareketi kilitler.
     communication_timeout: 0.5
+    # Bu pencere low-level stop esigini degistirmez; yalniz lift action'in
+    # durmus halde UART recovery beklemesini sinirlar.
+    base_communication_recovery_timeout_s: 5.0
+    base_communication_recovery_stable_s: 0.5
 
     # Saha olcumlu production lift hareket sureleri. Bir stage 0.0 ise
     # hareket komutu verilmeden STOP ile guvenli sekilde atlanir.

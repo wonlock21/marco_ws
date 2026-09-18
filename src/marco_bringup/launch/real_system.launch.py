@@ -161,6 +161,12 @@ def _setup(context, *args, **kwargs):
             "simulate_steps": "false",
             "graph_file": graph_file,
             "require_active_field": "false" if fake else "true",
+            "base_communication_recovery_timeout_s": LaunchConfiguration(
+                "base_communication_recovery_timeout_s"
+            ),
+            "base_communication_recovery_stable_s": LaunchConfiguration(
+                "base_communication_recovery_stable_s"
+            ),
             "manual_task_enabled": "true",
             "temporary_gui_manual_mode": LaunchConfiguration(
                 "temporary_gui_manual_mode"
@@ -260,6 +266,16 @@ def generate_launch_description():
                 "Fiziksel manuel/otonom switch takilana kadar GUI manuel "
                 "kontrolunu gorev baslangicina gore yonet"
             ),
+        ),
+        DeclareLaunchArgument(
+            "base_communication_recovery_timeout_s",
+            default_value="5.0",
+            description="Mission UART recovery icin maksimum bekleme suresi",
+        ),
+        DeclareLaunchArgument(
+            "base_communication_recovery_stable_s",
+            default_value="0.5",
+            description="Recovery sonrasi kesintisiz healthy UART suresi",
         ),
         DeclareLaunchArgument("rosbridge_port", default_value="9090"),
         DeclareLaunchArgument(

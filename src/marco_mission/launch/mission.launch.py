@@ -10,6 +10,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 from marco_plc.launch_selection import select_plc_backend
 
@@ -51,6 +52,16 @@ def _plc_and_mission_nodes(context):
                 LaunchConfiguration('require_safety_supervisor'),
             'require_base_communication':
                 LaunchConfiguration('require_base_communication'),
+            'base_communication_recovery_timeout_s': ParameterValue(
+                LaunchConfiguration(
+                    'base_communication_recovery_timeout_s'),
+                value_type=float,
+            ),
+            'base_communication_recovery_stable_s': ParameterValue(
+                LaunchConfiguration(
+                    'base_communication_recovery_stable_s'),
+                value_type=float,
+            ),
             'imu_enabled': LaunchConfiguration('imu'),
             'station_qr_mock_enabled':
                 LaunchConfiguration('station_qr_mock_enabled'),
@@ -93,6 +104,10 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('require_active_field', default_value='false'),
         DeclareLaunchArgument('require_safety_supervisor', default_value='true'),
         DeclareLaunchArgument('require_base_communication', default_value='true'),
+        DeclareLaunchArgument(
+            'base_communication_recovery_timeout_s', default_value='5.0'),
+        DeclareLaunchArgument(
+            'base_communication_recovery_stable_s', default_value='0.5'),
         DeclareLaunchArgument(
             'imu', default_value='true',
             description='Mission manevra sagliginda IMU freshness zorunlulugu'),
