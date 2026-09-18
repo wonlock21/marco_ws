@@ -56,6 +56,7 @@ def _check_graph(graph_file):
 
 def _setup(context, *args, **kwargs):
     fake = _bool(context, "sahte")
+    effective_lane_tracking = not fake and _bool(context, "lane_tracking")
     imu_enabled = _bool(context, "imu")
     qr_enabled = _bool(context, "qr")
     qr_hardware_enabled = qr_enabled and not fake
@@ -146,7 +147,7 @@ def _setup(context, *args, **kwargs):
         ),
         launch_arguments={
             "mock": "true" if fake else "false",
-            "lane_tracking": "false" if fake else "true",
+            "lane_tracking": "true" if effective_lane_tracking else "false",
         }.items(),
     )
     mission = IncludeLaunchDescription(
@@ -183,6 +184,11 @@ def _setup(context, *args, **kwargs):
         LogInfo(msg="Demo Nav2, GUI'deki Demoyu Baslat eyleminde baslatilir"),
         LogInfo(msg="Production gorevi dogrulanmis etkin saha gelene kadar kilitli"),
         LogInfo(msg=(
+            "Production station lane tracking: ENABLED"
+            if effective_lane_tracking else
+            "Production station lane tracking: DISABLED; Nav2 fallback kullanilacak"
+        )),
+        LogInfo(msg=(
             "QR telemetry: gercek okuyucu"
             if qr_hardware_enabled else
             "QR telemetry kapali; gorev akisi etkilenmez"
@@ -196,6 +202,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "sahte", default_value="false",
             description="true: motor/seri cihaz yok; yalniz test mock'lari acik",
+        ),
+        DeclareLaunchArgument(
+            "lane_tracking",
+            default_value="true",
+            description=(
+                "Gercek sistemde arka kamera serit takibini etkinlestir. "
+                "false ise station docking mevcut Nav2 fallback yoluyla devam eder."
+            ),
         ),
         DeclareLaunchArgument(
             "imu", default_value="false",
