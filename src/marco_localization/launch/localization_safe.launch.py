@@ -24,6 +24,12 @@ def generate_launch_description() -> LaunchDescription:
             "serial_port": LaunchConfiguration("serial_port"),
             "lidar_port": LaunchConfiguration("lidar_port"),
             "harita": LaunchConfiguration("harita"),
+            "base_communication_recovery_timeout_s": LaunchConfiguration(
+                "base_communication_recovery_timeout_s"
+            ),
+            "base_communication_recovery_stable_s": LaunchConfiguration(
+                "base_communication_recovery_stable_s"
+            ),
             "baslangic": "false",
             "rviz": LaunchConfiguration("rviz"),
         }.items(),
@@ -36,6 +42,9 @@ def generate_launch_description() -> LaunchDescription:
             "use_sim_time": "false",
             "scan_topic": "/scan",
             "obstacle_detection": LaunchConfiguration("obstacle_detection"),
+            "base_communication_recovery_stable_s": LaunchConfiguration(
+                "base_communication_recovery_stable_s"
+            ),
         }.items(),
     )
 
@@ -46,6 +55,12 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("obstacle_detection", default_value="true"),
         DeclareLaunchArgument("serial_port", default_value="/dev/marco_stm32"),
         DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
+        DeclareLaunchArgument(
+            "base_communication_recovery_timeout_s", default_value="5.0"
+        ),
+        DeclareLaunchArgument(
+            "base_communication_recovery_stable_s", default_value="0.5"
+        ),
         DeclareLaunchArgument("harita"),
         DeclareLaunchArgument("rviz", default_value="false"),
         LogInfo(msg="Lokalizasyon: map -> odom -> base_footprint"),

@@ -70,6 +70,12 @@ def launch_setup(context, *args, **kwargs):
             "fake_wheel_separation_actual": LaunchConfiguration(
                 "fake_wheel_separation_actual"
             ),
+            "base_communication_recovery_timeout_s": LaunchConfiguration(
+                "base_communication_recovery_timeout_s"
+            ),
+            "base_communication_recovery_stable_s": LaunchConfiguration(
+                "base_communication_recovery_stable_s"
+            ),
         }.items(),
     )
 
@@ -114,6 +120,12 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("fake_wheel_scale_error_left", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_scale_error_right", default_value="0.0"),
         DeclareLaunchArgument("fake_wheel_separation_actual", default_value="0.0"),
+        DeclareLaunchArgument(
+            "base_communication_recovery_timeout_s", default_value="5.0"
+        ),
+        DeclareLaunchArgument(
+            "base_communication_recovery_stable_s", default_value="0.5"
+        ),
     ]
 
     return LaunchDescription(arguments + [OpaqueFunction(function=launch_setup)])

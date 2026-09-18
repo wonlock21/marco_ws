@@ -138,6 +138,12 @@ def _setup(context, *args, **kwargs):
             "demo_use_lane_tracking": LaunchConfiguration(
                 "demo_use_lane_tracking"
             ),
+            "base_communication_recovery_timeout_s": LaunchConfiguration(
+                "base_communication_recovery_timeout_s"
+            ),
+            "base_communication_recovery_stable_s": LaunchConfiguration(
+                "base_communication_recovery_stable_s"
+            ),
             "rosbridge_port": str(rosbridge_port),
         }.items(),
     )

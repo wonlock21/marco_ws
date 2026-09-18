@@ -29,6 +29,7 @@ class SafetySupervisor(Node):
         self.declare_parameter('tf_timeout_s', 0.5)
         self.declare_parameter('input_timeout_s', 0.5)
         self.declare_parameter('base_communication_timeout_s', 0.75)
+        self.declare_parameter('base_communication_recovery_stable_s', 0.5)
         self.declare_parameter('require_base_communication', True)
         # Zero disables automatic cancellation. Production policy is to hold a
         # safe zero for as long as the obstacle exists and resume only after it
@@ -46,6 +47,16 @@ class SafetySupervisor(Node):
         if self._base_communication_timeout <= 0.0:
             raise ValueError(
                 'base_communication_timeout_s sifirdan buyuk olmali')
+        self._base_communication_recovery_stable = float(
+            self.get_parameter(
+                'base_communication_recovery_stable_s').value)
+        if (
+            not math.isfinite(self._base_communication_recovery_stable)
+            or self._base_communication_recovery_stable < 0.0
+        ):
+            raise ValueError(
+                'base_communication_recovery_stable_s sonlu ve '
+                'negatif olmamali')
         self._require_base_communication = bool(
             self.get_parameter('require_base_communication').value)
         self._wait_timeout = float(
@@ -67,6 +78,9 @@ class SafetySupervisor(Node):
         self._manual_mode = False
         self._base_communication_ok = False
         self._base_communication_wall = None
+        self._base_communication_recovery_active = bool(
+            self._require_base_communication)
+        self._base_communication_healthy_since = None
         self._last_inputs = {'nav': None, 'manual': None, 'dock': None}
         self._last_input_moving = {'nav': False, 'manual': False, 'dock': False}
         self._operator_reset_required = False
@@ -158,8 +172,39 @@ class SafetySupervisor(Node):
         self._manual_mode = bool(msg.data)
 
     def _on_base_communication(self, msg):
+        now = time.monotonic()
         self._base_communication_ok = bool(msg.data)
-        self._base_communication_wall = time.monotonic()
+        self._base_communication_wall = now
+        if self._require_base_communication:
+            if not self._base_communication_ok:
+                self._base_communication_recovery_active = True
+                self._base_communication_healthy_since = None
+            elif self._base_communication_recovery_active:
+                if self._base_communication_healthy_since is None:
+                    self._base_communication_healthy_since = now
+            if self._base_communication_recovery_active:
+                # Do not wait for the 20 Hz policy tick to enforce physical zero.
+                self._guard_pub.publish(Twist())
+
+    def _communication_recovery_holding(self, now, communication_fresh):
+        """Hold physical zero until communication is continuously healthy."""
+        if not self._require_base_communication:
+            return False, 0.0
+        if not communication_fresh or not self._base_communication_ok:
+            self._base_communication_recovery_active = True
+            self._base_communication_healthy_since = None
+            return True, 0.0
+        if not self._base_communication_recovery_active:
+            return False, 0.0
+        if self._base_communication_healthy_since is None:
+            self._base_communication_healthy_since = now
+        healthy_s = max(
+            0.0, now - self._base_communication_healthy_since)
+        if healthy_s >= self._base_communication_recovery_stable:
+            self._base_communication_recovery_active = False
+            self._base_communication_healthy_since = None
+            return False, healthy_s
+        return True, healthy_s
 
     def _on_scan(self, msg):
         now = time.monotonic()
@@ -251,11 +296,16 @@ class SafetySupervisor(Node):
             self._base_communication_wall is not None
             and now - self._base_communication_wall
             <= self._base_communication_timeout)
+        communication_recovery_hold, communication_healthy_s = (
+            self._communication_recovery_holding(
+                now, base_communication_fresh))
         if self._require_base_communication:
             if not base_communication_fresh:
                 reasons.append('base_communication_timeout')
             elif not self._base_communication_ok:
                 reasons.append('base_communication_lost')
+            elif communication_recovery_hold:
+                reasons.append('base_communication_recovery_hold')
 
         input_fresh, selected = self._selected_input_fresh(now)
         if not input_fresh:
@@ -293,6 +343,12 @@ class SafetySupervisor(Node):
             'base_communication_required': self._require_base_communication,
             'base_communication_fresh': base_communication_fresh,
             'base_communication_ok': self._base_communication_ok,
+            'base_communication_recovery_active':
+                self._base_communication_recovery_active,
+            'base_communication_recovery_healthy_s':
+                communication_healthy_s,
+            'base_communication_recovery_stable_s':
+                self._base_communication_recovery_stable,
             'operator_reset_required': self._operator_reset_required,
             'waiting_for_obstacle_clear': stop,
             'obstacle_wait_s': (

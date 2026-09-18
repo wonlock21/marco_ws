@@ -105,6 +105,9 @@ class _NavigationProbe:
     def _check_abort(self):
         return None
 
+    def _mission_active_time(self, now=None):
+        return time.monotonic() if now is None else now
+
     def _check_action_health(self, require_turn_sensors=False):
         return None
 

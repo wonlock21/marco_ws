@@ -87,6 +87,10 @@ def generate_launch_description() -> LaunchDescription:
             "base_communication_timeout_s": ParameterValue(
                 LaunchConfiguration("base_communication_timeout_s"),
                 value_type=float),
+            "base_communication_recovery_stable_s": ParameterValue(
+                LaunchConfiguration(
+                    "base_communication_recovery_stable_s"),
+                value_type=float),
             "require_base_communication": ParameterValue(
                 LaunchConfiguration("require_base_communication"),
                 value_type=bool),
@@ -107,6 +111,9 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("input_timeout_s", default_value="0.5"),
             DeclareLaunchArgument(
                 "base_communication_timeout_s", default_value="0.75"),
+            DeclareLaunchArgument(
+                "base_communication_recovery_stable_s",
+                default_value="0.5"),
             DeclareLaunchArgument(
                 "require_base_communication", default_value="true"),
             DeclareLaunchArgument(

@@ -5,6 +5,7 @@ import json
 import time
 from pathlib import Path
 
+import pytest
 import rclpy
 from geometry_msgs.msg import TransformStamped, Twist
 from rclpy.parameter import Parameter
@@ -30,10 +31,21 @@ class Recorder:
         self.messages.append(message)
 
 
-def make_supervisor():
+def make_supervisor(
+    *,
+    require_base_communication=False,
+    recovery_stable=0.5,
+):
     """Create a supervisor isolated from physical STM32 communication."""
     node = SafetySupervisor(parameter_overrides=[
-        Parameter("require_base_communication", value=False),
+        Parameter(
+            "require_base_communication",
+            value=require_base_communication,
+        ),
+        Parameter(
+            "base_communication_recovery_stable_s",
+            value=recovery_stable,
+        ),
         Parameter("scan_timeout_s", value=1.0),
         Parameter("tf_timeout_s", value=1.0),
         Parameter("input_timeout_s", value=1.0),
@@ -127,6 +139,82 @@ def test_estop_release_requires_explicit_zero_command_reset():
         assert accepted.success
         assert not node._operator_reset_required
         assert node._abort_pub.messages[-1] == Bool(data=False)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_communication_recovery_holds_zero_until_stable(monkeypatch):
+    """Loss and the complete stable window override an active Nav2 input."""
+    now = [100.0]
+    monkeypatch.setattr(MODULE.time, "monotonic", lambda: now[0])
+    rclpy.init()
+    node = make_supervisor(require_base_communication=True)
+    try:
+        node._on_scan(scan(5.0, 5.0, 5.0))
+        node._on_input("nav", moving_twist())
+
+        node._on_base_communication(Bool(data=False))
+        assert node._guard_pub.messages[-1] == Twist()
+        node._tick()
+        assert "base_communication_lost" in node._current_reasons
+
+        now[0] = 100.1
+        node._on_base_communication(Bool(data=True))
+        guard_count = len(node._guard_pub.messages)
+
+        now[0] = 100.59
+        node._on_scan(scan(5.0, 5.0, 5.0))
+        node._on_input("nav", moving_twist())
+        node._tick()
+        assert "base_communication_recovery_hold" in node._current_reasons
+        assert node._guard_pub.messages[-1] == Twist()
+        assert len(node._guard_pub.messages) == guard_count + 1
+
+        guard_count = len(node._guard_pub.messages)
+        now[0] = 100.6
+        node._on_scan(scan(5.0, 5.0, 5.0))
+        node._on_input("nav", moving_twist())
+        node._tick()
+        state = json.loads(node._state_pub.messages[-1].data)
+        assert "base_communication_recovery_hold" not in node._current_reasons
+        assert not state["guard_zero"]
+        assert state["selected_input"] == "nav"
+        assert state["input_fresh"]
+        assert not state["base_communication_recovery_active"]
+        assert len(node._guard_pub.messages) == guard_count
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_communication_flap_restarts_stable_window(monkeypatch):
+    """A short true pulse never releases zero or preserves healthy time."""
+    now = [200.0]
+    monkeypatch.setattr(MODULE.time, "monotonic", lambda: now[0])
+    rclpy.init()
+    node = make_supervisor(require_base_communication=True)
+    try:
+        node._on_base_communication(Bool(data=False))
+        now[0] = 200.1
+        node._on_base_communication(Bool(data=True))
+        assert node._base_communication_healthy_since == 200.1
+
+        now[0] = 200.3
+        node._on_base_communication(Bool(data=False))
+        assert node._base_communication_healthy_since is None
+
+        now[0] = 200.4
+        node._on_base_communication(Bool(data=True))
+        holding, healthy_s = node._communication_recovery_holding(
+            200.89, communication_fresh=True)
+        assert holding
+        assert healthy_s == pytest.approx(0.49)
+
+        holding, healthy_s = node._communication_recovery_holding(
+            200.9, communication_fresh=True)
+        assert not holding
+        assert healthy_s == pytest.approx(0.5)
     finally:
         node.destroy_node()
         rclpy.shutdown()

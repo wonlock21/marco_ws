@@ -51,6 +51,10 @@ class LocalizationManager(Node):
         self.declare_parameter("serial_port", "/dev/marco_stm32")
         self.declare_parameter("lidar_port", "/dev/marco_lidar")
         self.declare_parameter("data_root", "~/marco_data/fields")
+        self.declare_parameter(
+            "base_communication_recovery_timeout_s", 5.0)
+        self.declare_parameter(
+            "base_communication_recovery_stable_s", 0.5)
         self.declare_parameter("startup_timeout", 30.0)
         self.declare_parameter("initial_pose_timeout", 35.0)
         self.declare_parameter("initial_pose_xy_std", 0.25)
@@ -405,6 +409,12 @@ class LocalizationManager(Node):
             ).value)).lower(),
             f"serial_port:={self.get_parameter('serial_port').value}",
             f"lidar_port:={self.get_parameter('lidar_port').value}",
+            "base_communication_recovery_timeout_s:="
+            + str(self.get_parameter(
+                "base_communication_recovery_timeout_s").value),
+            "base_communication_recovery_stable_s:="
+            + str(self.get_parameter(
+                "base_communication_recovery_stable_s").value),
             f"harita:={map_yaml}",
             "rviz:=false",
         ]

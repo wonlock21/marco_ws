@@ -73,6 +73,18 @@ def generate_launch_description() -> LaunchDescription:
             "serial_port": LaunchConfiguration("serial_port"),
             "lidar_port": LaunchConfiguration("lidar_port"),
             "data_root": LaunchConfiguration("data_root"),
+            "base_communication_recovery_timeout_s": ParameterValue(
+                LaunchConfiguration(
+                    "base_communication_recovery_timeout_s"
+                ),
+                value_type=float,
+            ),
+            "base_communication_recovery_stable_s": ParameterValue(
+                LaunchConfiguration(
+                    "base_communication_recovery_stable_s"
+                ),
+                value_type=float,
+            ),
             "startup_timeout": ParameterValue(
                 LaunchConfiguration("localization_timeout"), value_type=float
             ),
@@ -149,6 +161,12 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("lidar_port", default_value="/dev/marco_lidar"),
         DeclareLaunchArgument(
             "data_root", default_value="~/marco_data/fields"
+        ),
+        DeclareLaunchArgument(
+            "base_communication_recovery_timeout_s", default_value="5.0"
+        ),
+        DeclareLaunchArgument(
+            "base_communication_recovery_stable_s", default_value="0.5"
         ),
         DeclareLaunchArgument("save_timeout", default_value="30.0"),
         DeclareLaunchArgument("localization_timeout", default_value="30.0"),
