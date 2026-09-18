@@ -87,6 +87,17 @@ def _dock_result(code, message='dock failed'):
     return result
 
 
+def _dock_feedback(active=True):
+    return SimpleNamespace(feedback=SimpleNamespace(
+        configured_duration_s=0.0,
+        elapsed_s=1.0,
+        remaining_s=0.0,
+        lane_control_active=active,
+        camera_valid=True,
+        stopped=False,
+    ))
+
+
 def _graph_feature(feature_id, start_id, end_id, coordinates, direction):
     return {
         'type': 'Feature',
@@ -182,6 +193,7 @@ def _manager(
     manager._precise_turn_correction_pub = _TwistPublisher(
         manager.operations
     )
+    manager._safe_stop = lambda: manager.operations.append(('speed_reset',))
     manager._event = lambda name, **fields: manager.events.append(
         (name, fields)
     )
@@ -220,6 +232,7 @@ def _manager(
         return manager.pose_sequence[0]
 
     manager._fresh_map_base_pose = fresh_pose
+    manager.dock_feedback = []
     codes = iter(result_codes)
 
     def action(
@@ -228,6 +241,9 @@ def _manager(
     ):
         if client is manager._dock:
             manager.operations.append(('dock', label))
+            if feedback_callback is not None:
+                for feedback in manager.dock_feedback:
+                    feedback_callback(feedback)
             code = next(codes, DockToStation.Result.RESULT_OK)
             if code not in (
                 DockToStation.Result.RESULT_OK,
@@ -290,6 +306,163 @@ def test_action_failure_retains_terminal_result_payload():
 
     assert caught.value.status == GoalStatus.STATUS_ABORTED
     assert caught.value.result is payload
+
+
+def test_dropoff_pose_feedback_requests_one_stop_and_accepts_handoff(
+    tmp_path,
+):
+    manager = _manager(
+        tmp_path, ('B2',),
+        (DockToStation.Result.RESULT_CONTROL_INACTIVE,),
+    )
+    manager.dock_feedback = [_dock_feedback(), _dock_feedback()]
+    manager.pose_sequence = [
+        (0.09, -1.0, math.pi / 2.0 + math.radians(14.0)),
+        (0.07, -1.0, math.pi / 2.0 + math.radians(7.0)),
+    ]
+
+    manager._do_dock('B2', pickup=False)
+
+    assert manager.operations.count(('lane', 'STOP')) == 1
+    assert manager.operations.count(('speed_reset',)) == 1
+    assert not any(item[0] == 'follow' for item in manager.operations)
+    assert manager._station_phase == manager._STATION_DROPOFF_READY
+    handoff = next(
+        fields for name, fields in manager.events
+        if name == 'dock_pose_stop_handoff'
+    )
+    assert handoff['dock_result_code'] == (
+        DockToStation.Result.RESULT_CONTROL_INACTIVE)
+    completed = next(
+        fields for name, fields in manager.events
+        if name == 'dock_pose_reverse_docking_completed'
+    )
+    assert completed['completion_source'] == 'dock_pose'
+    stop_index = manager.operations.index(('lane', 'STOP'))
+    reset_index = manager.operations.index(('speed_reset',))
+    measured_stop_index = manager.operations.index(
+        ('stopped', 'B2 dock-pose durusu'))
+    assert stop_index < measured_stop_index
+    assert reset_index < measured_stop_index
+
+
+def test_pose_feedback_outside_trigger_does_not_request_stop(tmp_path):
+    manager = _manager(tmp_path, ('B2',))
+    manager.dock_feedback = [_dock_feedback()]
+    manager.pose_sequence = [
+        (0.101, -1.0, math.pi / 2.0),
+        (0.0, -1.0, math.pi / 2.0),
+    ]
+
+    manager._do_dock('B2', pickup=False)
+
+    assert ('lane', 'STOP') not in manager.operations
+    assert ('speed_reset',) not in manager.operations
+    assert not any(
+        name == 'dock_pose_stop_requested'
+        for name, _fields in manager.events
+    )
+    assert any(
+        name == 'lane_end_reverse_docking_completed'
+        for name, _fields in manager.events
+    )
+
+
+def test_pose_stop_near_but_outside_strict_runs_verified_refinement(
+    tmp_path,
+):
+    manager = _manager(
+        tmp_path, ('A1',),
+        (DockToStation.Result.RESULT_CONTROL_INACTIVE,),
+    )
+    manager.dock_feedback = [_dock_feedback()]
+    near_pose = (0.10, -1.0, math.pi / 2.0)
+    manager.pose_sequence = [
+        near_pose,
+        near_pose,
+        near_pose,
+        (0.0, -1.0, math.pi / 2.0),
+    ]
+
+    manager._do_dock('A1', pickup=True)
+
+    assert len([
+        item for item in manager.operations if item[0] == 'follow'
+    ]) == 1
+    assert manager._pickup_completion_source == 'nav2_refinement'
+    assert any(
+        name == 'dock_pose_near_refinement_started'
+        for name, _fields in manager.events
+    )
+    assert any(
+        name == 'station_lane_fallback_pose_verified'
+        for name, _fields in manager.events
+    )
+
+
+def test_pose_stop_outside_safe_refinement_region_cannot_complete(tmp_path):
+    manager = _manager(
+        tmp_path, ('B2',),
+        (DockToStation.Result.RESULT_CONTROL_INACTIVE,),
+    )
+    manager.dock_feedback = [_dock_feedback()]
+    manager.pose_sequence = [
+        (0.10, -1.0, math.pi / 2.0),
+        (0.151, -1.0, math.pi / 2.0),
+    ]
+
+    with pytest.raises(MissionAbort, match='refinement bolgesi disinda'):
+        manager._do_dock('B2', pickup=False)
+
+    assert not any(item[0] == 'follow' for item in manager.operations)
+    assert not any(
+        name == 'dock_pose_reverse_docking_completed'
+        for name, _fields in manager.events
+    )
+
+
+@pytest.mark.parametrize('invalid_pose', [
+    (math.nan, -1.0, math.pi / 2.0),
+    (0.0, -1.0, math.inf),
+])
+def test_non_finite_feedback_pose_cannot_trigger_stop(tmp_path, invalid_pose):
+    manager = _manager(
+        tmp_path, ('B2',),
+        (DockToStation.Result.RESULT_ABORTED,),
+    )
+    manager.dock_feedback = [_dock_feedback()]
+    manager.pose_sequence = [invalid_pose]
+
+    with pytest.raises(MissionActionFailure):
+        manager._do_dock('B2', pickup=False)
+
+    assert ('lane', 'STOP') not in manager.operations
+    assert ('speed_reset',) not in manager.operations
+    assert not any(
+        name == 'dock_pose_stop_requested'
+        for name, _fields in manager.events
+    )
+
+
+def test_failed_fresh_pose_lookup_cannot_trigger_stop(tmp_path):
+    manager = _manager(
+        tmp_path, ('B2',),
+        (DockToStation.Result.RESULT_ABORTED,),
+    )
+    manager.dock_feedback = [_dock_feedback()]
+    manager._fresh_map_base_pose = lambda _label: (_ for _ in ()).throw(
+        MissionAbort('map TF bayat/kayip')
+    )
+
+    with pytest.raises(MissionActionFailure):
+        manager._do_dock('B2', pickup=False)
+
+    assert ('lane', 'STOP') not in manager.operations
+    assert ('speed_reset',) not in manager.operations
+    assert not any(
+        name == 'dock_pose_stop_requested'
+        for name, _fields in manager.events
+    )
 
 
 @pytest.mark.parametrize(
@@ -471,6 +644,11 @@ def test_pickup_recoverable_failure_uses_safe_reverse_dock_fallback(
         name == 'station_lane_fallback_pose_verified'
         for name, _fields in manager.events
     )
+    if result_code == DockToStation.Result.RESULT_CONTROL_INACTIVE:
+        assert not any(
+            name == 'dock_pose_stop_handoff'
+            for name, _fields in manager.events
+        )
 
 
 def test_dropoff_lane_lost_fallback_navigates_loaded_then_lifts(tmp_path):

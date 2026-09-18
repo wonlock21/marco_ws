@@ -734,6 +734,9 @@ class MissionManager(Node):
     _STATION_DOCK_NEAR_TOLERANCE_M = 0.15
     _STATION_DOCK_POSITION_TOLERANCE_M = 0.075
     _STATION_DOCK_YAW_TOLERANCE_RAD = math.radians(8.0)
+    _STATION_DOCK_POSE_STOP_POSITION_TOLERANCE_M = 0.10
+    _STATION_DOCK_POSE_STOP_YAW_TOLERANCE_RAD = math.radians(15.0)
+    _STATION_DOCK_POSE_CHECK_PERIOD_S = 0.125
 
     def __init__(self) -> None:
         super().__init__('mission_manager')
@@ -4018,6 +4021,7 @@ class MissionManager(Node):
         dock_result_code: int,
         reason: str,
         pickup_session_id: Optional[int] = None,
+        geometry: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Safely hand a failed station lane approach back to Nav2."""
         self._event(
@@ -4037,6 +4041,7 @@ class MissionManager(Node):
             station,
             loaded=not pickup,
             pickup_session_id=pickup_session_id if pickup else None,
+            geometry=geometry,
         )
         self._event(
             'station_lane_fallback_completed',
@@ -4074,11 +4079,12 @@ class MissionManager(Node):
         station: str,
         pickup: bool,
         pickup_session_id: Optional[int],
+        geometry: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Promote a stopped visual candidate only with physical pose proof."""
         verified, position_error, yaw_error = (
             self._station_dock_pose_verification(
-                station, f'{station} visual lane-end pose')
+                station, f'{station} visual lane-end pose', geometry=geometry)
         )
         yaw_error_deg = math.degrees(yaw_error)
         if verified:
@@ -4102,6 +4108,7 @@ class MissionManager(Node):
                 loaded=not pickup,
                 pickup_session_id=(
                     pickup_session_id if pickup else None),
+                geometry=geometry,
             )
             return (
                 'load_detected'
@@ -4120,8 +4127,65 @@ class MissionManager(Node):
             DockToStation.Result.RESULT_OK,
             'visual lane-end dock pozundan uzakta',
             pickup_session_id,
+            geometry,
         )
         return 'load_detected' if contact_completion else 'nav2_pose'
+
+    def _complete_dock_pose_candidate(
+        self,
+        station: str,
+        pickup: bool,
+        pickup_session_id: Optional[int],
+        geometry: Dict[str, Any],
+    ) -> str:
+        """Verify or safely refine an intentional dock-pose lane stop."""
+        verified, position_error, yaw_error = (
+            self._station_dock_pose_verification(
+                station,
+                f'{station} dock-pose stop final',
+                geometry=geometry,
+            )
+        )
+        yaw_error_deg = math.degrees(yaw_error)
+        if verified:
+            self._event(
+                'dock_pose_verified',
+                station=station,
+                position_error_m=position_error,
+                yaw_error_deg=yaw_error_deg,
+            )
+            return 'dock_pose'
+
+        if position_error <= self._STATION_DOCK_NEAR_TOLERANCE_M:
+            self._event(
+                'dock_pose_near_refinement_started',
+                station=station,
+                position_error_m=position_error,
+                yaw_error_deg=yaw_error_deg,
+            )
+            contact_completion = self._navigate_station_dock_fallback(
+                station,
+                loaded=not pickup,
+                pickup_session_id=(
+                    pickup_session_id if pickup else None),
+                geometry=geometry,
+            )
+            return (
+                'load_detected'
+                if contact_completion else 'nav2_refinement'
+            )
+
+        self._event(
+            'dock_pose_verification_failed',
+            station=station,
+            position_error_m=position_error,
+            yaw_error_deg=yaw_error_deg,
+        )
+        raise MissionAbort(
+            f'{station}: dock-pose durusu guvenli refinement bolgesi disinda; '
+            f'konum hatasi={position_error:.3f} m, '
+            f'yon hatasi={yaw_error_deg:.1f} derece'
+        )
 
     def _station_dock_fallback_edge(self, station: str):
         """Load the directed reverse approach-to-dock graph polyline."""
@@ -4216,6 +4280,7 @@ class MissionManager(Node):
     def _navigate_station_dock_fallback(
         self, station: str, loaded: bool,
         pickup_session_id: Optional[int] = None,
+        geometry: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Follow only the remaining reverse station edge, then verify dock."""
         self._await_route_constraints()
@@ -4235,9 +4300,8 @@ class MissionManager(Node):
                 f'{station}: station fallback kenari yalniz yuksuz kullanilabilir'
             )
 
-        geometry = self._station_dock_target(
-            station, reverse_docking=True
-        )
+        geometry = geometry or self._station_dock_target(
+            station, reverse_docking=True)
         robot_x, robot_y, robot_yaw = self._fresh_map_base_pose(
             f'{station} lane fallback baslangic'
         )
@@ -4366,6 +4430,8 @@ class MissionManager(Node):
             'pickup_dock', 'dropoff_dock'
         )
         if station_flow:
+            station_dock_geometry = self._station_dock_target(
+                station, reverse_docking=True)
             # Compatibility field stays zero: production completion is the
             # fresh lane-end event, never a station-specific duration.
             goal.line_follow_duration_s = 0.0
@@ -4389,7 +4455,11 @@ class MissionManager(Node):
                 'lane_end_reverse_docking_started', station=station,
                 camera='rear_camera')
 
+            dock_pose_stop_requested = False
+            last_dock_pose_check = 0.0
+
             def feedback_callback(message):
+                nonlocal dock_pose_stop_requested, last_dock_pose_check
                 feedback = message.feedback
                 self._docking_duration = float(
                     feedback.configured_duration_s)
@@ -4402,11 +4472,61 @@ class MissionManager(Node):
                 self._status_detail = (
                     f'{station}: geri serit sonu bekleniyor '
                     f'({self._docking_elapsed:.1f} s)')
+                now = time.monotonic()
+                if (
+                    dock_pose_stop_requested
+                    or not self._docking_lane_active
+                    or now - last_dock_pose_check
+                    < self._STATION_DOCK_POSE_CHECK_PERIOD_S
+                ):
+                    return
+                last_dock_pose_check = now
+                try:
+                    robot_x, robot_y, robot_yaw = self._fresh_map_base_pose(
+                        f'{station} dock-pose handoff')
+                except MissionAbort:
+                    # The action loop independently keeps localization and
+                    # action health authoritative. A failed sample can never
+                    # become a dock completion event.
+                    return
+                values = (robot_x, robot_y, robot_yaw)
+                if not all(math.isfinite(float(value)) for value in values):
+                    return
+                reached, position_error, yaw_error = (
+                    _terminal_abort_is_acceptable(
+                        target_x=float(station_dock_geometry['dock_x']),
+                        target_y=float(station_dock_geometry['dock_y']),
+                        target_yaw=float(
+                            station_dock_geometry['target_body_yaw']),
+                        robot_x=robot_x,
+                        robot_y=robot_y,
+                        robot_yaw=robot_yaw,
+                        position_tolerance=(
+                            self._STATION_DOCK_POSE_STOP_POSITION_TOLERANCE_M),
+                        yaw_tolerance=(
+                            self._STATION_DOCK_POSE_STOP_YAW_TOLERANCE_RAD),
+                    )
+                )
+                if not reached:
+                    return
+                with self._lock:
+                    if dock_pose_stop_requested:
+                        return
+                    dock_pose_stop_requested = True
+                self._task_pub.publish(String(data='STOP'))
+                self._safe_stop()
+                self._event(
+                    'dock_pose_stop_requested',
+                    station=station,
+                    position_error_m=position_error,
+                    yaw_error_deg=math.degrees(yaw_error),
+                )
 
             dock_result = None
             dock_result_code = None
             completion_source = ''
             natural_visual_candidate = False
+            intentional_pose_stop_handoff = False
             try:
                 dock_result = self._action(
                     self._dock, goal, f'lane_end_docking:{station}',
@@ -4428,6 +4548,7 @@ class MissionManager(Node):
                             station,
                             pickup,
                             pickup_session_id,
+                            geometry=station_dock_geometry,
                         )
                     )
                 else:
@@ -4440,27 +4561,50 @@ class MissionManager(Node):
                 result_code = getattr(result, 'result_code', None)
                 reason = getattr(result, 'message', '') or str(error)
                 self._docking_error = reason
-                self._event(
-                    'lane_end_reverse_docking_failed', station=station,
-                    dock_result_code=result_code, reason=reason)
-                recoverable_codes = (
-                    DockToStation.Result.RESULT_LANE_LOST,
-                    DockToStation.Result.RESULT_CONTROL_INACTIVE,
-                    DockToStation.Result.RESULT_CAMERA_LOST,
-                )
-                if result_code not in recoverable_codes:
-                    raise
-                contact_completion = self._run_station_lane_fallback(
-                    station,
-                    pickup,
-                    int(result_code),
-                    reason,
-                    pickup_session_id,
-                )
-                completion_source = (
-                    'load_detected'
-                    if contact_completion else 'nav2_pose'
-                )
+                if (
+                    dock_pose_stop_requested
+                    and result_code ==
+                    DockToStation.Result.RESULT_CONTROL_INACTIVE
+                ):
+                    intentional_pose_stop_handoff = True
+                    dock_result_code = result_code
+                    self._docking_error = ''
+                    self._event(
+                        'dock_pose_stop_handoff',
+                        station=station,
+                        dock_result_code=result_code,
+                    )
+                    self._wait_until_stopped(
+                        f'{station} dock-pose durusu')
+                    completion_source = self._complete_dock_pose_candidate(
+                        station,
+                        pickup,
+                        pickup_session_id,
+                        station_dock_geometry,
+                    )
+                else:
+                    self._event(
+                        'lane_end_reverse_docking_failed', station=station,
+                        dock_result_code=result_code, reason=reason)
+                    recoverable_codes = (
+                        DockToStation.Result.RESULT_LANE_LOST,
+                        DockToStation.Result.RESULT_CONTROL_INACTIVE,
+                        DockToStation.Result.RESULT_CAMERA_LOST,
+                    )
+                    if result_code not in recoverable_codes:
+                        raise
+                    contact_completion = self._run_station_lane_fallback(
+                        station,
+                        pickup,
+                        int(result_code),
+                        reason,
+                        pickup_session_id,
+                        station_dock_geometry,
+                    )
+                    completion_source = (
+                        'load_detected'
+                        if contact_completion else 'nav2_pose'
+                    )
             except Exception as error:
                 if pickup_session_id is not None:
                     self._end_pickup_contact_session(pickup_session_id)
@@ -4488,6 +4632,14 @@ class MissionManager(Node):
             elif natural_visual_candidate:
                 self._event(
                     'lane_end_reverse_docking_completed',
+                    station=station,
+                    elapsed_s=self._docking_elapsed,
+                    next_phase=self._station_phase,
+                    completion_source=completion_source,
+                )
+            elif intentional_pose_stop_handoff:
+                self._event(
+                    'dock_pose_reverse_docking_completed',
                     station=station,
                     elapsed_s=self._docking_elapsed,
                     next_phase=self._station_phase,
