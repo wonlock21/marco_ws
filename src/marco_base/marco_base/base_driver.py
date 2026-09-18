@@ -131,8 +131,14 @@ class BaseDriver(Node):
         self.lift_pickup_duration_s = float(
             self.get_parameter("lift_pickup_duration_s").value
         )
+        self.lift_pickup_tilt_duration_s = float(
+            self.get_parameter("lift_pickup_tilt_duration_s").value
+        )
         self.lift_dropoff_duration_s = float(
             self.get_parameter("lift_dropoff_duration_s").value
+        )
+        self.lift_dropoff_tilt_duration_s = float(
+            self.get_parameter("lift_dropoff_tilt_duration_s").value
         )
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
@@ -274,8 +280,10 @@ class BaseDriver(Node):
         self.declare_parameter("cmd_vel_timeout", 0.5)
         self.declare_parameter("communication_timeout", 0.5)
         self.declare_parameter("lift_action_server_enabled", True)
-        self.declare_parameter("lift_pickup_duration_s", 0.0)
-        self.declare_parameter("lift_dropoff_duration_s", 0.0)
+        self.declare_parameter("lift_pickup_duration_s", 15.0)
+        self.declare_parameter("lift_pickup_tilt_duration_s", 1.5)
+        self.declare_parameter("lift_dropoff_duration_s", 15.0)
+        self.declare_parameter("lift_dropoff_tilt_duration_s", 1.5)
 
         # STM32 encoder geri bildirimini hedef komutla birlikte kalici kaydet.
         self.declare_parameter("wheel_measurement_log_enabled", True)
@@ -706,8 +714,20 @@ class BaseDriver(Node):
 
     def _lift_phase_durations(self, command: int):
         if command == LiftLoad.Goal.COMMAND_PICKUP:
-            return (("lift_pickup_duration_s", self.lift_pickup_duration_s),)
-        return (("lift_dropoff_duration_s", self.lift_dropoff_duration_s),)
+            return (
+                ("lift_pickup_duration_s", self.lift_pickup_duration_s),
+                (
+                    "lift_pickup_tilt_duration_s",
+                    self.lift_pickup_tilt_duration_s,
+                ),
+            )
+        return (
+            ("lift_dropoff_duration_s", self.lift_dropoff_duration_s),
+            (
+                "lift_dropoff_tilt_duration_s",
+                self.lift_dropoff_tilt_duration_s,
+            ),
+        )
 
     def _lift_goal_error(self, goal: LiftLoad.Goal) -> str:
         if goal.command not in (
@@ -724,8 +744,8 @@ class BaseDriver(Node):
             return "lift timeout STM32 uint16 araligini asiyor (en fazla 65.535 s)"
         durations = self._lift_phase_durations(goal.command)
         for parameter_name, duration in durations:
-            if not math.isfinite(duration) or duration <= 0.0:
-                return f"{parameter_name} yapılandırılmamış"
+            if not math.isfinite(duration) or duration < 0.0:
+                return f"{parameter_name} sonlu ve negatif olmamali"
         if math.fsum(duration for _, duration in durations) >= timeout:
             command_name = (
                 "pickup"
@@ -875,25 +895,43 @@ class BaseDriver(Node):
             durations = dict(self._lift_phase_durations(goal.command))
             overall_deadline = time.monotonic() + float(goal.timeout)
             if goal.command == LiftLoad.Goal.COMMAND_PICKUP:
-                _, failure = self._run_fork_phase(
-                    goal_handle,
-                    p.ForkAction.UP,
-                    durations["lift_pickup_duration_s"],
-                    "moving_up",
-                    overall_deadline,
-                    command_name,
+                stages = (
+                    (
+                        p.ForkAction.UP,
+                        durations["lift_pickup_duration_s"],
+                        "moving_up",
+                    ),
+                    (
+                        p.ForkAction.TILT_UP,
+                        durations["lift_pickup_tilt_duration_s"],
+                        "tilting_up",
+                    ),
                 )
             else:
+                stages = (
+                    (
+                        p.ForkAction.DOWN,
+                        durations["lift_dropoff_duration_s"],
+                        "moving_down",
+                    ),
+                    (
+                        p.ForkAction.TILT_DOWN,
+                        durations["lift_dropoff_tilt_duration_s"],
+                        "tilting_down",
+                    ),
+                )
+
+            for action, duration, phase in stages:
                 _, failure = self._run_fork_phase(
                     goal_handle,
-                    p.ForkAction.DOWN,
-                    durations["lift_dropoff_duration_s"],
-                    "moving_down",
+                    action,
+                    duration,
+                    phase,
                     overall_deadline,
                     command_name,
                 )
-            if failure is not None:
-                return failure
+                if failure is not None:
+                    return failure
 
             goal_handle.succeed()
             return self._lift_result(
