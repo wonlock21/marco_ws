@@ -39,8 +39,17 @@ def _pose(x, y, yaw):
 
 class _NavigationProbe:
     _yaw_from_pose = staticmethod(MissionManager._yaw_from_pose)
+    _wrap_angle = staticmethod(MissionManager._wrap_angle)
+    _recover_route_terminal_heading = (
+        MissionManager._recover_route_terminal_heading
+    )
 
-    def __init__(self, path, follow_status=GoalStatus.STATUS_SUCCEEDED):
+    def __init__(
+        self,
+        path,
+        follow_status=GoalStatus.STATUS_SUCCEEDED,
+        fresh_poses=None,
+    ):
         self._path = path
         self._follow_status = follow_status
         self._compute_route = object()
@@ -55,6 +64,14 @@ class _NavigationProbe:
         )
         self.follow_goal = None
         self.events = []
+        self.operations = []
+        self._status_detail = ''
+        default_pose = (
+            path.poses[-1].pose.position.x - 0.02,
+            path.poses[-1].pose.position.y,
+            _last_path_segment_heading(path),
+        )
+        self._fresh_poses = iter(fresh_poses or [default_pose])
 
     def _await_route_constraints(self):
         return None
@@ -74,11 +91,35 @@ class _NavigationProbe:
         values = {
             'route_terminal_position_tolerance_m': 0.075,
             'route_terminal_yaw_tolerance_deg': 10.0,
+            'route_terminal_max_correction_attempts': 5,
+            'route_terminal_correction_total_timeout_s': 20.0,
         }
         return SimpleNamespace(value=values[name])
 
     def _localization_health(self):
         return SimpleNamespace(valid=True)
+
+    def _wait_until_stopped(self, label):
+        self.operations.append(('stop', label))
+
+    def _check_abort(self):
+        return None
+
+    def _check_action_health(self, require_turn_sensors=False):
+        return None
+
+    def _fresh_map_base_pose(self, _label):
+        return next(self._fresh_poses)
+
+    def _run_precise_turn_correction(
+        self, target_name, correction_turn, correction_kind,
+        timeout_limit_s=None,
+    ):
+        self.operations.append((
+            'correction', target_name, correction_turn, correction_kind,
+            timeout_limit_s,
+        ))
+        return correction_turn
 
     def _event(self, event, **fields):
         self.events.append((event, fields))
@@ -117,6 +158,126 @@ def test_small_terminal_yaw_abort_is_accepted_after_reaching_goal():
         event == 'route_terminal_abort_accepted'
         for event, _fields in probe.events
     )
+
+
+def test_succeeded_terminal_with_good_pose_needs_no_correction():
+    probe = _NavigationProbe(_path((0.0, 0.0), (1.0, 0.0)))
+
+    MissionManager._navigate(probe, 'q5', loaded=False)
+
+    assert [item for item in probe.operations if item[0] == 'correction'] == []
+    assert probe.operations[0][0] == 'stop'
+
+
+def test_succeeded_terminal_yaw_is_corrected_and_remeasured():
+    probe = _NavigationProbe(
+        _path((0.0, 0.0), (1.0, 0.0)),
+        fresh_poses=[
+            (0.98, 0.0, math.radians(18.0)),
+            (0.98, 0.0, math.radians(4.0)),
+        ],
+    )
+
+    MissionManager._navigate(probe, 'q5', loaded=False)
+
+    corrections = [
+        item for item in probe.operations if item[0] == 'correction'
+    ]
+    assert len(corrections) == 1
+    assert corrections[0][1] == 'q5'
+    assert math.degrees(corrections[0][2]) == pytest.approx(-18.0)
+    assert corrections[0][3] == 'route_terminal'
+    assert probe._current_node == 'q5'
+
+
+def test_terminal_heading_can_recover_after_three_corrections():
+    probe = _NavigationProbe(
+        _path((0.0, 0.0), (1.0, 0.0)),
+        fresh_poses=[
+            (1.0, 0.0, math.radians(25.0)),
+            (1.0, 0.0, math.radians(19.0)),
+            (1.0, 0.0, math.radians(12.0)),
+            (1.0, 0.0, math.radians(8.0)),
+        ],
+    )
+
+    MissionManager._navigate(probe, 'q5', loaded=False)
+
+    corrections = [
+        item for item in probe.operations if item[0] == 'correction'
+    ]
+    assert len(corrections) == 3
+    assert probe._current_node == 'q5'
+
+
+def test_terminal_heading_aborts_after_five_failed_corrections():
+    pose = (1.0, 0.0, math.radians(20.0))
+    probe = _NavigationProbe(
+        _path((0.0, 0.0), (1.0, 0.0)),
+        fresh_poses=[pose] * 6,
+    )
+
+    with pytest.raises(MissionAbort, match='correction 5/5'):
+        MissionManager._navigate(probe, 'q5', loaded=False)
+
+    corrections = [
+        item for item in probe.operations if item[0] == 'correction'
+    ]
+    assert len(corrections) == 5
+    assert probe._current_node == 'D3'
+
+
+def test_terminal_outside_position_guard_never_spins():
+    probe = _NavigationProbe(
+        _path((0.0, 0.0), (1.0, 0.0)),
+        fresh_poses=[(0.90, 0.0, math.radians(20.0))],
+    )
+
+    with pytest.raises(MissionAbort, match='yon duzeltme uygulanmadi'):
+        MissionManager._navigate(probe, 'q5', loaded=False)
+
+    assert [item for item in probe.operations if item[0] == 'correction'] == []
+
+
+def test_terminal_position_guard_is_rechecked_after_each_correction():
+    probe = _NavigationProbe(
+        _path((0.0, 0.0), (1.0, 0.0)),
+        fresh_poses=[
+            (1.0, 0.0, math.radians(20.0)),
+            (0.90, 0.0, math.radians(14.0)),
+        ],
+    )
+
+    with pytest.raises(MissionAbort, match='yon duzeltme uygulanmadi'):
+        MissionManager._navigate(probe, 'q5', loaded=False)
+
+    corrections = [
+        item for item in probe.operations if item[0] == 'correction'
+    ]
+    assert len(corrections) == 1
+
+
+def test_aborted_gate_terminal_yaw_can_recover():
+    probe = _NavigationProbe(
+        _path((0.0, 0.0), (1.0, 0.0)),
+        follow_status=GoalStatus.STATUS_ABORTED,
+        fresh_poses=[
+            (1.0, 0.0, math.radians(16.0)),
+            (1.0, 0.0, math.radians(6.0)),
+        ],
+    )
+
+    MissionManager._navigate(probe, 'q5', loaded=False)
+
+    corrections = [
+        item for item in probe.operations if item[0] == 'correction'
+    ]
+    assert len(corrections) == 1
+    assert any(
+        event == 'route_terminal_abort_accepted'
+        for event, _fields in probe.events
+    )
+    assert probe._current_node == 'q5'
 
 
 def test_terminal_abort_outside_position_tolerance_is_rejected():

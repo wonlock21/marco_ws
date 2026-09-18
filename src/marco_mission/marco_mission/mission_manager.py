@@ -786,6 +786,8 @@ class MissionManager(Node):
             ('imu_enabled', True),
             ('route_terminal_position_tolerance_m', 0.075),
             ('route_terminal_yaw_tolerance_deg', 10.0),
+            ('route_terminal_max_correction_attempts', 5),
+            ('route_terminal_correction_total_timeout_s', 20.0),
             ('motion_stop_timeout_s', 3.0),
             ('motion_stop_settle_s', 0.4),
             ('motion_stop_linear_tolerance', 0.01),
@@ -1810,14 +1812,15 @@ class MissionManager(Node):
         timeout_limit_s: float | None = None,
     ) -> float:
         """Apply one raw-encoder closed-loop turn through the safe path."""
-        if correction_kind not in ('junction', 'station'):
+        if correction_kind not in ('junction', 'station', 'route_terminal'):
             raise MissionAbort(
                 f'{target_name}: gecersiz ince donus duzeltme turu')
-        correction_label = (
-            'junction duzeltme'
-            if correction_kind == 'junction'
-            else 'station duzeltme'
-        )
+        correction_labels = {
+            'junction': 'junction duzeltme',
+            'station': 'station duzeltme',
+            'route_terminal': 'rota terminal yon duzeltme',
+        }
+        correction_label = correction_labels[correction_kind]
         maximum_speed = float(self.get_parameter(
             'junction_turn_correction_angular_speed').value)
         minimum_speed = float(self.get_parameter(
@@ -1878,13 +1881,14 @@ class MissionManager(Node):
                 self._check_abort()
                 self._check_action_health(require_turn_sensors=True)
                 if self._obstacle:
-                    obstacle_reason = (
-                        'junction duzeltmede engel'
-                        if correction_kind == 'junction'
-                        else 'station duzeltmede engel'
-                    )
+                    obstacle_reasons = {
+                        'junction': 'junction duzeltmede engel',
+                        'station': 'station duzeltmede engel',
+                        'route_terminal': 'rota terminal duzeltmede engel',
+                    }
                     raise MissionAbort(
-                        f'{target_name}: {obstacle_reason}')
+                        f'{target_name}: '
+                        f'{obstacle_reasons[correction_kind]}')
                 current_yaw = self._encoder_yaw
                 if not math.isfinite(current_yaw):
                     raise MissionAbort(
@@ -1922,6 +1926,139 @@ class MissionManager(Node):
             f'{target_name} {correction_kind} duzeltme sonu')
         self._check_action_health(require_turn_sensors=True)
         return self._wrap_angle(self._encoder_yaw - start_yaw)
+
+    def _recover_route_terminal_heading(
+        self,
+        target_name: str,
+        target_x: float,
+        target_y: float,
+        target_yaw: float,
+        follow_path_aborted: bool,
+    ) -> None:
+        """Stop, verify and boundedly correct one normal route terminal."""
+        position_tolerance = float(self.get_parameter(
+            'route_terminal_position_tolerance_m').value)
+        yaw_tolerance = math.radians(float(self.get_parameter(
+            'route_terminal_yaw_tolerance_deg').value))
+        max_attempts = int(self.get_parameter(
+            'route_terminal_max_correction_attempts').value)
+        correction_budget = float(self.get_parameter(
+            'route_terminal_correction_total_timeout_s').value)
+        if (
+            not all(math.isfinite(value) for value in (
+                target_x, target_y, target_yaw, position_tolerance,
+                yaw_tolerance, correction_budget,
+            ))
+            or position_tolerance <= 0.0
+            or yaw_tolerance <= 0.0
+            or max_attempts < 1
+            or correction_budget <= 0.0
+        ):
+            raise MissionAbort(
+                f'{target_name}: rota terminal correction parametresi '
+                'gecersiz')
+
+        # FollowPath has already reached a terminal action state and released
+        # ownership before this measured stop. No raw correction can overlap
+        # the Nav2 motion owner.
+        self._wait_until_stopped(f'{target_name} FollowPath terminal sonu')
+
+        attempts = 0
+        correction_started = None
+        correction_deadline = None
+        while True:
+            self._check_abort()
+            self._check_action_health(require_turn_sensors=True)
+            robot_x, robot_y, robot_yaw = self._fresh_map_base_pose(
+                f'{target_name} rota terminal olcumu {attempts}'
+            )
+            position_error = math.hypot(
+                target_x - robot_x, target_y - robot_y)
+            signed_yaw_error = self._wrap_angle(target_yaw - robot_yaw)
+            yaw_error = abs(signed_yaw_error)
+            self._event(
+                'route_terminal_remeasured',
+                target=target_name,
+                attempt=attempts,
+                max_attempts=max_attempts,
+                follow_path_aborted=follow_path_aborted,
+                position_error_m=position_error,
+                yaw_error_rad=yaw_error,
+            )
+
+            # Never spin in place after position has drifted outside the
+            # normal route terminal contract, even if heading is also wrong.
+            if position_error > position_tolerance:
+                raise MissionAbort(
+                    f'follow_route:{target_name} terminal konum hatasi '
+                    f'{position_error:.3f} m; '
+                    f'tolerans={position_tolerance:.3f} m, '
+                    'yon duzeltme uygulanmadi'
+                )
+            if yaw_error <= yaw_tolerance:
+                if follow_path_aborted:
+                    self._event(
+                        'route_terminal_abort_accepted',
+                        target=target_name,
+                        position_error_m=position_error,
+                        yaw_error_rad=yaw_error,
+                        correction_attempts=attempts,
+                    )
+                self._event(
+                    'route_terminal_heading_verified',
+                    target=target_name,
+                    position_error_m=position_error,
+                    yaw_error_rad=yaw_error,
+                    correction_attempts=attempts,
+                )
+                return
+
+            if correction_started is None:
+                correction_started = time.monotonic()
+                correction_deadline = correction_started + correction_budget
+            elapsed = time.monotonic() - correction_started
+            if attempts >= max_attempts or elapsed >= correction_budget:
+                raise MissionAbort(
+                    f'{target_name}: rota terminal yon hatasi '
+                    f'{math.degrees(yaw_error):.2f} derece; '
+                    f'correction {attempts}/{max_attempts}, '
+                    f'{min(elapsed, correction_budget):.1f}/'
+                    f'{correction_budget:.1f} s'
+                )
+
+            remaining_budget = correction_deadline - time.monotonic()
+            if remaining_budget <= 0.0:
+                raise MissionAbort(
+                    f'{target_name}: rota terminal yon duzeltme suresi doldu'
+                )
+            attempts += 1
+            self._status_detail = (
+                f'{target_name}: rota terminal yon duzeltme '
+                f'{attempts}/{max_attempts} '
+                f'({math.degrees(signed_yaw_error):+.1f} derece)'
+            )
+            self._event(
+                'route_terminal_heading_correction_started',
+                target=target_name,
+                attempt=attempts,
+                max_attempts=max_attempts,
+                commanded_turn_rad=signed_yaw_error,
+                remaining_budget_s=remaining_budget,
+                odometry_source='/odom',
+            )
+            measured_correction = self._run_precise_turn_correction(
+                target_name,
+                signed_yaw_error,
+                'route_terminal',
+                timeout_limit_s=remaining_budget,
+            )
+            self._event(
+                'route_terminal_heading_correction_finished',
+                target=target_name,
+                attempt=attempts,
+                measured_turn_rad=measured_correction,
+                odometry_source='/odom',
+            )
 
     def _turn_at_junction(self, maneuver: JunctionManeuver) -> None:
         """Align with one main Spin and bounded fresh-TF corrections."""
@@ -3617,6 +3754,8 @@ class MissionManager(Node):
                 segment_count=len(segments),
                 goal_checker_id=follow_goal.goal_checker_id,
             )
+            is_final_segment = index == len(segments) - 1
+            follow_path_aborted = False
             try:
                 self._action(
                     self._follow_path,
@@ -3626,42 +3765,64 @@ class MissionManager(Node):
             except MissionActionFailure as error:
                 if (
                     error.status != GoalStatus.STATUS_ABORTED
-                    or self._pose is None
                     or not self._localization_health().valid
                 ):
                     raise
-                current = self._pose.pose.pose.position
-                current_yaw = self._yaw_from_pose(self._pose)
-                goal_position = segment.poses[-1].pose.position
-                position_tolerance = float(self.get_parameter(
-                    'route_terminal_position_tolerance_m').value)
-                yaw_tolerance = math.radians(float(self.get_parameter(
-                    'route_terminal_yaw_tolerance_deg').value))
-                accepted, position_error, yaw_error = (
-                    _terminal_abort_is_acceptable(
-                        target_x=float(goal_position.x),
-                        target_y=float(goal_position.y),
-                        target_yaw=yaw,
-                        robot_x=float(current.x),
-                        robot_y=float(current.y),
-                        robot_yaw=current_yaw,
-                        position_tolerance=position_tolerance,
-                        yaw_tolerance=yaw_tolerance,
+                if is_final_segment:
+                    follow_path_aborted = True
+                elif self._pose is None:
+                    raise
+                else:
+                    current = self._pose.pose.pose.position
+                    current_yaw = self._yaw_from_pose(self._pose)
+                    goal_position = segment.poses[-1].pose.position
+                    position_tolerance = float(self.get_parameter(
+                        'route_terminal_position_tolerance_m').value)
+                    yaw_tolerance = math.radians(float(self.get_parameter(
+                        'route_terminal_yaw_tolerance_deg').value))
+                    accepted, position_error, yaw_error = (
+                        _terminal_abort_is_acceptable(
+                            target_x=float(goal_position.x),
+                            target_y=float(goal_position.y),
+                            target_yaw=yaw,
+                            robot_x=float(current.x),
+                            robot_y=float(current.y),
+                            robot_yaw=current_yaw,
+                            position_tolerance=position_tolerance,
+                            yaw_tolerance=yaw_tolerance,
+                        )
                     )
-                )
-                if not accepted:
-                    raise MissionAbort(
-                        f'follow_route:{segment_target} '
-                        f'status={error.status}, '
-                        f'konum hatasi={position_error:.3f} m, '
-                        f'yon hatasi={math.degrees(yaw_error):.1f} derece'
-                    ) from error
-                self._event(
-                    'route_terminal_abort_accepted',
-                    target=segment_target,
-                    position_error_m=position_error,
-                    yaw_error_rad=yaw_error,
-                )
+                    if not accepted:
+                        raise MissionAbort(
+                            f'follow_route:{segment_target} '
+                            f'status={error.status}, '
+                            f'konum hatasi={position_error:.3f} m, '
+                            f'yon hatasi={math.degrees(yaw_error):.1f} derece'
+                        ) from error
+                    self._event(
+                        'route_terminal_abort_accepted',
+                        target=segment_target,
+                        position_error_m=position_error,
+                        yaw_error_rad=yaw_error,
+                    )
+            if is_final_segment:
+                goal_position = segment.poses[-1].pose.position
+                try:
+                    self._recover_route_terminal_heading(
+                        segment_target,
+                        float(goal_position.x),
+                        float(goal_position.y),
+                        yaw,
+                        follow_path_aborted,
+                    )
+                except MissionAbort as recovery_error:
+                    if follow_path_aborted:
+                        raise MissionAbort(
+                            f'follow_route:{segment_target} '
+                            f'status={GoalStatus.STATUS_ABORTED}; '
+                            f'{recovery_error}'
+                        ) from recovery_error
+                    raise
             self._current_node, self._edge = segment_target, ''
             self._event(
                 'route_segment_completed',

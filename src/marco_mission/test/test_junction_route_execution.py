@@ -553,6 +553,10 @@ def test_junction_correction_aborts_above_45_degrees():
 
 class _ExecutionProbe:
     _unique_graph_nodes = MissionManager._unique_graph_nodes
+    _wrap_angle = staticmethod(MissionManager._wrap_angle)
+    _recover_route_terminal_heading = (
+        MissionManager._recover_route_terminal_heading
+    )
 
     def __init__(self, fail_on_spin=False, fail_on_first_follow=False):
         self._compute_route = object()
@@ -573,6 +577,7 @@ class _ExecutionProbe:
         self.operations = []
         self.events = []
         self.follow_goal_checkers = []
+        self._status_detail = ''
 
     def _await_route_constraints(self):
         return None
@@ -594,6 +599,30 @@ class _ExecutionProbe:
     def _wait_until_stopped(self, _label):
         self.operations.append(('stop', None))
 
+    def _check_abort(self):
+        return None
+
+    def _check_action_health(self, require_turn_sensors=False):
+        return None
+
+    def _fresh_map_base_pose(self, _label):
+        start = self._path.poses[-2].pose.position
+        end = self._path.poses[-1].pose.position
+        return (
+            float(end.x),
+            float(end.y),
+            math.atan2(float(end.y - start.y), float(end.x - start.x)),
+        )
+
+    def _run_precise_turn_correction(
+        self, _target_name, _correction_turn, _correction_kind,
+        timeout_limit_s=None,
+    ):
+        raise AssertionError('unexpected route terminal correction')
+
+    def _localization_health(self):
+        return SimpleNamespace(valid=True)
+
     def _turn_at_junction(self, maneuver):
         self.operations.append(('spin', maneuver.node_name))
         if self.fail_on_spin:
@@ -608,6 +637,8 @@ class _ExecutionProbe:
             'junction_path_match_tolerance_m': 0.05,
             'route_terminal_position_tolerance_m': 0.075,
             'route_terminal_yaw_tolerance_deg': 10.0,
+            'route_terminal_max_correction_attempts': 5,
+            'route_terminal_correction_total_timeout_s': 20.0,
         }
         return SimpleNamespace(value=values[name])
 
@@ -626,6 +657,7 @@ def test_navigation_executes_atomic_follow_stop_spin_stop_follow_order():
         ('spin', 'D1'),
         ('stop', None),
         ('follow', 2),
+        ('stop', None),
     ]
     assert probe.follow_goal_checkers == [
         'position_goal_checker',
@@ -694,7 +726,7 @@ def test_station_exit_requires_direct_forward_edge_and_explicit_dock_start():
     assert probe.route_goal.use_start is True
     assert probe.route_goal.start_id == 1
     assert probe.route_goal.goal_id == 2
-    assert probe.operations == [('follow', 2)]
+    assert probe.operations == [('follow', 2), ('stop', None)]
 
 
 def test_station_exit_rejects_reverse_ingress_edge():
