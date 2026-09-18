@@ -100,6 +100,20 @@ class TurnArcEvaluation:
     reason: str = ''
 
 
+@dataclass(frozen=True)
+class DirectedPolylineProjection:
+    """Nearest directed-polyline geometry for one robot map pose."""
+
+    projection_x: float
+    projection_y: float
+    segment_index: int
+    segment_ratio: float
+    cross_track: float
+    along_track: float
+    total_length: float
+    local_segment_heading: float
+
+
 def _gui_manual_mode_enabled(
     *,
     hardware_manual_mode: bool,
@@ -264,6 +278,200 @@ def _terminal_abort_is_acceptable(
         and yaw_error <= yaw_tolerance
     )
     return accepted, position_error, yaw_error
+
+
+def _directed_polyline_projection(points, robot_x, robot_y):
+    """Project a pose onto a directed polyline without hiding end overrun."""
+    if len(points) < 2:
+        raise MissionAbort('station fallback kenari en az iki nokta icermeli')
+    normalized = [(float(x), float(y)) for x, y in points]
+    values = [robot_x, robot_y]
+    values.extend(value for point in normalized for value in point)
+    if not all(math.isfinite(float(value)) for value in values):
+        raise MissionAbort('station fallback geometrisi sonlu degil')
+
+    segments = []
+    cumulative = 0.0
+    for index, (start, end) in enumerate(zip(
+        normalized, normalized[1:]
+    )):
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-6:
+            raise MissionAbort(
+                'station fallback geometrisi sifir uzunluklu segment iceriyor'
+            )
+        segments.append((index, start, dx, dy, length, cumulative))
+        cumulative += length
+
+    nearest = None
+    for index, start, dx, dy, length, segment_start in segments:
+        raw_ratio = (
+            (float(robot_x) - start[0]) * dx
+            + (float(robot_y) - start[1]) * dy
+        ) / (length * length)
+        ratio = max(0.0, min(1.0, raw_ratio))
+        projection_x = start[0] + ratio * dx
+        projection_y = start[1] + ratio * dy
+        distance = math.hypot(
+            float(robot_x) - projection_x,
+            float(robot_y) - projection_y,
+        )
+        candidate = (
+            distance, -index, index, raw_ratio, ratio,
+            projection_x, projection_y, segment_start, dx, dy, length,
+        )
+        if nearest is None or candidate[:2] < nearest[:2]:
+            nearest = candidate
+
+    (_distance, _negative_index, segment_index, raw_ratio, ratio,
+     projection_x, projection_y, segment_start, dx, dy, length) = nearest
+    last_index = len(segments) - 1
+    directed_ratio = ratio
+    if segment_index == 0 and raw_ratio < 0.0:
+        directed_ratio = raw_ratio
+    elif segment_index == last_index and raw_ratio > 1.0:
+        directed_ratio = raw_ratio
+    projection_x = normalized[segment_index][0] + directed_ratio * dx
+    projection_y = normalized[segment_index][1] + directed_ratio * dy
+    cross_track = math.hypot(
+        float(robot_x) - projection_x,
+        float(robot_y) - projection_y,
+    )
+    return DirectedPolylineProjection(
+        projection_x=projection_x,
+        projection_y=projection_y,
+        segment_index=segment_index,
+        segment_ratio=directed_ratio,
+        cross_track=cross_track,
+        along_track=segment_start + directed_ratio * length,
+        total_length=cumulative,
+        local_segment_heading=math.atan2(dy, dx),
+    )
+
+
+def _station_fallback_pose_geometry(
+        points, robot_x, robot_y, robot_yaw,
+        maximum_cross_track, maximum_heading_error,
+        along_track_margin):
+    """Validate station fallback corridor and reverse body-heading contract."""
+    limits = (
+        robot_yaw, maximum_cross_track,
+        maximum_heading_error, along_track_margin,
+    )
+    if not all(math.isfinite(float(value)) for value in limits):
+        raise MissionAbort('station fallback kabul parametreleri gecersiz')
+    if maximum_cross_track <= 0.0:
+        raise MissionAbort('station fallback cross-track limiti gecersiz')
+    if not 0.0 <= maximum_heading_error <= math.pi:
+        raise MissionAbort('station fallback heading limiti gecersiz')
+    if along_track_margin < 0.0:
+        raise MissionAbort('station fallback along-track margin gecersiz')
+
+    projection = _directed_polyline_projection(
+        points, robot_x, robot_y)
+    if projection.cross_track > maximum_cross_track + 1.0e-9:
+        raise MissionAbort(
+            'station fallback cross-track fazla: '
+            f'{projection.cross_track:.3f} m > '
+            f'{maximum_cross_track:.3f} m'
+        )
+    minimum_along = -float(along_track_margin)
+    maximum_along = projection.total_length + float(along_track_margin)
+    if not (
+        minimum_along - 1.0e-9
+        <= projection.along_track
+        <= maximum_along + 1.0e-9
+    ):
+        raise MissionAbort(
+            'station fallback along-track corridor disinda: '
+            f'{projection.along_track:.3f} m; kabul '
+            f'[{minimum_along:.3f}, {maximum_along:.3f}] m'
+        )
+
+    expected_body_heading = math.atan2(
+        math.sin(projection.local_segment_heading + math.pi),
+        math.cos(projection.local_segment_heading + math.pi),
+    )
+    heading_error = abs(math.atan2(
+        math.sin(expected_body_heading - float(robot_yaw)),
+        math.cos(expected_body_heading - float(robot_yaw)),
+    ))
+    if heading_error > maximum_heading_error + 1.0e-9:
+        raise MissionAbort(
+            'station fallback heading uyumsuz: '
+            f'{math.degrees(heading_error):.1f} derece > '
+            f'{math.degrees(maximum_heading_error):.1f} derece'
+        )
+    return projection, heading_error
+
+
+def _point_at_directed_distance(points, distance):
+    """Interpolate one point at a clamped cumulative polyline distance."""
+    normalized = [(float(x), float(y)) for x, y in points]
+    lengths = [
+        math.hypot(end[0] - start[0], end[1] - start[1])
+        for start, end in zip(normalized, normalized[1:])
+    ]
+    total = sum(lengths)
+    target = max(0.0, min(float(distance), total))
+    cumulative = 0.0
+    for index, length in enumerate(lengths):
+        if target <= cumulative + length or index == len(lengths) - 1:
+            ratio = (target - cumulative) / length
+            start = normalized[index]
+            end = normalized[index + 1]
+            return (
+                start[0] + ratio * (end[0] - start[0]),
+                start[1] + ratio * (end[1] - start[1]),
+                index,
+            )
+        cumulative += length
+    raise MissionAbort('station fallback merge noktasi hesaplanamadi')
+
+
+def _station_fallback_remaining_path(
+        points, robot_x, robot_y, projection):
+    """Build current-pose to dock suffix with a forward diagonal merge."""
+    normalized = [(float(x), float(y)) for x, y in points]
+    on_edge_along = max(
+        0.0, min(projection.along_track, projection.total_length))
+    merge_distance = 1.5 * projection.cross_track
+    merge_along = min(
+        projection.total_length, on_edge_along + merge_distance)
+    merge_x, merge_y, merge_segment = _point_at_directed_distance(
+        normalized, merge_along)
+
+    remaining = [(float(robot_x), float(robot_y))]
+    if math.hypot(
+        float(robot_x) - merge_x, float(robot_y) - merge_y
+    ) > 1.0e-6:
+        remaining.append((merge_x, merge_y))
+
+    cumulative = 0.0
+    for index, (start, end) in enumerate(zip(
+        normalized, normalized[1:]
+    )):
+        cumulative += math.hypot(end[0] - start[0], end[1] - start[1])
+        if index < merge_segment or cumulative <= merge_along + 1.0e-9:
+            continue
+        if math.hypot(
+            end[0] - remaining[-1][0], end[1] - remaining[-1][1]
+        ) > 1.0e-6:
+            remaining.append(end)
+    if math.hypot(
+        normalized[-1][0] - remaining[-1][0],
+        normalized[-1][1] - remaining[-1][1],
+    ) > 1.0e-6:
+        remaining.append(normalized[-1])
+    if len(remaining) < 2:
+        remaining.append(normalized[-1])
+    merge_used = (
+        projection.cross_track > 1.0e-6
+        and merge_along > on_edge_along + 1.0e-6
+    )
+    return remaining, (merge_x, merge_y), merge_used
 
 
 def _remaining_polyline_from_pose(
@@ -572,6 +780,9 @@ class MissionManager(Node):
             ('junction_turn_min_angle_deg', 60.0),
             ('junction_turn_max_angle_deg', 120.0),
             ('junction_path_match_tolerance_m', 0.25),
+            ('station_fallback_max_cross_track_m', 0.60),
+            ('station_fallback_max_heading_error_deg', 35.0),
+            ('station_fallback_along_track_margin_m', 0.15),
             ('imu_enabled', True),
             ('route_terminal_position_tolerance_m', 0.075),
             ('route_terminal_yaw_tolerance_deg', 10.0),
@@ -3693,16 +3904,31 @@ class MissionManager(Node):
         geometry = self._station_dock_target(
             station, reverse_docking=True
         )
-        robot_x, robot_y, _robot_yaw = self._fresh_map_base_pose(
+        robot_x, robot_y, robot_yaw = self._fresh_map_base_pose(
             f'{station} lane fallback baslangic'
         )
-        match_tolerance = float(self.get_parameter(
-            'junction_path_match_tolerance_m').value)
-        remaining, cross_track = _remaining_polyline_from_pose(
+        maximum_cross_track = float(self.get_parameter(
+            'station_fallback_max_cross_track_m').value)
+        maximum_heading_error = math.radians(float(self.get_parameter(
+            'station_fallback_max_heading_error_deg').value))
+        along_track_margin = float(self.get_parameter(
+            'station_fallback_along_track_margin_m').value)
+        projection, heading_error = _station_fallback_pose_geometry(
             edge_points,
             robot_x,
             robot_y,
-            match_tolerance,
+            robot_yaw,
+            maximum_cross_track,
+            maximum_heading_error,
+            along_track_margin,
+        )
+        remaining, merge_point, merge_used = (
+            _station_fallback_remaining_path(
+                edge_points,
+                robot_x,
+                robot_y,
+                projection,
+            )
         )
 
         path = Path()
@@ -3731,7 +3957,13 @@ class MissionManager(Node):
             edge_id=edge_id,
             movement_direction='reverse',
             pose_count=len(path.poses),
-            cross_track_error_m=cross_track,
+            cross_track_error_m=projection.cross_track,
+            projected_along_track_m=projection.along_track,
+            total_edge_length_m=projection.total_length,
+            heading_error_deg=math.degrees(heading_error),
+            merge_used=merge_used,
+            merge_point_x=merge_point[0],
+            merge_point_y=merge_point[1],
         )
         goal = FollowPath.Goal()
         goal.path = path

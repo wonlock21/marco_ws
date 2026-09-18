@@ -15,6 +15,8 @@ from marco_mission import mission_manager
 from marco_mission.mission_manager import MissionAbort
 from marco_mission.mission_manager import MissionActionFailure
 from marco_mission.mission_manager import MissionManager
+from marco_mission.mission_manager import _station_fallback_pose_geometry
+from marco_mission.mission_manager import _station_fallback_remaining_path
 from marco_mission.mission_manager import _remaining_polyline_from_pose
 from marco_msgs.action import DockToStation
 from marco_msgs.msg import RobotStatus
@@ -194,6 +196,9 @@ def _manager(
     )
     parameters = {
         'junction_path_match_tolerance_m': 0.25,
+        'station_fallback_max_cross_track_m': 0.60,
+        'station_fallback_max_heading_error_deg': 35.0,
+        'station_fallback_along_track_margin_m': 0.15,
         'load_detected_freshness_s': 0.25,
         'load_detected_debounce_s': 0.075,
     }
@@ -524,6 +529,156 @@ def test_remaining_polyline_drops_all_geometry_behind_current_pose():
 
     assert cross_track == pytest.approx(0.0)
     assert remaining == pytest.approx([(0.0, -0.65), (0.0, -1.0)])
+
+
+@pytest.mark.parametrize(
+    ('cross_track', 'accepted'),
+    [
+        (0.20, True),
+        (0.30, True),
+        (0.40, True),
+        (0.60, True),
+        (0.61, False),
+    ],
+)
+def test_station_fallback_cross_track_contract(cross_track, accepted):
+    arguments = (
+        [(0.0, 0.0), (0.0, -1.0)],
+        cross_track,
+        -0.50,
+        math.pi / 2.0,
+        0.60,
+        math.radians(35.0),
+        0.15,
+    )
+
+    if accepted:
+        projection, heading_error = _station_fallback_pose_geometry(
+            *arguments)
+        assert projection.cross_track == pytest.approx(cross_track)
+        assert heading_error == pytest.approx(0.0)
+    else:
+        with pytest.raises(MissionAbort, match='cross-track fazla'):
+            _station_fallback_pose_geometry(*arguments)
+
+
+@pytest.mark.parametrize(
+    ('heading_error_deg', 'accepted'),
+    [
+        (30.0, True),
+        (35.0, True),
+        (36.0, False),
+        (50.0, False),
+    ],
+)
+def test_station_fallback_reverse_heading_contract(
+    heading_error_deg, accepted,
+):
+    arguments = (
+        [(0.0, 0.0), (0.0, -1.0)],
+        0.30,
+        -0.50,
+        math.pi / 2.0 + math.radians(heading_error_deg),
+        0.60,
+        math.radians(35.0),
+        0.15,
+    )
+
+    if accepted:
+        _projection, heading_error = _station_fallback_pose_geometry(
+            *arguments)
+        assert math.degrees(heading_error) == pytest.approx(
+            heading_error_deg)
+    else:
+        with pytest.raises(MissionAbort, match='heading uyumsuz'):
+            _station_fallback_pose_geometry(*arguments)
+
+
+@pytest.mark.parametrize(
+    ('robot_y', 'expected_along', 'accepted'),
+    [
+        (-0.50, 0.50, True),
+        (0.10, -0.10, True),
+        (0.16, -0.16, False),
+        (-1.10, 1.10, True),
+        (-1.16, 1.16, False),
+    ],
+)
+def test_station_fallback_along_track_corridor(
+    robot_y, expected_along, accepted,
+):
+    arguments = (
+        [(0.0, 0.0), (0.0, -1.0)],
+        0.20,
+        robot_y,
+        math.pi / 2.0,
+        0.60,
+        math.radians(35.0),
+        0.15,
+    )
+
+    if accepted:
+        projection, _heading_error = _station_fallback_pose_geometry(
+            *arguments)
+        assert projection.along_track == pytest.approx(expected_along)
+    else:
+        with pytest.raises(MissionAbort, match='along-track corridor'):
+            _station_fallback_pose_geometry(*arguments)
+
+
+def test_controlled_merge_starts_at_robot_and_uses_only_forward_suffix():
+    points = [(0.0, 0.0), (0.0, -0.5), (0.0, -1.0)]
+    projection, _heading_error = _station_fallback_pose_geometry(
+        points,
+        0.30,
+        -0.20,
+        math.pi / 2.0,
+        0.60,
+        math.radians(35.0),
+        0.15,
+    )
+
+    remaining, merge_point, merge_used = _station_fallback_remaining_path(
+        points, 0.30, -0.20, projection)
+
+    assert merge_used is True
+    assert remaining[0] == pytest.approx((0.30, -0.20))
+    assert merge_point == pytest.approx((0.0, -0.65))
+    assert remaining[1] == pytest.approx(merge_point)
+    assert remaining[-1] == pytest.approx((0.0, -1.0))
+    assert (0.0, 0.0) not in remaining
+    assert all(
+        current[1] >= following[1]
+        for current, following in zip(remaining, remaining[1:])
+    )
+
+
+def test_station_fallback_uses_station_limits_and_reports_geometry(tmp_path):
+    manager = _manager(
+        tmp_path, ('A1',), (DockToStation.Result.RESULT_LANE_LOST,)
+    )
+    original_get_parameter = manager.get_parameter
+    manager.get_parameter = lambda name: (
+        SimpleNamespace(value=0.01)
+        if name == 'junction_path_match_tolerance_m'
+        else original_get_parameter(name)
+    )
+    manager.pose_sequence = [
+        (0.40, -0.45, math.pi / 2.0),
+        (0.0, -1.0, math.pi / 2.0),
+    ]
+
+    manager._do_dock('A1', True)
+
+    event = next(
+        fields for name, fields in manager.events
+        if name == 'station_lane_fallback_path_planned'
+    )
+    assert event['cross_track_error_m'] == pytest.approx(0.40)
+    assert event['projected_along_track_m'] == pytest.approx(0.45)
+    assert event['total_edge_length_m'] == pytest.approx(1.0)
+    assert event['heading_error_deg'] == pytest.approx(0.0)
+    assert event['merge_used'] is True
 
 
 @pytest.mark.parametrize(
